@@ -2,10 +2,17 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 public final class Keywords {
+    /**
+     * The alignment that a parent pads a {@code Keywords} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 1;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -15,19 +22,33 @@ public final class Keywords {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds a {@code Keywords} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(6);
-        builder.setUint8(fields.class_());
-        builder.setUint8(fields.default_());
-        builder.setUint8(fields.in());
-        builder.setUint8(fields.match());
-        builder.setUint8(fields.self());
-        builder.setString(fields.type());
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(6);
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addString(fields.type());
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a {@code Keywords} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(6);
+        writer.setUint8(0, fields.class_());
+        writer.setUint8(1, fields.default_());
+        writer.setUint8(2, fields.in());
+        writer.setUint8(3, fields.match());
+        writer.setUint8(4, fields.self());
+        writer.setString(5, fields.type());
+        writer.endTable(parent);
     }
 
     public short class_() {

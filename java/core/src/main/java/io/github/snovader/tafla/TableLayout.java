@@ -19,6 +19,12 @@ public final class TableLayout {
     /** No header slots, and 32-bit offsets and lengths */
     public static final TableLayout DEFAULT = new TableLayout(false, false, AddressableSpace.SIZEOF_32);
 
+    /**
+     * The longest array that the JDK's own collections allocate, which limits a table of 32-bit
+     * offsets to about 2 GiB rather than their 4 GiB
+     */
+    static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
+
     private final boolean sized;
     private final boolean versioned;
     private final AddressableSpace offsetSize;
@@ -56,6 +62,68 @@ public final class TableLayout {
     /** {@return the byte length of the header slots before the field offsets} */
     public int headerSize() {
         return headerSize;
+    }
+
+    // The rules of the layout that TableBuilder, TableSizer and TableWriter share
+
+    /**
+     * {@return the longest table that the offsets address and a Java array holds}: 255 bytes, 64 KiB,
+     * or for 32-bit offsets, about 2 GiB rather than their 4 GiB
+     */
+    long maxLength() {
+        return Math.min(offsetSize.maxValue(), MAX_ARRAY_LENGTH);
+    }
+
+    /**
+     * {@return the byte length of the header slots and field offsets of a table of {@code fields}
+     * fields}, whose writer puts {@code version} in the header when {@code versioned}
+     *
+     * @throws IllegalArgumentException if the layout is versioned and no version is given, or the
+     *     other way round, the version doesn't fit in the offset size, the number of fields is
+     *     negative, or the header alone is longer than the layout addresses
+     */
+    int headerLength(int fields, boolean versioned, long version) {
+        if (this.versioned != versioned) {
+            throw new IllegalArgumentException(
+                this.versioned ? "A versioned layout needs a version" : "The layout has no version slot"
+            );
+        }
+
+        if (versioned && (version < 0 || version > offsetSize.maxValue())) {
+            throw new IllegalArgumentException(
+                String.format("Version %d doesn't fit in a %d-byte slot", version, offsetSize.valueOf())
+            );
+        }
+
+        if (fields < 0) {
+            throw new IllegalArgumentException(String.format("A table can't hold %d fields", fields));
+        }
+
+        var length = headerSize + (long) fields * offsetSize.valueOf();
+        if (length > maxLength()) {
+            throw new IllegalArgumentException(
+                String.format("A header of %d fields doesn't fit in %d-byte offsets", fields, offsetSize.valueOf())
+            );
+        }
+
+        return (int) length;
+    }
+
+    /**
+     * The padding that brings {@code offset} from a table's start to a multiple of
+     * {@code alignment}
+     *
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     */
+    static int padding(long offset, int alignment) {
+        if (alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8) {
+            throw new IllegalArgumentException(
+                String.format("An alignment of %d isn't 1, 2, 4 or 8 bytes", alignment)
+            );
+        }
+
+        // The alignment is a power of 2, so its mask is the remainder's
+        return (int) (-offset & (alignment - 1));
     }
 
     @Override

@@ -76,6 +76,66 @@ enum ScalarType {
         }
     }
 
+    void add(TableSizer sizer) {
+        switch (this) {
+            case INT8 -> sizer.addInt8();
+            case UINT8 -> sizer.addUint8();
+            case INT16 -> sizer.addInt16();
+            case UINT16 -> sizer.addUint16();
+            case INT32 -> sizer.addInt32();
+            case UINT32 -> sizer.addUint32();
+            case INT64 -> sizer.addInt64();
+            case UINT64 -> sizer.addUint64();
+            case FLOAT32 -> sizer.addFloat32();
+            case FLOAT64 -> sizer.addFloat64();
+        }
+    }
+
+    void addArray(TableSizer sizer, int count) {
+        switch (this) {
+            case INT8 -> sizer.addInt8Array(count);
+            case UINT8 -> sizer.addUint8Array(count);
+            case INT16 -> sizer.addInt16Array(count);
+            case UINT16 -> sizer.addUint16Array(count);
+            case INT32 -> sizer.addInt32Array(count);
+            case UINT32 -> sizer.addUint32Array(count);
+            case INT64 -> sizer.addInt64Array(count);
+            case UINT64 -> sizer.addUint64Array(count);
+            case FLOAT32 -> sizer.addFloat32Array(count);
+            case FLOAT64 -> sizer.addFloat64Array(count);
+        }
+    }
+
+    void set(TableWriter writer, int index, long value) {
+        switch (this) {
+            case INT8 -> writer.setInt8(index, (byte) value);
+            case UINT8 -> writer.setUint8(index, (short) value);
+            case INT16 -> writer.setInt16(index, (short) value);
+            case UINT16 -> writer.setUint16(index, (int) value);
+            case INT32 -> writer.setInt32(index, (int) value);
+            case UINT32 -> writer.setUint32(index, value);
+            case INT64 -> writer.setInt64(index, value);
+            case UINT64 -> writer.setUint64(index, value);
+            case FLOAT32 -> writer.setFloat32(index, Float.intBitsToFloat((int) value));
+            case FLOAT64 -> writer.setFloat64(index, Double.longBitsToDouble(value));
+        }
+    }
+
+    void setArray(TableWriter writer, int index, long[] values) {
+        switch (this) {
+            case INT8 -> writer.setInt8Array(index, toBytes(values));
+            case UINT8 -> writer.setUint8Array(index, toShorts(values));
+            case INT16 -> writer.setInt16Array(index, toShorts(values));
+            case UINT16 -> writer.setUint16Array(index, toInts(values));
+            case INT32 -> writer.setInt32Array(index, toInts(values));
+            case UINT32 -> writer.setUint32Array(index, values);
+            case INT64 -> writer.setInt64Array(index, values);
+            case UINT64 -> writer.setUint64Array(index, values);
+            case FLOAT32 -> writer.setFloat32Array(index, toFloats(values));
+            case FLOAT64 -> writer.setFloat64Array(index, toDoubles(values));
+        }
+    }
+
     /** Writes a value at the buffer's position with its own setter, rather than a builder's */
     void write(ByteBuffer buffer, long value) {
         switch (this) {

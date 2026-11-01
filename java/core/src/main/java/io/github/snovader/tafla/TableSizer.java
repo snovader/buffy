@@ -1,0 +1,293 @@
+package io.github.snovader.tafla;
+
+/**
+ * Counts the bytes of a table, so that a {@link TableWriter} can write it into bytes of exactly
+ * that length. It's for code that knows a table's fields before it writes them, such as the code
+ * that tafla-gen generates, which writes tables without recording their fields as
+ * {@link TableBuilder} does.
+ *
+ * <p>The fields are added in order, each with its type's method, which takes what decides its
+ * length: nothing for a scalar, the count of an array, the string itself. A nested table is added
+ * with {@link #addTable}, and a vector with {@link #addVector}, and the fields of each such table
+ * then follow between {@link #startTable} and {@link #endTable}. The sizer pads arrays and nested
+ * tables as {@code TableBuilder} does, so a writer that takes the same fields in the same order
+ * writes each where the sizer counted it.</p>
+ *
+ * {@snippet :
+ * var sizer = new TableSizer(2);
+ * sizer.addFloat64();
+ * sizer.addString("Europe/Stockholm");
+ *
+ * var writer = sizer.writer();
+ * writer.setFloat64(0, 59.3293);
+ * writer.setString(1, "Europe/Stockholm");
+ * byte[] bytes = writer.bytes();
+ * }
+ *
+ * <p>The length is counted in a {@code long}, and checked once all the fields are added, by
+ * {@link #byteLength()} and {@link #writer()}, against the longest table that the layout's offset
+ * size addresses: 255 bytes, 64 KiB, or for 32-bit offsets, as long as a Java array can be.</p>
+ */
+public final class TableSizer {
+    private final TableLayout layout;
+    private final long version;
+    private final int fields;
+    /** The width of offsets, lengths and header slots */
+    private final int offsetSize;
+    /** The table's length so far, which is where the next field goes */
+    private long position;
+    /** The start of the table being sized, which arrays are aligned from */
+    private long table = 0;
+
+    /** Sizes a table of {@link TableLayout#DEFAULT} */
+    public TableSizer(int fields) {
+        this(fields, TableLayout.DEFAULT);
+    }
+
+    /**
+     * Sizes a table of a layout without a version, with the checks of {@link TableBuilder}'s
+     * constructor.
+     *
+     * @param fields the number of fields that the table holds
+     * @param layout the table's header and offset width, which its readers must use too
+     * @throws IllegalArgumentException if the layout is versioned, the number of fields is
+     *     negative, or the header alone is longer than the layout addresses
+     */
+    public TableSizer(int fields, TableLayout layout) {
+        this(fields, layout, false, 0);
+    }
+
+    /**
+     * Sizes a table of a versioned layout, with the checks of {@link TableBuilder}'s constructor.
+     *
+     * @param version the version that the writer writes to the header
+     * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
+     *     the layout's offset size, the number of fields is negative, or the header alone is longer
+     *     than the layout addresses
+     */
+    public TableSizer(int fields, TableLayout layout, long version) {
+        this(fields, layout, true, version);
+    }
+
+    private TableSizer(int fields, TableLayout layout, boolean versioned, long version) {
+        this.position = layout.headerLength(fields, versioned, version);
+        this.layout = layout;
+        this.version = version;
+        this.fields = fields;
+        this.offsetSize = layout.offsetSize().valueOf();
+    }
+
+    /**
+     * Returns the byte length of the table, with every field added.
+     *
+     * @throws IllegalArgumentException if the table is longer than its layout's offsets address, or
+     *     than a Java array can be
+     */
+    public int byteLength() {
+        var maxLength = layout.maxLength();
+        if (position > maxLength) {
+            throw new IllegalArgumentException(tooLong(maxLength));
+        }
+
+        return (int) position;
+    }
+
+    /**
+     * Returns a writer of the table, into new bytes of its length, which takes its fields in the
+     * order that they were added.
+     *
+     * @throws IllegalArgumentException if the table is longer than its layout's offsets address, or
+     *     than a Java array can be
+     */
+    public TableWriter writer() {
+        return new TableWriter(new byte[byteLength()], fields, layout, version);
+    }
+
+    /**
+     * Starts the fields of a nested table or vector item of {@code fields} fields, after its
+     * parent's {@link #addTable} or {@link #addVector}.
+     *
+     * @return the parent's start, which {@link #endTable} takes back
+     * @throws IllegalArgumentException if {@code fields} is negative
+     */
+    public long startTable(int fields) {
+        var offsets = (long) checkCount(fields) * offsetSize;
+
+        var parent = table;
+        table = position;
+        position += offsets;
+
+        return parent;
+    }
+
+    /** Ends the fields of the table that {@link #startTable} started */
+    public void endTable(long parent) {
+        table = parent;
+    }
+
+    public void addInt8() {
+        position += Byte.BYTES;
+    }
+
+    public void addUint8() {
+        position += Byte.BYTES;
+    }
+
+    public void addInt16() {
+        position += Short.BYTES;
+    }
+
+    public void addUint16() {
+        position += Short.BYTES;
+    }
+
+    public void addInt32() {
+        position += Integer.BYTES;
+    }
+
+    public void addUint32() {
+        position += Integer.BYTES;
+    }
+
+    public void addInt64() {
+        position += Long.BYTES;
+    }
+
+    public void addUint64() {
+        position += Long.BYTES;
+    }
+
+    public void addFloat32() {
+        position += Float.BYTES;
+    }
+
+    public void addFloat64() {
+        position += Double.BYTES;
+    }
+
+    // The array adders take the count of the elements, and throw an IllegalArgumentException for a
+    // negative one
+
+    public void addInt8Array(int count) {
+        addArray(count, Byte.BYTES, Byte.BYTES);
+    }
+
+    public void addUint8Array(int count) {
+        addArray(count, Byte.BYTES, Byte.BYTES);
+    }
+
+    public void addInt16Array(int count) {
+        addArray(count, Short.BYTES, Short.BYTES);
+    }
+
+    public void addUint16Array(int count) {
+        addArray(count, Short.BYTES, Short.BYTES);
+    }
+
+    public void addInt32Array(int count) {
+        addArray(count, Integer.BYTES, Integer.BYTES);
+    }
+
+    public void addUint32Array(int count) {
+        addArray(count, Integer.BYTES, Integer.BYTES);
+    }
+
+    public void addInt64Array(int count) {
+        addArray(count, Long.BYTES, Long.BYTES);
+    }
+
+    public void addUint64Array(int count) {
+        addArray(count, Long.BYTES, Long.BYTES);
+    }
+
+    public void addFloat32Array(int count) {
+        addArray(count, Float.BYTES, Float.BYTES);
+    }
+
+    public void addFloat64Array(int count) {
+        addArray(count, Double.BYTES, Double.BYTES);
+    }
+
+    /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
+    public void addString(String string) {
+        position += offsetSize + Utf8.length(string);
+    }
+
+    /**
+     * Adds a struct of {@code size} bytes
+     *
+     * @throws IllegalArgumentException if {@code size} is negative
+     */
+    public void addStruct(int size) {
+        if (size < 0) {
+            throw new IllegalArgumentException(String.format("A struct's size can't be negative: %d", size));
+        }
+
+        position += size;
+    }
+
+    /**
+     * Adds {@code count} structs of {@code size} bytes, padded so that they start at a multiple of
+     * {@code alignment} from the start of the table
+     *
+     * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
+     * @throws IllegalArgumentException if {@code count} is negative, {@code size} is less than 1, or
+     *     the alignment isn't 1, 2, 4 or 8
+     */
+    public void addStructArray(int count, int size, int alignment) {
+        ByteBuffer.assertStructSize(size);
+        addArray(count, size, alignment);
+    }
+
+    /**
+     * Adds a nested table, padded to start at a multiple of {@code alignment}, whose fields then
+     * follow between {@link #startTable} and {@link #endTable}
+     *
+     * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     */
+    public void addTable(int alignment) {
+        position += TableLayout.padding(position - table, alignment);
+    }
+
+    /**
+     * Adds a vector of {@code count} tables, whose fields then follow, each between
+     * {@link #startTable} and {@link #endTable}
+     *
+     * @throws IllegalArgumentException if {@code count} is negative
+     */
+    public void addVector(int count) {
+        position += (checkCount(count) + 1L) * offsetSize;
+    }
+
+    /**
+     * Adds a count and then {@code count} elements of {@code elementSize} bytes, padded so that the
+     * elements start at a multiple of {@code alignment} from the start of the table
+     */
+    private void addArray(int count, int elementSize, int alignment) {
+        var start = position + offsetSize;
+        var padding = TableLayout.padding(start - table, alignment);
+        position = start + padding + (long) checkCount(count) * elementSize;
+    }
+
+    /**
+     * {@return the count of fields, items or elements}, which {@link TableWriter} checks as well
+     *
+     * @throws IllegalArgumentException if it's negative
+     */
+    static int checkCount(int count) {
+        if (count < 0) {
+            throw new IllegalArgumentException(String.format("A count can't be negative: %d", count));
+        }
+
+        return count;
+    }
+
+    private String tooLong(long maxLength) {
+        if (maxLength == TableLayout.MAX_ARRAY_LENGTH) {
+            return String.format("The table's fields make it %d bytes, longer than a Java array can be", position);
+        }
+
+        return String.format("The table's fields make it %d bytes, too long for %d-byte offsets", position, offsetSize);
+    }
+}

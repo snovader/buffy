@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.shapes;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,10 +20,20 @@ public final class ItemList {
 
     /** Writes an {@code ItemList} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(1, LAYOUT);
-        builder.setVector(fields.items().stream().map(Item::builder).toList());
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addVector(fields.items().size());
+        for (var item : fields.items()) {
+            Item.size(sizer, item);
+        }
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        var vector0 = writer.setVector(0, fields.items().size());
+        for (int i = 0; i < fields.items().size(); i++) {
+            Item.write(writer, fields.items().get(i));
+            writer.setItemEnd(vector0, i);
+        }
+
+        return writer.bytes();
     }
 
     public List<Item> items() {

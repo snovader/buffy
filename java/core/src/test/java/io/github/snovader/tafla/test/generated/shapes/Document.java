@@ -3,8 +3,8 @@ package io.github.snovader.tafla.test.generated.shapes;
 
 import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.DecodeException;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /**
  * A document, whose header holds its length and version, with a nested
@@ -35,13 +35,21 @@ public final class Document {
 
     /** Writes a {@code Document} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(4, LAYOUT, FORMAT_VERSION);
-        builder.setFloat64(fields.x());
-        builder.setFloat64(fields.y());
-        builder.setString(fields.name());
-        builder.setTable(Columns.builder(fields.columns()));
+        var sizer = new TableSizer(4, LAYOUT, FORMAT_VERSION);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.name());
+        sizer.addTable(Columns.ALIGNMENT);
+        Columns.size(sizer, fields.columns());
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setFloat64(0, fields.x());
+        writer.setFloat64(1, fields.y());
+        writer.setString(2, fields.name());
+        writer.setTable(3, Columns.ALIGNMENT);
+        Columns.write(writer, fields.columns());
+
+        return writer.bytes();
     }
 
     public double x() {
