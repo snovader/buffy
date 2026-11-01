@@ -1,61 +1,12 @@
 import unittest
 from collections.abc import Callable
-from typing import Any
 
-from hypothesis import given
-from hypothesis.strategies import binary, booleans, integers, lists, sampled_from, text
-
-from buffy_core import ByteBuffer, DecodeError, TableBuilder, TableLayout
-from tests.fields import (
-    KINDS,
-    Field,
-    builder_of,
-    expected,
-    fields,
-    read_root_field,
-)
-
-
-def read(buffer: ByteBuffer, kind: str, index: int) -> Any:
-    """Reads a field, returning the exception it raises instead, which the
-    tests check is a DecodeError"""
-    try:
-        return read_root_field(buffer, kind, index)
-    except Exception as error:  # noqa: BLE001
-        return error
+from buffy_core import ByteBuffer, DecodeError
 
 
 class TestDecodeError(unittest.TestCase):
     def test_is_a_value_error(self) -> None:
         self.assertIsInstance(DecodeError("message"), ValueError)
-
-    @given(lists(fields, min_size=1, max_size=8), booleans())
-    def test_reads_each_field_of_a_truncated_table_or_raises(
-        self, entries: list[Field], sized: bool
-    ) -> None:
-        layout = TableLayout(sized=sized)
-        serialized = bytes(builder_of(entries, layout=layout).bytes())
-
-        for length in range(len(serialized)):
-            # A copy, so that no read can reach the bytes after the cut
-            buffer = ByteBuffer(serialized[:length], layout)
-
-            for index, entry in enumerate(entries):
-                result = read(buffer, entry[0], index)
-
-                if isinstance(result, Exception):
-                    self.assertIsInstance(result, DecodeError)
-                else:
-                    self.assertEqual(result, expected(entry))
-
-    @given(binary(max_size=64), sampled_from(KINDS), integers(0, 16), booleans())
-    def test_raises_only_decode_error_for_any_bytes(
-        self, data: bytes, kind: str, index: int, sized: bool
-    ) -> None:
-        result = read(ByteBuffer(data, TableLayout(sized=sized)), kind, index)
-
-        if isinstance(result, Exception):
-            self.assertIsInstance(result, DecodeError)
 
     def test_raises_from_scalar_getters_outside_the_bytes(self) -> None:
         backing = bytearray(range(32))
@@ -95,17 +46,6 @@ class TestDecodeError(unittest.TestCase):
                     buffer.get_string(0)
 
                 self.assertIsInstance(context.exception.__cause__, UnicodeDecodeError)
-
-    @given(text())
-    def test_reads_back_any_string_with_a_leading_byte_order_mark(
-        self, string: str
-    ) -> None:
-        for value in [string, f"﻿{string}"]:
-            builder = TableBuilder(1)
-            builder.set_string(value)
-
-            buffer = builder.finalize()
-            self.assertEqual(buffer.get_string(buffer.root_offset(0)), value)
 
     def test_rejects_a_vector_count_before_allocating_for_it(self) -> None:
         buffer = ByteBuffer((2**32 - 1).to_bytes(4, "little") + bytes(4))

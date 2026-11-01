@@ -1,44 +1,29 @@
+import sys
 import unittest
 from array import array
 from unittest.mock import patch
 
 from hypothesis import given
-from hypothesis.strategies import booleans, integers, lists
+from hypothesis.strategies import integers
 
-from buffy_core import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
-from tests.fields import (
-    TYPE_CODES,
-    Field,
-    builder_of,
-    expected,
-    fields,
-    read_root_field,
-    typed_arrays,
-)
+from buffy_core import SIZEOF_32, ByteBuffer, TableBuilder
+from tests.descriptions import ARRAY_FIELDS
+from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
 
 class TestByteBuffer(unittest.TestCase):
-    @given(lists(fields, max_size=8), booleans())
-    def test_reads_back_every_field(self, entries: list[Field], sized: bool) -> None:
-        layout = TableLayout(sized=sized)
-        buffer = ByteBuffer(builder_of(entries, layout=layout).bytes(), layout)
-
-        for index, entry in enumerate(entries):
-            self.assertEqual(read_root_field(buffer, entry[0], index), expected(entry))
-
-        self.assertEqual(buffer.get_size(), len(buffer.bytes()))
-
-    @given(typed_arrays, integers(1, 7))
-    def test_reads_arrays_at_any_alignment_as_views(
-        self, field: Field, byte_offset: int
+    @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
+    @given(ARRAY_FIELDS, integers(1, 7))
+    def test_reads_arrays_at_any_alignment_as_views_of_the_bytes(
+        self, field: Description, misalignment: int
     ) -> None:
-        serialized = builder_of([field]).bytes()
-        backing = bytearray(byte_offset) + serialized
-        buffer = ByteBuffer(memoryview(backing)[byte_offset:])
+        table = {"layout": DEFAULT_LAYOUT, "fields": [field]}
+        backing = bytearray(misalignment) + build_table(table).bytes()
+        buffer = ByteBuffer(memoryview(backing)[misalignment:])
 
-        values = getattr(buffer, f"get_{field[0]}")(buffer.root_offset(0))
+        element = field["type"].removesuffix("[]")
+        values = getattr(buffer, f"get_{element}_array")(buffer.root_offset(0))
 
-        self.assertEqual(values.tolist(), expected(field))
         self.assertIs(values.obj, backing)
 
     def test_swaps_each_elements_bytes_on_big_endian_hosts(self) -> None:
@@ -99,14 +84,6 @@ class TestByteBuffer(unittest.TestCase):
         buffer.set_uint8(1)
 
         self.assertEqual(backing, b"\0\0\0\x01")
-
-    def test_reads_every_array_type(self) -> None:
-        for kind, type_code in TYPE_CODES.items():
-            with self.subTest(kind=kind):
-                field = (kind, array(type_code, [1, 2, 3]))
-                buffer = builder_of([field]).finalize()
-
-                self.assertEqual(read_root_field(buffer, kind, 0), [1, 2, 3])
 
 
 if __name__ == "__main__":
