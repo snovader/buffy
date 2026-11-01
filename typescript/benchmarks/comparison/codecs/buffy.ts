@@ -115,6 +115,8 @@ export const buffy: Codec = {
     },
     sample: {
         serialize({ key, a, b }) {
+            // As the generated code does, since the writer is shared
+            sampleWriter.reset();
             sampleWriter.setUint32(key);
             sampleWriter.setFloat32(a);
             sampleWriter.setFloat32(b);

@@ -504,6 +504,7 @@ export class Packed {
     /** Writes a `Packed` */
     static serialize(fields: PackedFields): Uint8Array {
         const writer = Packed.#writer;
+        writer.reset();
         writer.setInt8(fields.int8);
         writer.setUint8(fields.uint8);
         writer.setInt16(fields.int16);
@@ -606,6 +607,7 @@ export class Documented {
     /** Writes a `Documented` */
     static serialize(fields: DocumentedFields): Uint8Array {
         const writer = Documented.#writer;
+        writer.reset();
         writer.setUint8(fields.one);
         writer.setUint16(fields.two);
         writer.setUint32(fields.undocumented);

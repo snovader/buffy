@@ -4,13 +4,19 @@ import { ByteBuffer } from './byteBuffer.ts';
  * Writes scalars one after another into the supplied bytes, without a header,
  * offsets, length prefixes or padding, so a struct is read back at fixed
  * offsets. `bytes()` rewinds and returns a copy, so one writer can be reused for
- * every struct with the same layout.
+ * every struct with the same layout. A struct whose write threw never reaches
+ * `bytes()`, so a shared writer calls `reset()` before each struct.
  */
 export class StructWriter {
     readonly #buffer: ByteBuffer;
 
     constructor(bytes: Uint8Array) {
         this.#buffer = new ByteBuffer(bytes);
+    }
+
+    /** Rewinds to the start, discarding a struct that wasn't finished */
+    reset(): void {
+        this.#buffer.reset();
     }
 
     bytes(): Uint8Array {

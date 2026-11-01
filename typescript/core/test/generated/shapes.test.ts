@@ -175,5 +175,21 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 expect(bytes).toStrictEqual(sampleBytes(first));
             }
         );
+
+        it.prop([SAMPLE_FIELDS, SAMPLE_FIELDS])(
+            'should write the next Sample after a serialize() that threw',
+            (first, second) => {
+                // Throws once `key` and `a` are written
+                const unreadable = {
+                    ...first,
+                    get b(): number {
+                        throw new Error('An unreadable field');
+                    }
+                };
+
+                expect(() => shapes.Sample.serialize(unreadable)).toThrow('An unreadable field');
+                expect(shapes.Sample.serialize(second)).toStrictEqual(sampleBytes(second));
+            }
+        );
     });
 });
