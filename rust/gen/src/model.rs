@@ -1,5 +1,5 @@
 //! A checked schema, which the generators read: every type resolved, every
-//! name unique and every layout within what buffy can write.
+//! name unique and every layout within what tafla can write.
 
 #[derive(Debug)]
 pub struct Schema {

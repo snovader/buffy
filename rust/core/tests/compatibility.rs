@@ -1,9 +1,9 @@
-//! Tables that `@buffy/core` wrote, which this crate must write byte for
-//! byte from the same fields and read back. The bytes come from the
+//! Tables that the TypeScript runtime wrote, which this crate must write
+//! byte for byte from the same fields and read back. The bytes come from the
 //! TypeScript `TableBuilder` with the same calls, field for field, as the
 //! builders here.
 
-use buffy_core::{Alignment, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
+use tafla::{Alignment, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
 
 const KINDS: [u8; 290] = [
     96, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 100, 0, 0, 0, 102, 0, 0, 0, 106, 0, 0, 0, 110, 0, 0, 0,
@@ -119,7 +119,7 @@ fn test_versioned_document_with_nested_tables() {
     document.set_table(columns).unwrap();
     document.set_i8(-5).unwrap();
     document
-        .set_vector([item.into(), buffy_core::NestedTable::from(&[1, 2, 3])])
+        .set_vector([item.into(), tafla::NestedTable::from(&[1, 2, 3])])
         .unwrap();
 
     assert_eq!(document.to_bytes().unwrap(), DOCUMENT);

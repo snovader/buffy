@@ -1,7 +1,7 @@
 import unittest
 from typing import Any, cast
 
-from buffy_core import SIZEOF_8, SIZEOF_16, SIZEOF_32, TableLayout
+from tafla import SIZEOF_8, SIZEOF_16, SIZEOF_32, TableLayout
 from tests.tables import OffsetSize
 
 

@@ -27,7 +27,7 @@ from hypothesis.strategies import (
     tuples,
 )
 
-from buffy_core import ByteBuffer, DecodeError
+from tafla import ByteBuffer, DecodeError
 from tests.descriptions import (
     LAYOUTS,
     OFFSET_SIZES,
@@ -66,7 +66,7 @@ def placements_of(data: memoryview[int], table: Description) -> list[Placement]:
 
 def unsigned(data: memoryview[int], position: int, size: int) -> int:
     """Reads an offset, count or length from the bytes, as the format stores
-    them, without buffy"""
+    them, without tafla"""
     return int.from_bytes(data[position : position + size], "little")
 
 

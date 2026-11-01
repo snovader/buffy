@@ -1,6 +1,6 @@
 //! Builds tables as their descriptions set them out, with `TableBuilder`
 
-use buffy_core::{BuildError, NestedTable, TableBuilder};
+use tafla::{BuildError, NestedTable, TableBuilder};
 
 use super::description::{Field, Nested, Source, Table};
 

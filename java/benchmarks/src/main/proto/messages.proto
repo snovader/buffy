@@ -2,9 +2,9 @@
 // repeated scalars by default.
 syntax = "proto3";
 
-package buffy.benchmarks;
+package tafla.benchmarks;
 
-option java_package = "io.github.snovader.buffy.benchmarks.generated.protobuf";
+option java_package = "io.github.snovader.tafla.benchmarks.generated.protobuf";
 option java_outer_classname = "Messages";
 
 message Record { double x = 1; double y = 2; int64 id = 3; string name = 4; }

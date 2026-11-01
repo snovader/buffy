@@ -1,4 +1,4 @@
-"""Reads and rebuilds the tables of buffy's conformance suite, which the
+"""Reads and rebuilds the tables of tafla's conformance suite, which the
 TypeScript runtime writes. See ``conformance/README.md`` at the root of the
 repository for the format of their descriptions in ``cases.json``."""
 
@@ -6,7 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
-from buffy_core import DecodeError
+from tafla import DecodeError
 from tests.tables import (
     Description,
     TableReader,

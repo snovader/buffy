@@ -2,7 +2,7 @@
 //! these were printed from, so that the languages' benchmarks time the same
 //! work
 
-use buffy_benchmarks::workloads::{self, Document, Item, LIST_ITEMS};
+use tafla_benchmarks::workloads::{self, Document, Item, LIST_ITEMS};
 
 #[test]
 fn generates_the_typescript_document_of_100_rows() {

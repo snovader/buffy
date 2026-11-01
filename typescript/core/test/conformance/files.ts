@@ -14,7 +14,7 @@ export interface SuiteFiles {
     tables: Map<string, Uint8Array>;
 }
 
-/** Writes the suite: its description, and its tables built by buffy */
+/** Writes the suite: its description, and its tables built by tafla */
 export function writeSuite(suite: Suite): SuiteFiles {
     const tables = new Map<string, Uint8Array>();
 

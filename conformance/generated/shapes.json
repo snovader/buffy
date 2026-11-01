@@ -1,5 +1,5 @@
 {
-    "schema": "schemas/shapes.buffy",
+    "schema": "schemas/shapes.tafla",
     "cases": [
         {
             "name": "point",

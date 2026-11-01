@@ -7,7 +7,7 @@ from typing import Any
 from hypothesis import given
 from hypothesis.strategies import floats, integers, lists, one_of
 
-from buffy_core import ByteBuffer, TableBuilder
+from tafla import ByteBuffer, TableBuilder
 from tests.tables import FLOAT_TYPES, FORMATS
 
 INT_TYPES = [kind for kind in FORMATS if kind not in FLOAT_TYPES]

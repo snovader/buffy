@@ -4,7 +4,6 @@
 
 mod common;
 
-use buffy_core::{BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
 use common::{
     description::{Field, Layout, Nested, Source, Table},
     read::read_table,
@@ -14,6 +13,7 @@ use proptest::{
     prelude::*,
     sample::{Index, select},
 };
+use tafla::{BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -349,7 +349,7 @@ fn test_reject_incomplete_nested_builder() {
     assert_eq!(parent.set_table(&incomplete).unwrap_err(), error);
 
     let bytes = [0];
-    let items = [buffy_core::NestedTable::from(&bytes), (&incomplete).into()];
+    let items = [tafla::NestedTable::from(&bytes), (&incomplete).into()];
     assert_eq!(parent.set_vector(items).unwrap_err(), error);
 
     // The parent was left as it was

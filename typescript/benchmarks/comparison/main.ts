@@ -1,4 +1,4 @@
-import { buffy } from './codecs/buffy.ts';
+import { tafla } from './codecs/tafla.ts';
 import { flatbuffers } from './codecs/flatbuffers.ts';
 import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
@@ -11,7 +11,7 @@ console.log(
     `Node ${process.version}, V8 ${process.versions.v8}; minimum of ${rounds} interleaved rounds`
 );
 
-runSuite([buffy, flatbuffers, protobufjs, msgpackr], {
+runSuite([tafla, flatbuffers, protobufjs, msgpackr], {
     rounds,
     warmupRounds: 10,
     sampleTime: Number(option('--sample-ms') ?? 1),

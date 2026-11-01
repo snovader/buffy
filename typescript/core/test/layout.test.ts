@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { it } from '@fast-check/vitest';
-import { SIZEOF_32, TableLayout } from '@buffy/core';
+import { SIZEOF_32, TableLayout } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf } from './conformance/format.ts';
 

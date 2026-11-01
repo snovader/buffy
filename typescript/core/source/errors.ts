@@ -8,7 +8,7 @@
  * such as an offset that points at another field. Formats that need that
  * guarantee can add a checksum.
  *
- * It extends `RangeError`, which buffy threw before it had its own class, so
+ * It extends `RangeError`, which tafla threw before it had its own class, so
  * existing handlers keep catching it.
  */
 export class DecodeError extends RangeError {

@@ -50,7 +50,7 @@ jobs:
               - "schemas/**"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
-              - "java/core/src/test/java/io/github/snovader/buffy/test/generated/*/**"
+              - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
               - "typescript/core/test/generated/*/**"
 
@@ -150,14 +150,14 @@ jobs:
       # The runtime only: the generator reads and writes no bytes in either
       # order, and would take long under Miri
       - name: Run tests on a big-endian target
-        run: cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu
+        run: cargo +nightly miri test -p tafla --target powerpc-unknown-linux-gnu
 
       # Miri isolates the tests from the file system, so the conformance suite
       # is ignored above
       - name: Run the conformance suite on a big-endian target
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
-        run: cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
+        run: cargo +nightly miri test -p tafla --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
 
   benchmark:
     name: Benchmark
@@ -182,16 +182,16 @@ jobs:
       # check that every codec in the comparison reads back what it wrote, and
       # that the benchmarks work
       - name: Run round-trip test
-        run: cargo test -p buffy-benchmarks --test round_trip
+        run: cargo test -p tafla-benchmarks --test round_trip
 
       - name: Run benchmarks briefly
-        run: cargo bench -p buffy-benchmarks -- --warm-up-time 0.05 --measurement-time 0.05 --sample-size 10 --nresamples 1000
+        run: cargo bench -p tafla-benchmarks -- --warm-up-time 0.05 --measurement-time 0.05 --sample-size 10 --nresamples 1000
 
       - name: Print the fastest samples
-        run: cargo run -p buffy-benchmarks --bin report
+        run: cargo run -p tafla-benchmarks --bin report
 
       - name: Print encoded sizes
-        run: cargo run -p buffy-benchmarks --bin encoding
+        run: cargo run -p tafla-benchmarks --bin encoding
 
   wasm:
     name: WebAssembly
@@ -220,13 +220,13 @@ jobs:
       # The lint job doesn't compile the module's exports, which only
       # WebAssembly builds have
       - name: Run lint check
-        run: cargo clippy -p buffy-gen --lib --target wasm32-unknown-unknown -- -D warnings
+        run: cargo clippy -p tafla-gen --lib --target wasm32-unknown-unknown -- -D warnings
 
       - name: Build the generator's module
-        run: cargo build -p buffy-gen --lib --target wasm32-unknown-unknown --profile wasm
+        run: cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 
       - name: Check that the module has no imports and generates the golden files
-        run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
+        run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Rust.

@@ -6,9 +6,9 @@ mod common;
 
 use std::borrow::Cow;
 
-use buffy_core::{Alignment, ByteBuffer, TableBuilder, TableLayout};
 use common::{at_byte_offset, read::read_table, strategy};
 use proptest::prelude::*;
+use tafla::{Alignment, ByteBuffer, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]

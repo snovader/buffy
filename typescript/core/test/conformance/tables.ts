@@ -1,4 +1,4 @@
-import { ByteBuffer, TableBuilder, TableLayout } from '@buffy/core';
+import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 import {
     type Alignment,
     elementTypeOf,

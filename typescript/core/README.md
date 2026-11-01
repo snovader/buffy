@@ -1,4 +1,4 @@
-# @buffy/core
+# tafla
 
 Binary tables of scalars, strings and typed arrays. `TableBuilder` writes a
 table at its exact size, copying typed arrays in bulk, and `ByteBuffer` reads
@@ -6,7 +6,7 @@ fields back by offset, with arrays as views of the bytes where it can. Every
 read checks that it stays within the bytes it was given.
 
 ```ts
-import { ByteBuffer, TableBuilder, TableLayout } from '@buffy/core';
+import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 
 // A format's header, shared by its writer and its readers
 const LAYOUT = TableLayout.create({ sized: true, versioned: true });
@@ -55,7 +55,7 @@ and then the fields in the order they were set:
 - A vector starts with its item count, and each item with its byte length.
 
 The repository's `conformance` directory holds golden tables of every part of
-the format, which every implementation of buffy reads and rebuilds byte for
+the format, which every implementation of tafla reads and rebuilds byte for
 byte; its README describes them. This package writes them, and
 `yarn conformance:generate` regenerates them.
 
@@ -88,7 +88,7 @@ byte; its README describes them. This package writes them, and
   float64s, a string and an int64 took 0.33 µs in Node, of which about 0.2 µs
   was allocating its bytes and their `DataView`. A nested builder allocates
   neither, so the vector of 100 nested tables took 12 µs against 7–13 µs in
-  flatbuffers, protobufjs and msgpackr, and buffy read it 2–3 times as fast
+  flatbuffers, protobufjs and msgpackr, and tafla read it 2–3 times as fast
   as they did.
 
 ## Validation and errors

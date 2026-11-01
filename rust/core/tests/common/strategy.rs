@@ -7,8 +7,8 @@
 //! a version fits in its slot, a table nested with `set_table()` has no
 //! header, and a table and the tables in it fit in their offset sizes.
 
-use buffy_core::{Alignment, OffsetSize};
 use proptest::{char, collection::vec, num, option, prelude::*, sample::select};
+use tafla::{Alignment, OffsetSize};
 
 use super::description::{Field, Layout, Nested, Source, Table};
 

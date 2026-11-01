@@ -1,12 +1,12 @@
-"""The code generated from ``schemas/shapes.buffy`` writes and reads tables
-with buffy_core."""
+"""The code generated from ``schemas/shapes.tafla`` writes and reads tables
+with tafla."""
 
 import unittest
 
 from hypothesis import given
 from hypothesis.strategies import binary, integers
 
-from buffy_core import DecodeError
+from tafla import DecodeError
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
     Overwrite,

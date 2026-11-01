@@ -71,7 +71,7 @@ intent, not a requirement to preserve every detail.
 
 ## The format and its implementations
 
-- buffy is one format with several implementations. `SPEC.md` describes it,
+- tafla is one format with several implementations. `SPEC.md` describes it,
   and the conformance suite in `conformance/` checks it: every implementation
   reads its golden tables, compares their values with the descriptions in
   `cases.json`, and rebuilds them byte for byte, and it rejects the corrupted
@@ -82,7 +82,7 @@ intent, not a requirement to preserve every detail.
 - A change to the bytes of an existing case is a change to the format. Make it
   in one PR that changes `SPEC.md`, the suite, and every implementation,
   so that no commit has implementations that disagree.
-- The code that buffy-gen generates from the example schemas in `schemas/`
+- The code that tafla-gen generates from the example schemas in `schemas/`
   lies in each language's test tree, whose checks and tests run it, and is
   the generator's golden output. Regenerate it rather than edit it, as
   `rust/gen/README.md` describes; a check or test that it fails is a bug of
@@ -126,7 +126,7 @@ intent, not a requirement to preserve every detail.
 
 ## Benchmarks
 
-- Benchmarks time buffy's own operations and compare them with popular
+- Benchmarks time tafla's own operations and compare them with popular
   libraries that do similar work: zero-copy tables such as FlatBuffers,
   schema-based codecs such as protobuf, and schemaless binary formats such as
   MessagePack.

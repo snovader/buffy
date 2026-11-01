@@ -25,7 +25,7 @@ import type {
     SampleFields
 } from './shapes/typescript/shapes.ts';
 
-// The code generated from schemas/shapes.buffy, how tests read its messages
+// The code generated from schemas/shapes.tafla, how tests read its messages
 // back and describe them to build their tables by hand, and arbitrary values
 // of their fields.
 
@@ -156,7 +156,7 @@ function describeItem({ value, pair }: ItemFields): FieldDescription[] {
 
 /**
  * A `Sample` as its fields lie at fixed offsets, little-endian, written with
- * DataView rather than buffy
+ * DataView rather than tafla
  */
 export function sampleBytes({ key, a, b }: SampleFields): Uint8Array {
     const bytes = new Uint8Array(12);

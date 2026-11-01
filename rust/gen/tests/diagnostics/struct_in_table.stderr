@@ -1,11 +1,11 @@
 error: `Sample` is a struct, which tables can't hold yet
- --> struct_in_table.buffy:7:12
+ --> struct_in_table.tafla:7:12
   |
 7 |     first: Sample;
   |            ^^^^^^
 
 error: `Sample` is a struct, which tables can't hold yet
- --> struct_in_table.buffy:8:12
+ --> struct_in_table.tafla:8:12
   |
 8 |     rest: [Sample];
   |            ^^^^^^

@@ -1,4 +1,4 @@
-//! The code generated from `schemas/all_types.buffy`, which has a field of
+//! The code generated from `schemas/all_types.tafla`, which has a field of
 //! every type, writes the tables that `TableBuilder` writes by hand, reads
 //! back what it writes, and reads corrupted and arbitrary bytes as values or
 //! decode errors without panicking. Its structs are written and read at
@@ -15,7 +15,6 @@ use all_types::{
     NestedFields, Outer, OuterFields, Packed, Reserved, ReservedFields, Scalars, ScalarsFields,
     Tree, TreeFields,
 };
-use buffy_core::{DecodeError, TableLayout};
 use proptest::array::uniform5;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -24,6 +23,7 @@ use tables::{
     expected, float32s, float64s, integers, overwrites, placements, strings, table, to_vec,
     truncations, vector,
 };
+use tafla::{DecodeError, TableLayout};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);

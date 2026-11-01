@@ -1,0 +1,120 @@
+/**
+ * Binary tables of scalars, strings and arrays. {@link io.github.snovader.tafla.TableBuilder} writes a
+ * table at its exact size, copying arrays in bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads
+ * fields back by offset, into Java arrays. Every read checks that it stays within the bytes it was
+ * given. The TypeScript and Python implementations write and read the same bytes.
+ *
+ * {@snippet :
+ * // A format's header, shared by its writer and its readers
+ * TableLayout layout = TableLayout.builder().sized(true).versioned(true).build();
+ * int formatVersion = 1;
+ *
+ * var series = new TableBuilder(2);
+ * series.setUint32Array(new long[] {0, 86400});
+ * series.setFloat32Array(new float[] {21.75f, 18.5f});
+ *
+ * var builder = new TableBuilder(3, layout, formatVersion);
+ * builder.setFloat64(59.3293);
+ * builder.setString("Europe/Stockholm");
+ * builder.setTable(series); // written straight into the table
+ * byte[] bytes = builder.bytes();
+ *
+ * var buffer = new ByteBuffer(bytes, layout);
+ * if (buffer.getVersion() != formatVersion) {
+ *     throw new IllegalStateException("Unsupported format version");
+ * }
+ *
+ * double latitude = buffer.getFloat64(buffer.rootOffset(0));
+ * String timeZone = buffer.getString(buffer.rootOffset(1));
+ * int table = buffer.rootOffset(2);
+ * float[] values = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+ * }
+ *
+ * <p>Records at fixed offsets without a header or offsets, such as stream frames, are better
+ * written and read with {@link java.lang.invoke.MethodHandles#byteArrayViewVarHandle}.</p>
+ *
+ * <h2>Format</h2>
+ *
+ * <p>All values are little-endian. A table is its header, one offset per field and then the fields
+ * in the order they were set:</p>
+ *
+ * <ul>
+ *   <li>The header holds the table's byte length when the layout is sized, and then its version
+ *     when it's versioned.</li>
+ *   <li>Header slots, offsets and length prefixes are all as wide as the layout's offset size: 1, 2
+ *     or 4 bytes, which limits the table to 255 bytes, 64 KiB or 4 GiB. A Java array holds about
+ *     2 GiB, so that's as long as a table that Java writes or reads can be.</li>
+ *   <li>Offsets count from the table's start. A table nested with {@code setTable()} has no
+ *     header, and its offsets count from its own start.</li>
+ *   <li>Arrays and strings start with their element count. Arrays are padded so that their
+ *     elements are aligned to their size from the table's start. {@code setTable()} aligns a nested
+ *     table to the largest element size of its arrays when given its builder, and to 4 bytes by
+ *     default when given bytes.</li>
+ *   <li>A vector starts with its item count, and each item with its byte length.</li>
+ * </ul>
+ *
+ * <p>Java has no unsigned types, so unsigned values are read into the next wider type, such as a
+ * {@code uint32} into a {@code long}, and a {@code uint64} into a {@code long} with its bits.</p>
+ *
+ * <h2>Performance</h2>
+ *
+ * <p>Measured in OpenJDK 25 on an Apple M2 Pro, as the minimum of 41 rounds:</p>
+ *
+ * <ul>
+ *   <li><b>Arrays of the field's Java type are copied in bulk</b>, both ways, such as a
+ *     {@code float[]} for {@code float32}s. Unsigned arrays are widened or narrowed element by
+ *     element.</li>
+ *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
+ *     Alignment doesn't matter to Java, which reads at any offset, but the TypeScript
+ *     implementation reads aligned arrays as views of the bytes, so Java aligns the arrays it
+ *     writes.</li>
+ *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
+ *     27,028-element {@code float32} array with {@code getFloat32()} took 6.8 µs, against 9.5 µs
+ *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar
+ *     getters are the slower way.</li>
+ *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
+ *     {@code TableBuilder} straight into its parent when the parent is written, so the outermost
+ *     table allocates and writes all the bytes once. A table nested as bytes was built into an
+ *     array of its own and is copied. A vector of 100 tables that each nest another took 7.1 µs to
+ *     build from builders and 7.8 µs from bytes, and a table nesting 100,000 rows of three columns
+ *     took 54 µs and 108 µs.</li>
+ *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
+ *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
+ * </ul>
+ *
+ * <h2>Validation and errors</h2>
+ *
+ * <p>Validation is always on:</p>
+ *
+ * <ul>
+ *   <li>Every read checks its range against the bytes the {@code ByteBuffer} was given, and throws
+ *     a {@link io.github.snovader.tafla.DecodeException} if it would leave them. Strings must be valid
+ *     UTF-8. A truncated or corrupted buffer therefore throws rather than returning values from
+ *     outside it.</li>
+ *   <li>{@code DecodeException} is unchecked. Its message gives the read's position and length and
+ *     the bytes available, and an invalid string's exception has the
+ *     {@link java.nio.charset.CharacterCodingException} as its cause.</li>
+ *   <li>Checks can't tell a value that was corrupted within range from a real one, such as an
+ *     offset that points at another field. A format that needs that guarantee can add a
+ *     checksum.</li>
+ * </ul>
+ *
+ * <p>Using the API wrongly throws other exceptions, whatever the bytes:</p>
+ *
+ * <ul>
+ *   <li>Writes past the end of a {@code ByteBuffer} throw an {@link IndexOutOfBoundsException},
+ *     and lengths, offsets and versions too large for its offsets an
+ *     {@link IllegalArgumentException}. Either writes nothing.</li>
+ *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
+ *     it was created with, for writing before every field is set, and for a field set after
+ *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given
+ *     for a layout, a version that doesn't fit, a nested builder with fields left to set, and an
+ *     alignment other than 1, 2, 4 or 8. A field that would make the table too long for its offsets
+ *     throws an {@code IllegalArgumentException} from its setter and isn't added.</li>
+ *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
+ *     </li>
+ *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
+ *     versioned.</li>
+ * </ul>
+ */
+package io.github.snovader.tafla;

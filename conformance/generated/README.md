@@ -1,7 +1,7 @@
 # Tables of the generated code
 
 Tables and a struct that the code generated from
-[`schemas/shapes.buffy`](../../schemas/shapes.buffy) writes, with the values
+[`schemas/shapes.tafla`](../../schemas/shapes.tafla) writes, with the values
 of their fields. The code generated in every language writes each of them
 byte for byte from the values, and reads the values back from the bytes, so
 the generators of every language are checked to write one format.
@@ -10,7 +10,7 @@ the generators of every language are checked to write one format.
 | ---------- | ---------------------------------------------------------------------------------- |
 | TypeScript | `typescript/core/test/generated/shapesCases.test.ts`, of TypeScript and JavaScript |
 | Python     | `python/core/tests/generated/test_shapes_cases.py`                                 |
-| Java       | `java/core/src/test/java/io/github/snovader/buffy/test/ShapesCasesTest.java`       |
+| Java       | `java/core/src/test/java/io/github/snovader/tafla/test/ShapesCasesTest.java`       |
 | Rust       | `rust/gen/tests/shapes_cases.rs`                                                   |
 
 Each language's CI runs its test when this directory changes.
@@ -30,12 +30,12 @@ yarn conformance:generate
 
 `shapesCases.test.ts` fails when the checked-in files no longer match what
 it writes. Run the other languages' tests after regenerating. A change to the
-generator or to `schemas/shapes.buffy` that changes these bytes changes what
+generator or to `schemas/shapes.tafla` that changes these bytes changes what
 the generated code of every language writes.
 
 ## Descriptions
 
-`shapes.json` holds `{ "schema": "schemas/shapes.buffy", "cases": [...] }`,
+`shapes.json` holds `{ "schema": "schemas/shapes.tafla", "cases": [...] }`,
 and is ASCII, as `cases.json` is:
 
 ```json

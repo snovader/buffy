@@ -1,4 +1,4 @@
-"""The code generated from ``schemas/layouts.buffy``, of the same fields in
+"""The code generated from ``schemas/layouts.tafla``, of the same fields in
 every layout: how tests read its messages back and describe them to build
 their tables by hand, and strategies of their fields' values."""
 
@@ -110,7 +110,7 @@ MESSAGES: list[MessageLayout] = [
     MessageLayout(Offset32Versioned, layout(versioned=True), 4294967295),
     MessageLayout(Offset32SizedVersioned, layout(sized=True, versioned=True), 2),
 ]
-"""Every message of layouts.buffy, with the layouts and versions that its
+"""Every message of layouts.tafla, with the layouts and versions that its
 attributes give"""
 
 

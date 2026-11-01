@@ -1,5 +1,5 @@
 """Writes and reads the cases of ``conformance/generated``: values of the
-messages and the struct of ``schemas/shapes.buffy``, whose bytes the generated
+messages and the struct of ``schemas/shapes.tafla``, whose bytes the generated
 TypeScript wrote. See ``conformance/generated/README.md`` at the root of the
 repository for the format of their descriptions in ``shapes.json``."""
 
@@ -111,7 +111,7 @@ def values_of(case: Description) -> Any:
         case "Sample":
             return _sample(fields)
         case other:
-            raise AssertionError(f"shapes.buffy has no message or struct {other}")
+            raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
 
 def serialize(kind: str, values: Any) -> Buffer:
@@ -126,7 +126,7 @@ def serialize(kind: str, values: Any) -> Buffer:
         case "Sample":
             return Sample(**values).serialize()
         case other:
-            raise AssertionError(f"shapes.buffy has no message or struct {other}")
+            raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
 
 def read(kind: str, data: Buffer) -> object:
@@ -141,7 +141,7 @@ def read(kind: str, data: Buffer) -> object:
         case "Sample":
             return asdict(Sample.read(data))
         case other:
-            raise AssertionError(f"shapes.buffy has no message or struct {other}")
+            raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
 
 def describe(kind: str, values: Any) -> list[Description]:
@@ -157,7 +157,7 @@ def describe(kind: str, values: Any) -> list[Description]:
         case "Sample":
             return describe_sample(Sample(**values))
         case other:
-            raise AssertionError(f"shapes.buffy has no message or struct {other}")
+            raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
 
 class TestShapesCases(unittest.TestCase):

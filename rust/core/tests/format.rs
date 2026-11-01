@@ -7,12 +7,12 @@
 
 mod common;
 
-use buffy_core::Alignment;
 use common::{
     description::{Field, Nested, Source, Table},
     strategy,
 };
 use proptest::prelude::*;
+use tafla::Alignment;
 
 proptest! {
     #![proptest_config(common::config())]

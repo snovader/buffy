@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, SIZEOF_8, SIZEOF_16, SIZEOF_32, TableBuilder, TableLayout } from '@buffy/core';
+import { ByteBuffer, SIZEOF_8, SIZEOF_16, SIZEOF_32, TableBuilder, TableLayout } from 'tafla';
 import { LAYOUTS, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
 import { layoutOf } from './conformance/tables.ts';

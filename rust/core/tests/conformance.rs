@@ -1,17 +1,17 @@
-//! Reads and rebuilds the tables of buffy's conformance suite, which
-//! `@buffy/core` writes. See `conformance/README.md` at the root of the
+//! Reads and rebuilds the tables of tafla's conformance suite, which the
+//! TypeScript runtime writes. See `conformance/README.md` at the root of the
 //! repository for the format of their descriptions in `cases.json`.
 
 mod common;
 
 use std::{fmt::Debug, fs, path::Path, str::FromStr};
 
-use buffy_core::{Alignment, OffsetSize};
 use common::{
     description::{Field, Layout, Nested, Source, Table},
     read::{ReadError, read_root_field, read_table},
 };
 use serde_json::Value;
+use tafla::{Alignment, OffsetSize};
 
 const CONFORMANCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance");
 

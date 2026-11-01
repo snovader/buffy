@@ -1,0 +1,15 @@
+// The workloads' tables, the same as the TypeScript comparison's. The modules
+// in flatbuffers/ are written by hand in the shape that `flatc --python`
+// generates from this schema, with only what the benchmarks use.
+namespace tafla_benchmarks.generated.flatbuffers;
+
+table Record { x: double; y: double; id: long; name: string; }
+
+table Columns { base: long; keys: [uint]; a: [float]; b: [float]; }
+table Document { x: double; y: double; name: string; columns: Columns; }
+
+table Pair { first: float; second: float; }
+table Item { value: float; pair: Pair; }
+table List { items: [Item]; }
+
+table Sample { key: uint; a: float; b: float; }

@@ -2,7 +2,7 @@
 //! `conformance.rs` parses and `strategy` generates. See
 //! `conformance/README.md` at the root of the repository.
 
-use buffy_core::{Alignment, OffsetSize, TableLayout};
+use tafla::{Alignment, OffsetSize, TableLayout};
 
 /// A table: its layout, its version and its fields, in the order that
 /// they're set

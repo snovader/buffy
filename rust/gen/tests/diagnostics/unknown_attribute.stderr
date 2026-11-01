@@ -1,5 +1,5 @@
 error: unknown attribute `compressed`
- --> unknown_attribute.buffy:1:23
+ --> unknown_attribute.tafla:1:23
   |
 1 | message Point (sized, compressed) {
   |                       ^^^^^^^^^^ expected `sized`, `version` or `offset_size`

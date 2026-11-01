@@ -1,21 +1,21 @@
 //! Each invalid schema in `tests/diagnostics` fails with the errors in the
 //! `.stderr` file beside it, rendered as the CLI prints them.
-//! `BUFFY_GEN_UPDATE=1` rewrites them.
+//! `TAFLA_GEN_UPDATE=1` rewrites them.
 
 mod common;
 
 use std::path::Path;
 
-use buffy_gen::{Diagnostic, parse};
 use common::{DIAGNOSTICS, assert_no_differences, compare_file, files_with_extension, update};
+use tafla_gen::{Diagnostic, parse};
 
 #[test]
 fn invalid_schemas_fail_with_the_expected_errors() {
     let mut differences = Vec::new();
 
-    for (name, path) in files_with_extension(Path::new(DIAGNOSTICS), "buffy") {
+    for (name, path) in files_with_extension(Path::new(DIAGNOSTICS), "tafla") {
         let source = std::fs::read_to_string(&path).unwrap();
-        let file_name = format!("{name}.buffy");
+        let file_name = format!("{name}.tafla");
 
         match parse(&source) {
             Ok(_) => differences.push(format!("{file_name} has no errors")),
@@ -33,7 +33,7 @@ fn invalid_schemas_fail_with_the_expected_errors() {
 #[test]
 fn every_expected_output_has_a_schema() {
     let directory = Path::new(DIAGNOSTICS);
-    let schemas = files_with_extension(directory, "buffy");
+    let schemas = files_with_extension(directory, "tafla");
     let stale: Vec<_> = files_with_extension(directory, "stderr")
         .into_iter()
         .filter(|(name, _)| !schemas.iter().any(|(schema, _)| schema == name))

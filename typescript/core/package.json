@@ -1,5 +1,5 @@
 {
-  "name": "@buffy/core",
+  "name": "tafla",
   "version": "0.0.0",
   "description": "Binary tables of scalars, strings and typed arrays, read with bounds checks and zero-copy views",
   "keywords": [
@@ -31,14 +31,14 @@
   },
   "exports": {
     ".": {
-      "@buffy/source": "./source/index.ts",
+      "tafla-source": "./source/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "imports": {
     "#*": {
-      "@buffy/source": "./source/*.ts",
+      "tafla-source": "./source/*.ts",
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
     }

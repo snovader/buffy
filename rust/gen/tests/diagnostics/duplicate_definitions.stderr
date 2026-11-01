@@ -1,5 +1,5 @@
 error: `Pair` is declared twice
- --> duplicate_definitions.buffy:5:9
+ --> duplicate_definitions.tafla:5:9
   |
 5 | message Pair {
   |         ^^^^

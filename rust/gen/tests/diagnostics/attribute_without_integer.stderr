@@ -1,5 +1,5 @@
 error: expected an integer, found `one`
- --> attribute_without_integer.buffy:1:25
+ --> attribute_without_integer.tafla:1:25
   |
 1 | message Point (version: one) {
   |                         ^^^

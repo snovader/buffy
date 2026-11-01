@@ -1,4 +1,4 @@
-//! The code generated from `schemas/shapes.buffy`, how the tests read its
+//! The code generated from `schemas/shapes.tafla`, how the tests read its
 //! tables back with every getter, and the values of the fields that it
 //! writes, as `crate::tables` describes them.
 

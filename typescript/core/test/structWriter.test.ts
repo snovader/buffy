@@ -8,7 +8,7 @@ import {
     readUint8,
     readUint32,
     StructWriter
-} from '@buffy/core';
+} from 'tafla';
 import { SLICES, sliceOf } from './conformance/arbitraries.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;

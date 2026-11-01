@@ -1,12 +1,12 @@
-"""The code generated from ``schemas/all_types.buffy``, of every type of field,
-writes and reads tables with buffy_core."""
+"""The code generated from ``schemas/all_types.tafla``, of every type of field,
+writes and reads tables with tafla."""
 
 import unittest
 
 from hypothesis import given
 from hypothesis.strategies import binary, integers
 
-from buffy_core import DecodeError
+from tafla import DecodeError
 from tests.generated import SETTINGS
 from tests.generated.all_types.all_types import (
     Arrays,

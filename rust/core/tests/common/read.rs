@@ -10,7 +10,7 @@
 //! that `Vector` returns; an item without a header has the same offsets
 //! either way.
 
-use buffy_core::{ByteBuffer, DecodeError};
+use tafla::{ByteBuffer, DecodeError};
 
 use super::description::{Field, Layout, Nested, Table};
 

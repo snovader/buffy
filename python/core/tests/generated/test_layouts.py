@@ -1,4 +1,4 @@
-"""The code generated from ``schemas/layouts.buffy`` writes and reads tables of
+"""The code generated from ``schemas/layouts.tafla`` writes and reads tables of
 8-, 16- and 32-bit offsets, each with and without the table's length and a
 version in its header. Each property holds for every message."""
 
@@ -8,7 +8,7 @@ from functools import partial
 from hypothesis import given, note
 from hypothesis.strategies import DataObject, binary, data as data_objects
 
-from buffy_core import DecodeError
+from tafla import DecodeError
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
     Overwrite,

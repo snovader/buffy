@@ -1,4 +1,4 @@
-//! Java for `io.github.snovader.buffy`, one file per class. Messages
+//! Java for `io.github.snovader.tafla`, one file per class. Messages
 //! and tables read fields lazily from their bytes and are written from
 //! records of their fields, with tables nested from their builders. Structs
 //! are records, read and written in place with `VarHandle`s.
@@ -12,7 +12,7 @@ use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Sche
 use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
-const RUNTIME: &str = "io.github.snovader.buffy";
+const RUNTIME: &str = "io.github.snovader.tafla";
 
 /// The package of the generated classes, unless [`Options::package`] names
 /// another. It's a placeholder that names no organization, since a project

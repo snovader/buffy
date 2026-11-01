@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { SIZEOF_8, SIZEOF_16, TableBuilder, TableLayout } from '@buffy/core';
+import { SIZEOF_8, SIZEOF_16, TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { alignmentOf, buildTable } from './conformance/tables.ts';
