@@ -71,15 +71,16 @@ intent, not a requirement to preserve every detail.
 
 ## The format and its implementations
 
-- buffy is one format with several implementations. The conformance suite in
-  `conformance/` checks it: every implementation reads its golden tables,
-  compares their values with the descriptions in `cases.json`, and rebuilds
-  them byte for byte, and it rejects the corrupted tables with its decode error.
+- buffy is one format with several implementations. `SPEC.md` describes it,
+  and the conformance suite in `conformance/` checks it: every implementation
+  reads its golden tables, compares their values with the descriptions in
+  `cases.json`, and rebuilds them byte for byte, and it rejects the corrupted
+  tables with its decode error.
 - TypeScript is the reference implementation, and writes the suite. To change
   or add a case, edit the cases in TypeScript, regenerate the suite, and run
   every implementation's tests.
 - A change to the bytes of an existing case is a change to the format. Make it
-  in one PR that changes the specification, the suite, and every implementation,
+  in one PR that changes `SPEC.md`, the suite, and every implementation,
   so that no commit has implementations that disagree.
 - Keep the domain names the same in every language: table, field, layout,
   offset size, vector, builder, and decode error. Make the syntax idiomatic for
