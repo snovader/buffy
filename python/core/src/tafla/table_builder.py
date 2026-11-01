@@ -4,17 +4,10 @@ from typing import Any, Literal, overload
 from .byte_buffer import ByteBuffer, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
-from .layout import TableLayout
+from .layout import MAX_LENGTHS, TableLayout, header_length
 from .types import AddressableSpace, ElementSize, TypeCode
 
 type _Write = Callable[[ByteBuffer, Any], None]
-
-# The longest table that offsets and lengths of each size address
-_MAX_LENGTHS: dict[AddressableSpace, int] = {
-    SIZEOF_8: 0xFF,
-    SIZEOF_16: 0xFFFF,
-    SIZEOF_32: 0xFFFF_FFFF,
-}
 
 
 class TableBuilder:
@@ -84,36 +77,19 @@ class TableBuilder:
         alone is longer than the layout addresses.
         """
         size = layout.offset_size()
-        max_length = _MAX_LENGTHS[size]
-        versioned = layout.versioned()
-
-        if versioned != (version is not None):
-            raise TypeError(
-                "A versioned layout needs a version"
-                if versioned
-                else "The layout has no version slot"
-            )
-
-        if version is not None and not 0 <= version <= max_length:
-            raise ValueError(f"Version {version} doesn't fit in a {size}-byte slot")
 
         self.__buffer = None
         self.__layout = layout
         self.__version = version
         self.__size = size
         self.__fields = fields
-        self.__max_length = max_length
+        self.__max_length = MAX_LENGTHS[size]
         # The table's length so far, which is where the next field goes
-        self.__offset = layout.header_size() + fields * size
+        self.__offset = header_length(fields, layout, version)
         # The largest alignment that a field needs from the table's start,
         # which a parent pads this table to when it nests it
         self.__alignment = SIZEOF_8
         self.__records = []
-
-        if self.__offset > max_length:
-            raise ValueError(
-                f"A header of {fields} fields doesn't fit in {size}-byte offsets"
-            )
 
     def finalize(self) -> ByteBuffer:
         """Writes the table, once; later calls return the same buffer.

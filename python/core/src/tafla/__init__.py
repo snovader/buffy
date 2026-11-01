@@ -134,6 +134,10 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``UnicodeEncodeError`` from ``set_string()``. A version missing from or
   given for a layout, or a field set after ``finalize()``, raises
   ``TypeError``.
+- ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
+  but from the setter that writes them, and ``ValueError`` for a table too
+  long for its ``offset_size`` from the setter whose offset or count doesn't
+  fit, or from ``bytes()``.
 - A struct size less than 1 raises ``ValueError`` from
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.
@@ -147,12 +151,14 @@ from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
 from .layout import TableLayout
 from .table_builder import TableBuilder
+from .table_writer import TableWriter
 
 __all__ = [
     "ByteBuffer",
     "DecodeError",
     "TableBuilder",
     "TableLayout",
+    "TableWriter",
     "SIZEOF_8",
     "SIZEOF_16",
     "SIZEOF_32",

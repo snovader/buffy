@@ -3,7 +3,7 @@
 from collections.abc import Buffer, Iterable
 from typing import Final, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, TableBuilder, TableLayout
+from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
 
 
 class Offset8:
@@ -19,12 +19,12 @@ class Offset8:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset8Fields]) -> memoryview:
         """Writes an ``Offset8`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -57,12 +57,12 @@ class Offset8Sized:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset8SizedFields]) -> memoryview:
         """Writes an ``Offset8Sized`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -107,12 +107,12 @@ class Offset8Versioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset8VersionedFields]) -> memoryview:
         """Writes an ``Offset8Versioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -157,12 +157,12 @@ class Offset8SizedVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset8SizedVersionedFields]) -> memoryview:
         """Writes an ``Offset8SizedVersioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -195,12 +195,12 @@ class Offset16:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset16Fields]) -> memoryview:
         """Writes an ``Offset16`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -233,12 +233,12 @@ class Offset16Sized:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset16SizedFields]) -> memoryview:
         """Writes an ``Offset16Sized`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -283,12 +283,12 @@ class Offset16Versioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset16VersionedFields]) -> memoryview:
         """Writes an ``Offset16Versioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -333,12 +333,12 @@ class Offset16SizedVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset16SizedVersionedFields]) -> memoryview:
         """Writes an ``Offset16SizedVersioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -371,12 +371,12 @@ class Offset32:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset32Fields]) -> memoryview:
         """Writes an ``Offset32`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -409,12 +409,12 @@ class Offset32Sized:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset32SizedFields]) -> memoryview:
         """Writes an ``Offset32Sized`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -459,12 +459,12 @@ class Offset32Versioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset32VersionedFields]) -> memoryview:
         """Writes an ``Offset32Versioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -509,12 +509,12 @@ class Offset32SizedVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Offset32SizedVersionedFields]) -> memoryview:
         """Writes an ``Offset32SizedVersioned`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        builder.set_uint32(fields["id"])
-        builder.set_string(fields["name"])
-        builder.set_uint16_array(fields["values"])
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string(1, fields["name"])
+        writer.set_uint16_array(2, fields["values"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
