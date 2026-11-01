@@ -4,30 +4,51 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/java.yml"
-      - "conformance/**"
-      - "java/**"
-      # The example schemas, whose generated code the tests run
-      - "schemas/**"
 
   pull_request:
     branches:
       - main
-    paths:
-      - ".github/workflows/java.yml"
-      - "conformance/**"
-      - "java/**"
-      # The example schemas, whose generated code the tests run
-      - "schemas/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
+  # Every push and pull request runs this workflow, so that its required check
+  # always reports, and the jobs below run only when the change touches these
+  # paths
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      java: ${{ steps.filter.outputs.java }}
+    steps:
+      # A pull request lists its files through the API, and a push compares
+      # its commits, which needs the repository
+      - name: Checkout GitHub repo
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: Filter the changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            java:
+              - ".github/workflows/java.yml"
+              - "conformance/**"
+              - "java/**"
+              # The example schemas, whose generated code the tests run
+              - "schemas/**"
+
   build:
     name: Build (Java ${{ matrix.java_version }})
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -55,6 +76,8 @@ jobs:
 
   benchmark:
     name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -85,23 +108,17 @@ jobs:
       - name: Print encoded sizes
         run: ./gradlew :benchmarks:encodingReport
 
-  dependabot:
-    needs: [build, benchmark]
+  # The check that the main branch's ruleset requires. It passes when every job
+  # passed, or was skipped because the change doesn't touch Java.
+  checks:
+    name: Java checks
+    needs: [changes, build, benchmark]
+    # Runs after a failure too, since GitHub counts a skipped required check as
+    # passed
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      pull-requests: write
-      contents: write
-    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'}}
     steps:
-      - id: metadata
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-      - run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
-        env:
-          PR_URL: ${{github.event.pull_request.html_url}}
-          PR_HEAD_SHA: ${{github.event.pull_request.head.sha}}
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
