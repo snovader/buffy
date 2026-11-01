@@ -103,7 +103,7 @@ impl Golden {
             prefix: format!("{}/", package.replace('.', "/")),
             options: Options {
                 runtime: None,
-                package: Some(package),
+                package: Some(package.parse().unwrap()),
             },
         }
     }
