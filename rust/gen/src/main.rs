@@ -1,10 +1,10 @@
-//! `buffy-gen <target> <schema>... [--out <dir>] [--runtime <module>]
+//! `tafla-gen <target> <schema>... [--out <dir>] [--runtime <module>]
 //! [--package <package>]`
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use buffy_gen::{Diagnostic, Options, Target, compile};
+use tafla_gen::{Diagnostic, Options, Target, compile};
 
 fn main() -> ExitCode {
     match run(std::env::args().skip(1).collect()) {
@@ -67,7 +67,7 @@ fn run(arguments: Vec<String>) -> Result<(), String> {
 fn usage() -> String {
     let targets: Vec<_> = Target::names().collect();
     format!(
-        "usage: buffy-gen <{}> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]\n",
+        "usage: tafla-gen <{}> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]\n",
         targets.join("|")
     )
 }

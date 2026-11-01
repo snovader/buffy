@@ -1,11 +1,11 @@
 //! Checks that every codec reads back exactly what it wrote of every workload,
 //! so that the benchmarks can't time a broken codec
 
-use buffy_benchmarks::check;
-use buffy_benchmarks::codec::Error;
-use buffy_benchmarks::codecs::LeBytes;
-use buffy_benchmarks::for_each_codec;
-use buffy_benchmarks::workloads::{
+use tafla_benchmarks::check;
+use tafla_benchmarks::codec::Error;
+use tafla_benchmarks::codecs::LeBytes;
+use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape, SAMPLE,
     SampleShape,
 };

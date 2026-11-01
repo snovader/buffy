@@ -65,7 +65,7 @@ impl Alignment {
 /// offers `ByteBuffer::version()` only where there is one.
 ///
 /// ```
-/// use buffy_core::{OffsetSize, TableLayout};
+/// use tafla::{OffsetSize, TableLayout};
 ///
 /// const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 /// const FRAME: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);

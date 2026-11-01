@@ -3,7 +3,7 @@
 
 use std::fmt::Write;
 
-use buffy_gen::{GeneratedFile, Options, Target, compile};
+use tafla_gen::{GeneratedFile, Options, Target, compile};
 
 const SCHEMA: &str = "message Point { x: float64; pair: Pair; }\ntable Pair { a: uint8; }\n";
 
@@ -19,26 +19,26 @@ fn paths(files: &[GeneratedFile]) -> Vec<&str> {
 #[test]
 fn imports_the_runtime_that_the_options_name() {
     for (target, runtime, import) in [
-        ("typescript", "./buffy.ts", "} from './buffy.ts';\n"),
-        ("javascript", "./buffy.js", "} from './buffy.js';\n"),
+        ("typescript", "./tafla.ts", "} from './tafla.ts';\n"),
+        ("javascript", "./tafla.js", "} from './tafla.js';\n"),
         (
             "python",
-            "tables.buffy",
-            "from tables.buffy import ByteBuffer",
+            "tables.tafla",
+            "from tables.tafla import ByteBuffer",
         ),
         (
             "java",
-            "org.example.buffy",
-            "import org.example.buffy.ByteBuffer;\n",
+            "org.example.tafla",
+            "import org.example.tafla.ByteBuffer;\n",
         ),
-        ("rust", "crate::buffy", "use crate::buffy::{"),
+        ("rust", "crate::tafla", "use crate::tafla::{"),
     ] {
         let options = Options {
             runtime: Some(runtime.to_owned()),
             package: None,
         };
 
-        for file in generate("point.buffy", SCHEMA, target, &options) {
+        for file in generate("point.tafla", SCHEMA, target, &options) {
             assert!(
                 file.contents.contains(import),
                 "{target}: {}",
@@ -49,27 +49,54 @@ fn imports_the_runtime_that_the_options_name() {
 }
 
 #[test]
-fn imports_buffys_runtimes_by_default() {
+fn imports_taflas_runtimes_by_default() {
     for (target, import) in [
-        ("typescript", "} from '@buffy/core';\n"),
-        ("javascript", "} from '@buffy/core';\n"),
-        ("python", "from buffy_core import ByteBuffer"),
-        ("java", "import io.github.snovader.buffy.ByteBuffer;\n"),
-        ("rust", "use buffy_core::{"),
+        ("typescript", "} from 'tafla';\n"),
+        ("javascript", "} from 'tafla';\n"),
+        ("python", "from tafla import ByteBuffer"),
+        ("java", "import io.github.snovader.tafla.ByteBuffer;\n"),
+        ("rust", "use tafla::{"),
     ] {
-        for file in generate("point.buffy", SCHEMA, target, &Options::default()) {
+        for file in generate("point.tafla", SCHEMA, target, &Options::default()) {
             assert!(
                 file.contents.contains(import),
                 "{target}: {}",
                 file.contents
             );
         }
+    }
+}
+
+/// The Rust module's `use` statement of the runtime
+fn rust_import(runtime: &str) -> String {
+    let options = Options {
+        runtime: Some(runtime.to_owned()),
+        package: None,
+    };
+    let files = generate("point.tafla", SCHEMA, "rust", &options);
+    let contents = &files[0].contents;
+
+    let start = contents.find(&format!("use {runtime}::")).unwrap();
+    let end = start + contents[start..].find(";\n").unwrap();
+    contents[start..=end].to_owned()
+}
+
+#[test]
+fn rust_imports_break_where_rustfmt_breaks_them() {
+    // rustfmt keeps a `use` statement with a list on one line up to 98
+    // columns, and breaks one of 99 into a line for each brace
+    let width_without_runtime = rust_import("r").len() - 1;
+
+    for (width, lines) in [(98, 1), (99, 3)] {
+        let runtime = "r".repeat(width - width_without_runtime);
+        let import = rust_import(&runtime);
+        assert_eq!(import.lines().count(), lines, "{import}");
     }
 }
 
 #[test]
 fn java_classes_are_in_the_generated_package_by_default() {
-    let files = generate("point.buffy", SCHEMA, "java", &Options::default());
+    let files = generate("point.tafla", SCHEMA, "java", &Options::default());
 
     assert_eq!(
         paths(&files),
@@ -87,7 +114,7 @@ fn java_classes_are_in_the_package_that_the_options_name() {
         package: Some("org.example.tables".to_owned()),
     };
 
-    let files = generate("point.buffy", SCHEMA, "java", &options);
+    let files = generate("point.tafla", SCHEMA, "java", &options);
 
     assert_eq!(
         paths(&files),
@@ -109,15 +136,15 @@ fn other_targets_ignore_the_package() {
     };
 
     for target in ["typescript", "javascript", "python", "rust"] {
-        let with_package = generate("point.buffy", SCHEMA, target, &options);
-        let without = generate("point.buffy", SCHEMA, target, &Options::default());
+        let with_package = generate("point.tafla", SCHEMA, target, &options);
+        let without = generate("point.tafla", SCHEMA, target, &Options::default());
         assert_eq!(with_package, without, "{target}");
     }
 }
 
 #[test]
 fn files_are_named_after_the_schema_and_name_it() {
-    let file_name = "schemas/v1/point_cloud.v1.buffy";
+    let file_name = "schemas/v1/point_cloud.v1.tafla";
 
     for (target, path) in [
         ("typescript", "pointCloud.ts"),
@@ -130,7 +157,7 @@ fn files_are_named_after_the_schema_and_name_it() {
         assert_eq!(paths(&files), [path]);
         assert!(
             files[0].contents.contains(
-                "Generated by buffy-gen from schemas/v1/point_cloud.v1.buffy. Do not edit."
+                "Generated by tafla-gen from schemas/v1/point_cloud.v1.tafla. Do not edit."
             )
         );
     }
@@ -139,7 +166,7 @@ fn files_are_named_after_the_schema_and_name_it() {
 #[test]
 fn a_schema_without_definitions_generates_modules_without_imports() {
     let source = "// Nothing yet\n";
-    let header = "Generated by buffy-gen from empty.buffy. Do not edit.";
+    let header = "Generated by tafla-gen from empty.tafla. Do not edit.";
 
     for (target, contents) in [
         ("typescript", format!("// {header}\n")),
@@ -147,11 +174,11 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         ("python", format!("# {header}\n")),
         ("rust", format!("// {header}\n")),
     ] {
-        let files = generate("empty.buffy", source, target, &Options::default());
+        let files = generate("empty.tafla", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
     }
     // Java has a file per definition, so none for an empty schema
-    let files = generate("empty.buffy", source, "java", &Options::default());
+    let files = generate("empty.tafla", source, "java", &Options::default());
     assert_eq!(files, Vec::new());
 }
 
@@ -171,7 +198,7 @@ fn tables_nested_in_many_fields_of_each_other_generate() {
     source.push_str("table Level40 { value: uint8; }\n");
 
     for name in Target::names() {
-        let files = generate("levels.buffy", &source, name, &Options::default());
+        let files = generate("levels.tafla", &source, name, &Options::default());
         assert_ne!(files, Vec::new(), "{name}");
     }
 }
@@ -203,8 +230,8 @@ fn empty_attributes_give_the_default_layout() {
 
     for name in Target::names() {
         assert_eq!(
-            generate("point.buffy", with_attributes, name, &Options::default()),
-            generate("point.buffy", without, name, &Options::default()),
+            generate("point.tafla", with_attributes, name, &Options::default()),
+            generate("point.tafla", without, name, &Options::default()),
             "{name}"
         );
     }

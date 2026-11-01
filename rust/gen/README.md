@@ -1,7 +1,7 @@
-# buffy-gen
+# tafla-gen
 
 Compiles a schema of messages, tables and structs into code that writes and
-reads them with buffy's runtime for TypeScript, JavaScript, Python, Java or
+reads them with tafla's runtime for TypeScript, JavaScript, Python, Java or
 Rust. It runs as a command, as a Rust library, and as a WebAssembly module
 without imports, which the packages for the other languages run.
 
@@ -75,7 +75,7 @@ type        = NAME | "[" NAME "]"
 
 ### Rules
 
-The checker rejects a schema that breaks a rule, since buffy couldn't write
+The checker rejects a schema that breaks a rule, since tafla couldn't write
 or read its tables, or a target couldn't generate its code:
 
 - Declarations are `PascalCase` and fields `snake_case`, in ASCII. Each name
@@ -105,7 +105,7 @@ every error it finds, after the first syntax error if there's one:
 
 ```text
 error: unknown type `flaot64`
- --> point.buffy:2:8
+ --> point.tafla:2:8
   |
 2 |     x: flaot64;
   |        ^^^^^^^ did you mean `float64`?
@@ -138,7 +138,7 @@ each target's generator lists them; other targets keep the name.
 Each target's code is formatted as its formatter in this repository leaves
 it: Biome for TypeScript and JavaScript, Ruff for Python and rustfmt for
 Rust, with Java at 100 columns. With the schema above, from
-`schemas/shapes.buffy`, the generated code reads and writes a document like
+`schemas/shapes.tafla`, the generated code reads and writes a document like
 this:
 
 ```ts
@@ -192,7 +192,7 @@ assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<
 ## Command
 
 ```sh
-buffy-gen <typescript|javascript|python|java|rust> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen <typescript|javascript|python|java|rust> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
 `ts`, `js`, `py` and `rs` abbreviate the targets. The command writes each
@@ -201,20 +201,18 @@ names the schema by its path in their header. It prints the errors of the
 schemas that have any, and then fails.
 
 - `--runtime` names the module, package or crate that the generated code
-  imports buffy's runtime from, by default:
+  imports tafla's runtime from, by default:
 
-  | Target                 | Runtime                    |
-  | ---------------------- | -------------------------- |
-  | TypeScript, JavaScript | `@buffy/core`              |
-  | Python                 | `buffy_core`               |
-  | Java                   | `io.github.snovader.buffy` |
-  | Rust                   | `buffy_core`               |
+  | Target                               | Runtime                    |
+  | ------------------------------------ | -------------------------- |
+  | TypeScript, JavaScript, Python, Rust | `tafla`                    |
+  | Java                                 | `io.github.snovader.tafla` |
 
 - `--package` names the package of the Java classes, which is `generated` by
   default, since they belong in a package of the project that uses them,
   which the generator can't know. Other targets ignore it.
 
-From this repository, `cargo run -p buffy-gen --` runs the command.
+From this repository, `cargo run -p tafla-gen --` runs the command.
 
 ## Library
 
@@ -223,18 +221,18 @@ return the schema's errors as `Diagnostic`s, which `Diagnostic::render_all()`
 renders as the command prints them.
 
 ```rust
-use buffy_gen::{Diagnostic, Options, Target, compile};
+use tafla_gen::{Diagnostic, Options, Target, compile};
 
 let source = "message Point { x: float64; y: float64; }";
-let files = compile("point.buffy", source, Target::Python, &Options::default())
+let files = compile("point.tafla", source, Target::Python, &Options::default())
     .expect("the schema is valid");
 assert_eq!(files[0].path, "point.py");
 
 let source = "message Point { x: flaot64; }";
-let errors = compile("point.buffy", source, Target::Rust, &Options::default())
+let errors = compile("point.tafla", source, Target::Rust, &Options::default())
     .expect_err("the schema has an error");
-assert!(Diagnostic::render_all(&errors, "point.buffy", source)
-    .starts_with("error: unknown type `flaot64`\n --> point.buffy:1:20\n"));
+assert!(Diagnostic::render_all(&errors, "point.tafla", source)
+    .starts_with("error: unknown type `flaot64`\n --> point.tafla:1:20\n"));
 ```
 
 Each target has a Cargo feature, `typescript` (which generates JavaScript
@@ -246,10 +244,10 @@ feature alone.
 
 ```sh
 rustup target add wasm32-unknown-unknown
-cargo build -p buffy-gen --lib --target wasm32-unknown-unknown --profile wasm
+cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
-The build writes `target/wasm32-unknown-unknown/wasm/buffy_gen.wasm`, of
+The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
 about 190 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
@@ -257,9 +255,9 @@ object, without WASI or bindings. The `wasm` profile in the workspace's
 | Export                                            | Does                                                              |
 | ------------------------------------------------- | ----------------------------------------------------------------- |
 | `memory`                                          | The module's memory, which holds requests and responses           |
-| `buffy_alloc(length: i32) -> i32`                 | Allocates `length` bytes for a request, and returns their address |
-| `buffy_compile(request: i32, length: i32) -> i32` | Compiles a request, frees it, and returns the response's address  |
-| `buffy_free(pointer: i32, length: i32)`           | Frees a response, whose length is in its first 4 bytes            |
+| `tafla_alloc(length: i32) -> i32`                 | Allocates `length` bytes for a request, and returns their address |
+| `tafla_compile(request: i32, length: i32) -> i32` | Compiles a request, frees it, and returns the response's address  |
+| `tafla_free(pointer: i32, length: i32)`           | Frees a response, whose length is in its first 4 bytes            |
 
 Every string is its byte length as a little-endian `u32`, then its UTF-8
 bytes.
@@ -293,10 +291,10 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/members.rs`: fields named after the generated code's members take a
   `_` in the targets where the names clash.
 - `tests/generated_<schema>.rs`: the golden Rust, compiled against
-  `buffy-core` so that clippy and rustfmt check it, reads back what it
+  `tafla` so that clippy and rustfmt check it, reads back what it
   writes, writes the tables that `TableBuilder` writes by hand, rejects other
   versions, and reads corrupted bytes as values or decode errors.
-- `tests/shapes_cases.rs`: the golden Rust of `shapes.buffy` writes and reads
+- `tests/shapes_cases.rs`: the golden Rust of `shapes.tafla` writes and reads
   the tables of `conformance/generated`, as the code generated in every
   language does.
 
@@ -308,11 +306,11 @@ its runtime, in the same ways as the Rust:
 | ---------------------- | --------------------------------------------------------------------------- |
 | TypeScript, JavaScript | `typescript/core/test/generated/<schema>/<target>/`                         |
 | Python                 | `python/core/tests/generated/<schema>/`                                     |
-| Java                   | `java/core/src/test/java/io/github/snovader/buffy/test/generated/<schema>/` |
+| Java                   | `java/core/src/test/java/io/github/snovader/tafla/test/generated/<schema>/` |
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
 
 The Java is generated with the package
-`io.github.snovader.buffy.test.generated.<schema>`, so that it's part of the
+`io.github.snovader.tafla.test.generated.<schema>`, so that it's part of the
 test module. The tests of the generated code lie beside the directories of
 the schemas, and in Java in the test module's package.
 
@@ -320,12 +318,12 @@ After a change to the generator or the schemas, rewrite the golden files and
 the expected errors, review their diff, and run every language's tests:
 
 ```sh
-BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen
+TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen
 ```
 
 CI also builds the WebAssembly module, and checks that it has no imports and
 generates the golden files and the expected errors:
 
 ```sh
-node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
+node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 ```

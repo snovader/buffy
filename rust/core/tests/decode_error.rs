@@ -6,7 +6,6 @@ mod common;
 
 use std::{error::Error, iter};
 
-use buffy_core::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
 use common::{
     at_byte_offset,
     description::{Field, Table},
@@ -14,6 +13,7 @@ use common::{
     strategy,
 };
 use proptest::{collection::vec, prelude::*, sample::Index};
+use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]

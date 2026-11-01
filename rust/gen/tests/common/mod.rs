@@ -3,7 +3,7 @@
 //! tree of each target's language, and the invalid schemas in
 //! `tests/diagnostics`.
 //!
-//! Setting `BUFFY_GEN_UPDATE=1` rewrites the expected files from what the
+//! Setting `TAFLA_GEN_UPDATE=1` rewrites the expected files from what the
 //! generator writes, rather than comparing them.
 
 #![allow(dead_code)]
@@ -12,10 +12,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use buffy_gen::{GeneratedFile, Options, Target};
+use tafla_gen::{GeneratedFile, Options, Target};
 
 /// The root of the repository, where the generator's tests run the CLI so
-/// that it names the example schemas as `schemas/<name>.buffy`
+/// that it names the example schemas as `schemas/<name>.tafla`
 pub const REPOSITORY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 pub const DIAGNOSTICS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/diagnostics");
@@ -52,7 +52,7 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 5] = [
     },
     GoldenRoot {
         target: "java",
-        root: "java/core/src/test/java/io/github/snovader/buffy/test/generated",
+        root: "java/core/src/test/java/io/github/snovader/tafla/test/generated",
         subdirectory: None,
     },
     // tests/generated_<schema>.rs compile and run these
@@ -65,7 +65,7 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 5] = [
 
 /// The package of the Java test module that holds the classes generated from
 /// each example schema, in a package of the schema's name
-const JAVA_PACKAGE: &str = "io.github.snovader.buffy.test.generated";
+const JAVA_PACKAGE: &str = "io.github.snovader.tafla.test.generated";
 
 /// The golden files of an example schema's code for a target
 pub struct Golden {
@@ -125,7 +125,7 @@ impl Golden {
 }
 
 pub fn update() -> bool {
-    std::env::var_os("BUFFY_GEN_UPDATE").is_some_and(|value| value == "1")
+    std::env::var_os("TAFLA_GEN_UPDATE").is_some_and(|value| value == "1")
 }
 
 /// An example schema at the root of the repository
@@ -139,10 +139,10 @@ pub struct Schema {
 
 pub fn example_schemas() -> Vec<Schema> {
     let directory = Path::new(REPOSITORY).join("schemas");
-    files_with_extension(&directory, "buffy")
+    files_with_extension(&directory, "tafla")
         .into_iter()
         .map(|(name, path)| Schema {
-            file_name: format!("schemas/{name}.buffy"),
+            file_name: format!("schemas/{name}.tafla"),
             source: read(&path),
             name,
         })
@@ -276,7 +276,7 @@ pub fn first_difference(expected: &str, actual: &str) -> Option<String> {
 pub fn assert_no_differences(differences: &[String]) {
     assert!(
         differences.is_empty(),
-        "{}\n\nRun the tests with BUFFY_GEN_UPDATE=1 to accept the generator's output",
+        "{}\n\nRun the tests with TAFLA_GEN_UPDATE=1 to accept the generator's output",
         differences.join("\n")
     );
 }

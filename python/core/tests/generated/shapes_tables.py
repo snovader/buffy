@@ -1,4 +1,4 @@
-"""The code generated from ``schemas/shapes.buffy``: how tests read its
+"""The code generated from ``schemas/shapes.tafla``: how tests read its
 messages back and describe them to build their tables by hand, and strategies
 of their fields' values."""
 

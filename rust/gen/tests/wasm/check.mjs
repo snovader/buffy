@@ -1,9 +1,9 @@
 // Checks the generator's WebAssembly module: it has no imports, so it runs
-// with an empty import object, and its `buffy_compile` export generates the
+// with an empty import object, and its `tafla_compile` export generates the
 // golden files of every example schema and renders the errors of every
 // invalid schema in tests/diagnostics, as the native library does.
 //
-// node gen/tests/wasm/check.mjs <buffy_gen.wasm>
+// node gen/tests/wasm/check.mjs <tafla_gen.wasm>
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -32,13 +32,13 @@ const GOLDEN_ROOTS = {
     },
     python: { root: 'python/core/tests/generated' },
     java: {
-        root: 'java/core/src/test/java/io/github/snovader/buffy/test/generated'
+        root: 'java/core/src/test/java/io/github/snovader/tafla/test/generated'
     },
     rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' }
 };
 
 /** The Java test module's package of the classes of each example schema */
-const JAVA_PACKAGE = 'io.github.snovader.buffy.test.generated';
+const JAVA_PACKAGE = 'io.github.snovader.tafla.test.generated';
 
 /**
  * The golden files of a schema's code for a target: their directory, the
@@ -70,19 +70,19 @@ const decoder = new TextDecoder();
 
 /**
  * Compiles through the module's exports: a request of length-prefixed
- * strings in memory from `buffy_alloc`, and a response that starts with its
- * own length and a status, which `buffy_free` frees.
+ * strings in memory from `tafla_alloc`, and a response that starts with its
+ * own length and a status, which `tafla_free` frees.
  *
  * @param {WebAssembly.Instance} instance
  * @param {string[]} strings
  * @returns {{ status: number, files?: Map<string, string>, errors?: string }}
  */
 function call(instance, strings) {
-    const { memory, buffy_alloc, buffy_compile, buffy_free } = instance.exports;
+    const { memory, tafla_alloc, tafla_compile, tafla_free } = instance.exports;
     const encoded = strings.map(string => encoder.encode(string));
     const length = encoded.reduce((sum, bytes) => sum + 4 + bytes.length, 0);
 
-    const request = buffy_alloc(length);
+    const request = tafla_alloc(length);
     // Allocating may grow the memory, which detaches earlier views of it
     let view = new DataView(memory.buffer);
     let offset = request;
@@ -92,7 +92,7 @@ function call(instance, strings) {
         offset += 4 + bytes.length;
     }
 
-    const response = buffy_compile(request, length);
+    const response = tafla_compile(request, length);
     view = new DataView(memory.buffer);
     const responseLength = view.getUint32(response, true);
     const status = view.getUint32(response + 4, true);
@@ -118,7 +118,7 @@ function call(instance, strings) {
         }
         return { status, files };
     } finally {
-        buffy_free(response, responseLength);
+        tafla_free(response, responseLength);
     }
 }
 
@@ -172,11 +172,11 @@ if (imports.length > 0) {
 const instance = new WebAssembly.Instance(module, {});
 
 let compiles = 0;
-for (const schema of namesWith(SCHEMAS, '.buffy')) {
-    const source = readFileSync(join(SCHEMAS, `${schema}.buffy`), 'utf8');
+for (const schema of namesWith(SCHEMAS, '.tafla')) {
+    const source = readFileSync(join(SCHEMAS, `${schema}.tafla`), 'utf8');
 
     for (const target of Object.keys(GOLDEN_ROOTS)) {
-        const fileName = `schemas/${schema}.buffy`;
+        const fileName = `schemas/${schema}.tafla`;
         const { directory, packageName, prefix } = goldenOf(schema, target);
         const response = call(instance, [
             target,
@@ -211,8 +211,8 @@ for (const schema of namesWith(SCHEMAS, '.buffy')) {
     }
 }
 
-for (const name of namesWith(DIAGNOSTICS, '.buffy')) {
-    const fileName = `${name}.buffy`;
+for (const name of namesWith(DIAGNOSTICS, '.tafla')) {
+    const fileName = `${name}.tafla`;
     const source = readFileSync(join(DIAGNOSTICS, fileName), 'utf8');
     const expected = readFileSync(join(DIAGNOSTICS, `${name}.stderr`), 'utf8');
 
@@ -223,7 +223,7 @@ for (const name of namesWith(DIAGNOSTICS, '.buffy')) {
     }
 }
 
-const unknown = call(instance, ['go', 'point.buffy', '', '', '']);
+const unknown = call(instance, ['go', 'point.tafla', '', '', '']);
 if (
     unknown.status !== 1 ||
     !unknown.errors.startsWith('unknown target `go`: this build generates')
@@ -232,7 +232,7 @@ if (
 }
 
 // Two strings rather than five
-const malformed = call(instance, ['rust', 'point.buffy']);
+const malformed = call(instance, ['rust', 'point.tafla']);
 if (malformed.status !== 1 || malformed.errors !== 'malformed request\n') {
     fail(`a malformed request: ${JSON.stringify(malformed)}`);
 }

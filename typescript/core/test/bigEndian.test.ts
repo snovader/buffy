@@ -1,12 +1,12 @@
 import { expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer } from '@buffy/core';
+import { ByteBuffer } from 'tafla';
 import { ARRAY_FIELDS, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
 import { readScalar, readUnsigned } from './conformance/format.ts';
 import { buildTable, ELEMENT_SIZES, readTable } from './conformance/tables.ts';
 
-// Runs buffy as if on a big-endian host. This host is little-endian, so the
+// Runs tafla as if on a big-endian host. This host is little-endian, so the
 // arrays it writes must come out in reverse byte order per element, which is
 // little-endian on a big-endian host. The factory is synchronous, since an
 // async one leaves the constants undefined while TableLayout.DEFAULT is built.

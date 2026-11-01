@@ -8,7 +8,7 @@ generates, so that both test one model of tables.
 
 Values are as JSON holds them: 64-bit integers as decimal strings, and the
 floats that JSON has no number for as ``"NaN"``, ``"Infinity"``,
-``"-Infinity"`` and ``"-0"``. A reader returns them as buffy reads them, as
+``"-Infinity"`` and ``"-0"``. A reader returns them as tafla reads them, as
 ints and floats, and ``comparable_table()`` compares the two forms exactly.
 """
 
@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal
 
-from buffy_core import ByteBuffer, TableBuilder, TableLayout
+from tafla import ByteBuffer, TableBuilder, TableLayout
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -59,7 +59,7 @@ BYTES_ALIGNMENT: Alignment = 4
 
 
 def from_json(kind: str, value: Any) -> Any:
-    """Returns a scalar as buffy takes it, from a description's value or a
+    """Returns a scalar as tafla takes it, from a description's value or a
     value that was read. ``float()`` parses the names of floats."""
     if kind in INT64_TYPES:
         return int(value)
@@ -83,7 +83,7 @@ def to_json_number(value: float) -> float | str:
 
 
 def to_json(kind: str, value: Any) -> Any:
-    """Returns a scalar as a description holds it, from a value as buffy takes
+    """Returns a scalar as a description holds it, from a value as tafla takes
     it or reads it: the inverse of ``from_json()``"""
     if kind in INT64_TYPES:
         return str(value)
@@ -232,7 +232,7 @@ class MismatchError(AssertionError):
     """Raised by ``TableReader`` when the bytes hold a table of another shape
     than its description: a size slot that doesn't hold the table's length, or
     a vector of another number of items. It's the description's mismatch,
-    rather than buffy's, which raises ``DecodeError``."""
+    rather than tafla's, which raises ``DecodeError``."""
 
 
 @dataclass(frozen=True, slots=True)

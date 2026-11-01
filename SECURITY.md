@@ -1,6 +1,6 @@
 # Security
 
-buffy's readers decode bytes from untrusted sources. On malformed input, any
+tafla's readers decode bytes from untrusted sources. On malformed input, any
 of these is a vulnerability:
 
 - a read outside the bytes it was given

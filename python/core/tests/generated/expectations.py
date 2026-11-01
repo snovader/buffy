@@ -5,7 +5,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from unittest import TestCase
 
-from buffy_core import DecodeError
+from tafla import DecodeError
 from tests.tables import Description, comparable_field, comparable_table
 
 

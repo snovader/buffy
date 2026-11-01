@@ -1,7 +1,7 @@
 import unittest
 from collections.abc import Callable
 
-from buffy_core import ByteBuffer, DecodeError
+from tafla import ByteBuffer, DecodeError
 
 
 class TestDecodeError(unittest.TestCase):

@@ -1,13 +1,13 @@
-# buffy-core
+# tafla
 
-Binary tables of scalars, strings and arrays, in buffy's format.
+Binary tables of scalars, strings and arrays, in tafla's format.
 `TableBuilder` writes a table at its exact size, copying arrays in bulk,
 and `ByteBuffer` reads fields back by offset, borrowing arrays and strings
 from the bytes. Every read checks that it stays within the bytes it was
 given.
 
 ```rust
-use buffy_core::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 // A format's header, shared by its writer and its readers
 const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
@@ -64,8 +64,8 @@ and then the fields in the order they were set:
   arrays when given its builder, and to 4 bytes by default when given bytes.
 - A vector starts with its item count, and each item with its byte length.
 
-The crate writes the same bytes as the TypeScript runtime, `@buffy/core`,
-for the same fields, and reads its tables; `tests/compatibility.rs` checks
+The crate writes the same bytes as the TypeScript runtime, `tafla` on
+npm, for the same fields, and reads its tables; `tests/compatibility.rs` checks
 tables that it wrote, and `tests/conformance.rs` reads and rebuilds the
 repository's conformance suite, which covers the whole format.
 

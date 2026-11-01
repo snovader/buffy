@@ -1,6 +1,6 @@
 # Benchmarks
 
-`python -m buffy_benchmarks` compares `buffy-core` with other Python libraries
+`python -m tafla_benchmarks` compares `tafla` with other Python libraries
 that encode small tables and numeric columns, in pyperf benchmarks. It runs the
 workloads of the TypeScript comparison in `typescript/benchmarks/`, with the
 same values, so that the languages' numbers compare. Run the commands below
@@ -17,7 +17,7 @@ from `python/`.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as each
-library returns them: buffy's as memoryviews of the bytes, FlatBuffers' as
+library returns them: tafla's as memoryviews of the bytes, FlatBuffers' as
 numpy arrays that view them, protobuf's as the message's repeated fields, and
 MessagePack's as memoryviews of the bytes that it unpacks. The documents'
 columns are `array`s, and documents are also serialized from lists, as parsed
@@ -26,7 +26,7 @@ library's per-element accessor. `workloads.py` ports the TypeScript generator,
 so the inputs are the same values, which `tests/test_workloads.py` checks
 against values that the TypeScript generator printed.
 
-`python -m buffy_benchmarks.encoding` prints each library's encoded sizes and
+`python -m tafla_benchmarks.encoding` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 
 ### What differs from TypeScript
@@ -37,10 +37,10 @@ what it does with a truncated document, as the TypeScript comparison does.
   rather than the library.
 - Lists stand in for `number[]`: the groups that serialize documents from
   `number[]` serialize them from lists here.
-- buffy's Python runtime has no `StructWriter` or `readUint32()`, so the
+- tafla's Python runtime has no `StructWriter` or `readUint32()`, so the
   fixed-size record is written with `ByteBuffer`'s setters into a new 12-byte
   `bytearray` and read with its getters at fixed positions, as the Java
-  benchmarks do. buffy's documentation recommends the standard library's
+  benchmarks do. tafla's documentation recommends the standard library's
   `struct` for such records, which is compared too.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
@@ -55,21 +55,21 @@ what it does with a truncated document, as the TypeScript comparison does.
 
 ## Libraries
 
-| Library                                      | Why it's comparable                                                                                                                       |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `buffy-core` (`core/`)                       | The reference that the others are compared with.                                                                                          |
-| `flatbuffers` 25.12.19, with `numpy` 2.5.4   | Zero-copy tables with offsets and vectors, like buffy.                                                                                    |
-| `protobuf` 7.36.2                            | The most used schema-based codec, with packed repeated floats. Its wheels parse and serialize in C, with upb.                              |
-| `msgpack` 1.2.4                              | MessagePack's Python implementation, with a C extension: a schemaless format, whose tables are maps with their keys.                      |
-| `struct` (the standard library's)            | For the fixed-size record only: fields at fixed offsets, packed and unpacked in one call, which buffy's documentation recommends for them. |
+| Library                                    | Why it's comparable                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tafla` (`core/`)                          | The reference that the others are compared with.                                                                                           |
+| `flatbuffers` 25.12.19, with `numpy` 2.5.4 | Zero-copy tables with offsets and vectors, like tafla.                                                                                     |
+| `protobuf` 7.36.2                          | The most used schema-based codec, with packed repeated floats. Its wheels parse and serialize in C, with upb.                              |
+| `msgpack` 1.2.4                            | MessagePack's Python implementation, with a C extension: a schemaless format, whose tables are maps with their keys.                       |
+| `struct` (the standard library's)          | For the fixed-size record only: fields at fixed offsets, packed and unpacked in one call, which tafla's documentation recommends for them. |
 
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **buffy** nests tables from their builders and reads columns as views of the
+- **tafla** nests tables from their builders and reads columns as views of the
   bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
-  as buffy's documentation advises over a getter call per element.
+  as tafla's documentation advises over a getter call per element.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
   with the generated accessors. Columns are written with
@@ -106,8 +106,8 @@ calibrates the number of calls that one value times, so that it takes at least
 runs the suite 4 times, with 5 workers per benchmark, and appends their values
 to one file: 20 workers and 60 values per benchmark. The runs alternate the
 order of the codecs in each group, so that each benchmark's workers are spread
-over the whole run. `buffy_benchmarks.report` then prints each benchmark's
-fastest value, and its ratio to buffy's, as the TypeScript comparison reports
+over the whole run. `tafla_benchmarks.report` then prints each benchmark's
+fastest value, and its ratio to tafla's, as the TypeScript comparison reports
 the fastest round, since load from other processes only slows values down.
 
 - A worker runs one benchmark, so CPython's specializing interpreter
@@ -136,9 +136,9 @@ with pyperf's means, which the report summarizes.
 ```sh
 uptime
 for order in "" --reverse "" --reverse; do
-    uv run --python 3.14+gil python -m buffy_benchmarks --processes 5 --append results.json $order
+    uv run --python 3.14+gil python -m tafla_benchmarks --processes 5 --append results.json $order
 done
-uv run --python 3.14+gil python -m buffy_benchmarks.report results.json
+uv run --python 3.14+gil python -m tafla_benchmarks.report results.json
 ```
 
 The full run takes about 18 minutes. `--append` adds to an existing file, so
@@ -154,7 +154,7 @@ workers spend starting and importing numpy. CI runs it after the round-trip
 test, on Python 3.14. Its numbers mean little.
 
 ```sh
-uv run python -m buffy_benchmarks --debug-single-value --quiet
+uv run python -m tafla_benchmarks --debug-single-value --quiet
 ```
 
 ## Generated code
@@ -164,7 +164,7 @@ uv run python -m buffy_benchmarks --debug-single-value --quiet
 which the `protoc` dependency group installs:
 
 ```sh
-uv run --package buffy-benchmarks --group protoc python -m grpc_tools.protoc -I benchmarks/src --python_out=benchmarks/src --pyi_out=benchmarks/src benchmarks/src/buffy_benchmarks/generated/messages.proto
+uv run --package tafla-benchmarks --group protoc python -m grpc_tools.protoc -I benchmarks/src --python_out=benchmarks/src --pyi_out=benchmarks/src benchmarks/src/tafla_benchmarks/generated/messages.proto
 ```
 
 They're checked in, so that the tests and checks run without protoc, although
@@ -210,16 +210,16 @@ with Homebrew's CPython 3.14.10, built with the GIL, PGO, LTO and the
 tail-calling interpreter, without the JIT. It took 18 minutes. Other processes
 kept the 1-minute load average between 1.1 and 2.9 on the 10 cores, with a
 median of 1.4. pyperf's mean was within 5% of the fastest value for 53 of the
-58 benchmarks. The others serialize documents: for buffy's, msgpack's and
+58 benchmarks. The others serialize documents: for tafla's, msgpack's and
 FlatBuffers' large documents, and msgpack's small one from lists, the medians
 were 9% to 14% above the fastest values, as the means were, so most values were
 slower than the fastest, rather than a few of them slowed by load. msgpack's
 small document had a few slow values, which put its mean 8% above its fastest
 value and its median 1%.
 
-Fastest value in µs per call, and its ratio to buffy's:
+Fastest value in µs per call, and its ratio to tafla's:
 
-| Benchmark                                          |  buffy |       flatbuffers |         protobuf |        msgpack |        struct |
+| Benchmark                                          |  tafla |       flatbuffers |         protobuf |        msgpack |        struct |
 | -------------------------------------------------- | -----: | ----------------: | ---------------: | -------------: | ------------: |
 | record: serialize                                  |  2.444 |     8.299 (3.40×) |    0.497 (0.20×) |  0.284 (0.12×) |               |
 | record: deserialize                                |  1.225 |     4.771 (3.89×) |    0.436 (0.36×) |  0.393 (0.32×) |               |
@@ -236,54 +236,54 @@ Fastest value in µs per call, and its ratio to buffy's:
 | document of 100 rows: serialize lists              |   11.1 |      25.2 (2.27×) |    5.625 (0.51×) |  4.868 (0.44×) |               |
 | document of 100,000 rows: serialize lists          | 2960.5 |    4908.1 (1.66×) |   4309.9 (1.46×) | 2990.8 (1.01×) |               |
 
-- buffy reads both documents in 2.7 µs, since its columns are views, whatever
+- tafla reads both documents in 2.7 µs, since its columns are views, whatever
   their length. FlatBuffers' numpy views take 12.7 µs at both sizes, so its
   pure-Python accessors' calls cost that, not the columns. msgpack and
   protobuf read the small document faster, in C, but copy the large one's
   columns: msgpack in 20 µs, and protobuf, which parses them into its
   containers, in 618 µs.
-- buffy writes the large document fastest, in 32 µs, copying its arrays as
+- tafla writes the large document fastest, in 32 µs, copying its arrays as
   bytes; msgpack copies them twice, into extensions and then into the message.
   protobuf converts every element, which took 7.6 ms from arrays and 4.3 ms
   from lists, whose elements are Python floats already.
-- Small tables cost buffy its Python calls, a few per field, as its
+- Small tables cost tafla its Python calls, a few per field, as its
   documentation says: protobuf and msgpack, in C, write the record 5 to 9 times
   faster and read it about 3 times faster. Only FlatBuffers, also pure Python,
   is slower.
-- The vector of 100 nested tables is where buffy is furthest behind: 260 µs to
+- The vector of 100 nested tables is where tafla is furthest behind: 260 µs to
   write, against msgpack's 21 µs and protobuf's 41 µs, and 93 µs to read,
   against 30 µs and 39 µs.
 - Summing a column through a memoryview takes about 31 ns per element, for
-  buffy and msgpack alike, and through protobuf's container 51 ns.
+  tafla and msgpack alike, and through protobuf's container 51 ns.
   FlatBuffers' generated accessor takes 1.4 µs per element.
 - Converting lists dominates writing the large document from them, which took
   every library 3 to 5 ms.
 - `struct` packs the fixed-size record in 74 ns and unpacks it in 142 ns, about
-  half of which is creating the result. buffy's `ByteBuffer` takes 637 ns and
+  half of which is creating the result. tafla's `ByteBuffer` takes 637 ns and
   636 ns.
 
 Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
 tables, for example.
 
-`python -m buffy_benchmarks.encoding` printed:
+`python -m tafla_benchmarks.encoding` printed:
 
 ```
 Encoded size (bytes)
                         record     doc 100  doc 100000      vector       fixed
-  buffy                     60        1296     1200096        3208          12
+  tafla                     60        1296     1200096        3208          12
   flatbuffers               72        1328     1200128        2832          32
   protobuf                  47        1243     1187503        1900          16
   msgpack                   53        1276     1200082        4710          32
   struct                                                                    12
 
 Truncated document of 100000 rows: deserialize()
-  buffy             600048 B  raised buffy_core.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
-  buffy                 24 B  raised buffy_core.errors.DecodeError: Read exceeds the supplied buffer: 8 bytes at 24 of
+  tafla             600048 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
+  tafla                 24 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 8 bytes at 24 of
   flatbuffers       600064 B  raised struct.error: unpack_from requires a buffer of at least 800128 b
   flatbuffers           24 B  raised struct.error: unpack_from requires a buffer of at least 28 bytes
-  protobuf          593751 B  raised google.protobuf.message.DecodeError: Error parsing message with type 'buffy.benchmarks.
-  protobuf              24 B  raised google.protobuf.message.DecodeError: Error parsing message with type 'buffy.benchmarks.
+  protobuf          593751 B  raised google.protobuf.message.DecodeError: Error parsing message with type 'tafla.benchmarks.
+  protobuf              24 B  raised google.protobuf.message.DecodeError: Error parsing message with type 'tafla.benchmarks.
   msgpack           600041 B  raised ValueError: Unpack failed: incomplete input
   msgpack               24 B  raised ValueError: Unpack failed: incomplete input
 ```

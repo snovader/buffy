@@ -1,17 +1,17 @@
 error: `Empty` has no fields
- --> empty_definitions.buffy:1:9
+ --> empty_definitions.tafla:1:9
   |
 1 | message Empty {}
   |         ^^^^^ messages, tables and structs hold at least one field
 
 error: `Nothing` has no fields
- --> empty_definitions.buffy:3:7
+ --> empty_definitions.tafla:3:7
   |
 3 | table Nothing {}
   |       ^^^^^^^ messages, tables and structs hold at least one field
 
 error: `Zero` has no fields
- --> empty_definitions.buffy:5:8
+ --> empty_definitions.tafla:5:8
   |
 5 | struct Zero {}
   |        ^^^^ messages, tables and structs hold at least one field

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { DecodeError } from '@buffy/core';
+import { DecodeError } from 'tafla';
 import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
@@ -25,8 +25,8 @@ import {
 } from './allTypesTables.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
 
-// The code generated from schemas/all_types.buffy, in TypeScript and in
-// JavaScript, writes and reads tables of every type of field with @buffy/core
+// The code generated from schemas/all_types.tafla, in TypeScript and in
+// JavaScript, writes and reads tables of every type of field with tafla
 
 describe.each(ALL_TYPES)('%s', (_, allTypes) => {
     describe('round trip', () => {

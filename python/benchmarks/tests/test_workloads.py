@@ -4,7 +4,7 @@ these were printed from, so that the languages' benchmarks time the same work"""
 import struct
 import unittest
 
-from buffy_benchmarks.workloads import (
+from tafla_benchmarks.workloads import (
     LIST_ITEMS,
     DocumentInput,
     ItemInput,

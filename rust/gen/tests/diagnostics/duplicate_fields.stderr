@@ -1,5 +1,5 @@
 error: `x` is declared twice in `Point`
- --> duplicate_fields.buffy:4:5
+ --> duplicate_fields.tafla:4:5
   |
 4 |     x: float32;
   |     ^

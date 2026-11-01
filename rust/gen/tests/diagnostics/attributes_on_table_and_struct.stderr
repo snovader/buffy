@@ -1,11 +1,11 @@
 error: only messages have attributes
- --> attributes_on_table_and_struct.buffy:1:13
+ --> attributes_on_table_and_struct.tafla:1:13
   |
 1 | table Pair (sized) {
   |             ^^^^^
 
 error: only messages have attributes
- --> attributes_on_table_and_struct.buffy:6:16
+ --> attributes_on_table_and_struct.tafla:6:16
   |
 6 | struct Sample (version: 1, sized) {
   |                ^^^^^^^

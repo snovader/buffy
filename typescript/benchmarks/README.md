@@ -1,12 +1,12 @@
 # Benchmarks
 
-`yarn bench` times `@buffy/core`'s getters and setters of every element type
+`yarn bench` times `tafla`'s getters and setters of every element type
 on their own, and `yarn bench:compare` compares the package with other
 JavaScript libraries. Run both from `typescript/`.
 
 ## Comparison
 
-The comparison times buffy and other JavaScript libraries that encode small
+The comparison times tafla and other JavaScript libraries that encode small
 tables and typed numeric columns, on generic table shapes:
 
 - **record**: one table of two float64s, an int64 and a 16-byte string.
@@ -27,7 +27,7 @@ encoded sizes and what each library does with a truncated document.
 
 | Library               | Why it's comparable                                                                                               |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `flatbuffers` 25.9.23 | Zero-copy tables with offsets and vectors, like buffy. flatc's generated code is in `comparison/generated/`.      |
+| `flatbuffers` 25.9.23 | Zero-copy tables with offsets and vectors, like tafla. flatc's generated code is in `comparison/generated/`.      |
 | `protobufjs` 8.8.1    | The most used protobuf runtime, with packed repeated floats. Decoding copies into `number[]`.                     |
 | `msgpackr` 2.1.2      | A fast schemaless format that packs typed arrays as byte copies. The suite uses its plain JavaScript entry point. |
 

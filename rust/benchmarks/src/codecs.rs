@@ -1,18 +1,18 @@
 //! Each library's encoding of the workloads
 
-mod buffy;
 mod flatbuffers;
 mod le_bytes;
 mod msgpack;
 mod protobuf;
 mod rkyv;
+mod tafla;
 
-pub use self::buffy::Buffy;
 pub use self::flatbuffers::{Finished, FlatBuffers};
 pub use self::le_bytes::LeBytes;
 pub use self::msgpack::RmpSerde;
 pub use self::protobuf::{Prost, messages};
 pub use self::rkyv::Rkyv;
+pub use self::tafla::Tafla;
 
 /// Expands `$body` once for each codec that encodes every workload.
 ///
@@ -25,7 +25,7 @@ pub use self::rkyv::Rkyv;
 macro_rules! for_each_codec {
     (|$codec:ident| $body:expr) => {{
         {
-            let $codec = $crate::codecs::Buffy;
+            let $codec = $crate::codecs::Tafla;
             $body;
         }
         {

@@ -1,4 +1,4 @@
-//! The code generated from `schemas/layouts.buffy`, which has a message of
+//! The code generated from `schemas/layouts.tafla`, which has a message of
 //! the same fields in every layout, writes the tables that `TableBuilder`
 //! writes by hand, or fails as it fails, reads back what it writes, rejects
 //! tables of other versions, and reads corrupted and arbitrary bytes as
@@ -8,7 +8,6 @@
 mod layouts;
 mod tables;
 
-use buffy_core::{BuildError, DecodeError, OffsetSize, TableLayout};
 use layouts::{
     Offset8, Offset8Fields, Offset8Sized, Offset8SizedFields, Offset8SizedVersioned,
     Offset8SizedVersionedFields, Offset8Versioned, Offset8VersionedFields, Offset16,
@@ -23,6 +22,7 @@ use tables::{
     CASES, Fields, Header, Value, arbitrary_bytes, build, check_truncated, expected, integers,
     overwrites, placements, strings_up_to, to_vec, truncations,
 };
+use tafla::{BuildError, DecodeError, OffsetSize, TableLayout};
 
 /// The values of the fields that every message of the schema holds, which
 /// each message's generated fields borrow

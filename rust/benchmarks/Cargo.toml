@@ -1,5 +1,5 @@
 [package]
-name = "buffy-benchmarks"
+name = "tafla-benchmarks"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -25,7 +25,7 @@ name = "comparison"
 harness = false
 
 [dependencies]
-buffy-core = { path = "../core" }
+tafla = { path = "../core" }
 flatbuffers = "25.12.19"
 prost = "0.14.4"
 rkyv = "0.8.18"

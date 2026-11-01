@@ -53,7 +53,7 @@ const ITEMS_PER_VECTOR = 3;
 /** How deep tables nest below the root, with setTable() or in vectors */
 const NESTING_DEPTH = 2;
 
-/** The value of a scalar type as buffy's builders take it */
+/** The value of a scalar type as tafla's builders take it */
 export type ScalarValue<Type extends ScalarType> = Type extends
     | 'int64'
     | 'uint64'
@@ -61,7 +61,7 @@ export type ScalarValue<Type extends ScalarType> = Type extends
     : number;
 
 /**
- * Values of each scalar type over its full range, as buffy's builders take
+ * Values of each scalar type over its full range, as tafla's builders take
  * them. fast-check reaches the extremes and the special floats only now and
  * then, so they're drawn as often as other values: a run holds a few fields
  * of each type, and a bug may show in one value only.

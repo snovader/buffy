@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError } from '@buffy/core';
+import { ByteBuffer, DecodeError } from 'tafla';
 import {
     BYTE_OFFSETS,
     CORRUPTIONS,
@@ -37,7 +37,7 @@ import {
     TableReader
 } from './conformance/tables.ts';
 
-// The properties that every implementation of buffy shares, of tables built
+// The properties that every implementation of tafla shares, of tables built
 // from arbitrary descriptions in the conformance suite's model. `tablesIn()`
 // reads the bytes that the format rules check with DataView, independently
 // of ByteBuffer.

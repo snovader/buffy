@@ -1,20 +1,20 @@
-//! Times buffy's runtime and other Rust crates on the TypeScript comparison's
+//! Times tafla's runtime and other Rust crates on the TypeScript comparison's
 //! workloads, as README.md describes. `cargo run --bin report` then prints
 //! each benchmark's fastest sample.
 
 use std::hint::black_box;
 use std::time::Duration;
 
-use buffy_benchmarks::check;
-use buffy_benchmarks::codec::{DocumentWorkload, Error, Workload};
-use buffy_benchmarks::codecs::LeBytes;
-use buffy_benchmarks::for_each_codec;
-use buffy_benchmarks::workloads::{
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
+use tafla_benchmarks::check;
+use tafla_benchmarks::codec::{DocumentWorkload, Error, Workload};
+use tafla_benchmarks::codecs::LeBytes;
+use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape,
 };
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 
 type Group<'a> = BenchmarkGroup<'a, WallTime>;
 

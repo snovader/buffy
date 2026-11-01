@@ -81,7 +81,7 @@ tasks.withType<JavaCompile>().configureEach {
         // The generated packages hold protoc's and sbe-tool's output, and FlatBuffers classes in
         // flatc's shape. Their style is their generators', which an update can change, so they
         // aren't checked. They aren't null-marked, so NullAway skips them too.
-        excludedPaths = ".*/io/github/snovader/buffy/benchmarks/generated/.*"
+        excludedPaths = ".*/io/github/snovader/tafla/benchmarks/generated/.*"
     }
 }
 
@@ -123,7 +123,7 @@ tasks.named("check") {
 tasks.register<JavaExec>("encodingReport") {
     description = "Prints each codec's encoded sizes, and what it does with a truncated document."
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "io.github.snovader.buffy.benchmarks.EncodingReport"
+    mainClass = "io.github.snovader.tafla.benchmarks.EncodingReport"
     jvmArgs(agronaJvmArgs)
 }
 
@@ -156,7 +156,7 @@ tasks.named("jmh") {
 }
 
 /**
- * Prints a table of each benchmark's fastest iteration, and its ratio to buffy's, from JMH's JSON
+ * Prints a table of each benchmark's fastest iteration, and its ratio to tafla's, from JMH's JSON
  * results: a row per benchmark and parameters other than the codec, and a column per codec.
  */
 fun printFastestIterations(results: File) {

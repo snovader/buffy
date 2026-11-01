@@ -1,9 +1,9 @@
 //! The compiler's WebAssembly interface: plain exports with no imports, so
 //! any host runs the same module without WASI or bindings.
 //!
-//! A host allocates a request with `buffy_alloc`, writes it and passes it to
-//! `buffy_compile`, which frees it and returns a response. The host reads the
-//! response's length from its first four bytes and frees it with `buffy_free`.
+//! A host allocates a request with `tafla_alloc`, writes it and passes it to
+//! `tafla_compile`, which frees it and returns a response. The host reads the
+//! response's length from its first four bytes and frees it with `tafla_free`.
 //!
 //! Every string is a little-endian `u32` byte length and UTF-8 bytes:
 //!
@@ -17,35 +17,35 @@ use crate::{Diagnostic, Options, Target, compile};
 
 /// Allocates exactly `length` bytes for a request
 #[unsafe(no_mangle)]
-pub extern "C" fn buffy_alloc(length: usize) -> *mut u8 {
+pub extern "C" fn tafla_alloc(length: usize) -> *mut u8 {
     Box::into_raw(vec![0_u8; length].into_boxed_slice()).cast()
 }
 
 /// # Safety
 ///
-/// `pointer` must come from `buffy_alloc` or `buffy_compile` with `length`.
+/// `pointer` must come from `tafla_alloc` or `tafla_compile` with `length`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn buffy_free(pointer: *mut u8, length: usize) {
+pub unsafe extern "C" fn tafla_free(pointer: *mut u8, length: usize) {
     drop(unsafe { take_back(pointer, length) });
 }
 
 /// # Safety
 ///
-/// `pointer` must come from `buffy_alloc` with `length`, and hold the request.
+/// `pointer` must come from `tafla_alloc` with `length`, and hold the request.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn buffy_compile(pointer: *mut u8, length: usize) -> *mut u8 {
+pub unsafe extern "C" fn tafla_compile(pointer: *mut u8, length: usize) -> *mut u8 {
     let request = unsafe { take_back(pointer, length) };
     let response = respond(&request);
 
     Box::into_raw(response.into_boxed_slice()).cast()
 }
 
-/// Takes back the bytes that `buffy_alloc` or `buffy_compile` handed out.
+/// Takes back the bytes that `tafla_alloc` or `tafla_compile` handed out.
 /// They're boxed slices, which are deallocated at exactly their length.
 ///
 /// # Safety
 ///
-/// As for `buffy_free`.
+/// As for `tafla_free`.
 unsafe fn take_back(pointer: *mut u8, length: usize) -> Box<[u8]> {
     unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(pointer, length)) }
 }

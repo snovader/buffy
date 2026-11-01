@@ -1,6 +1,6 @@
 //! Prints each benchmark's fastest sample, from the results that the last
 //! `cargo bench` left in Criterion's directory, with its ratio to the first
-//! codec's, buffy's, and the median sample. The other languages' comparisons
+//! codec's, tafla's, and the median sample. The other languages' comparisons
 //! report the fastest too, since load from other processes only slows samples
 //! down.
 //!

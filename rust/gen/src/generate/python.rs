@@ -1,4 +1,4 @@
-//! Python for `buffy_core`. Messages and tables are classes that read
+//! Python for `tafla`. Messages and tables are classes that read
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`.
 
@@ -7,7 +7,7 @@ use super::{GeneratedFile, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
 /// The runtime's package, unless [`Options::runtime`] names another
-const RUNTIME: &str = "buffy_core";
+const RUNTIME: &str = "tafla";
 
 const STYLE: Style = Style {
     width: 88,

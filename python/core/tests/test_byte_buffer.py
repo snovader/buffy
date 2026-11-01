@@ -6,7 +6,7 @@ from unittest.mock import patch
 from hypothesis import given
 from hypothesis.strategies import integers
 
-from buffy_core import SIZEOF_8, SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla import SIZEOF_8, SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
@@ -31,7 +31,7 @@ class TestByteBuffer(unittest.TestCase):
 
         # Take the big-endian branches on any host. The host's own order is
         # little-endian, so each element's bytes come out reversed.
-        with patch("buffy_core.elements.IS_LITTLE_ENDIAN", False):
+        with patch("tafla.elements.IS_LITTLE_ENDIAN", False):
             builder = TableBuilder(1)
             builder.set_int32_array(values)
             serialized = bytes(builder.bytes())

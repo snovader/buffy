@@ -1,4 +1,4 @@
-//! The `buffy-gen` binary: it writes the generated files under `--out`,
+//! The `tafla-gen` binary: it writes the generated files under `--out`,
 //! prints errors as the library renders them, and fails on wrong usage.
 
 mod common;
@@ -8,8 +8,8 @@ use std::process::{Command, Output};
 
 use common::{DIAGNOSTICS, Golden, REPOSITORY, read_tree, targets};
 
-fn buffy_gen(directory: &str, arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_buffy-gen"))
+fn tafla_gen(directory: &str, arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_tafla-gen"))
         .current_dir(directory)
         .args(arguments)
         .output()
@@ -29,14 +29,14 @@ fn writes_the_golden_files_of_an_example_schema() {
         let directory = out.path().join(name);
         let mut arguments = vec![
             name,
-            "schemas/shapes.buffy",
+            "schemas/shapes.tafla",
             "--out",
             directory.to_str().unwrap(),
         ];
         if let Some(package) = &golden.options.package {
             arguments.extend(["--package", package]);
         }
-        let output = buffy_gen(REPOSITORY, &arguments);
+        let output = tafla_gen(REPOSITORY, &arguments);
 
         assert!(output.status.success(), "{}", stderr(&output));
         assert!(output.stdout.is_empty() && output.stderr.is_empty());
@@ -52,14 +52,14 @@ fn writes_the_golden_files_of_an_example_schema() {
 fn writes_every_schema_it_is_given() {
     let out = tempfile::tempdir().unwrap();
 
-    let output = buffy_gen(
+    let output = tafla_gen(
         REPOSITORY,
         &[
             "py",
-            "schemas/shapes.buffy",
+            "schemas/shapes.tafla",
             "--out",
             out.path().to_str().unwrap(),
-            "schemas/layouts.buffy",
+            "schemas/layouts.tafla",
         ],
     );
 
@@ -77,11 +77,11 @@ fn accepts_abbreviated_targets() {
         ("rs", "rust"),
     ] {
         let out = tempfile::tempdir().unwrap();
-        let output = buffy_gen(
+        let output = tafla_gen(
             REPOSITORY,
             &[
                 abbreviation,
-                "schemas/shapes.buffy",
+                "schemas/shapes.tafla",
                 "--out",
                 out.path().to_str().unwrap(),
             ],
@@ -101,11 +101,11 @@ fn accepts_abbreviated_targets() {
 fn prints_the_errors_of_an_invalid_schema_and_fails() {
     let out = tempfile::tempdir().unwrap();
 
-    let output = buffy_gen(
+    let output = tafla_gen(
         DIAGNOSTICS,
         &[
             "rust",
-            "unknown_types.buffy",
+            "unknown_types.tafla",
             "--out",
             out.path().to_str().unwrap(),
         ],
@@ -122,19 +122,19 @@ fn writes_the_valid_schemas_and_prints_the_errors_of_the_others() {
     let out = tempfile::tempdir().unwrap();
     let diagnostics = Path::new(DIAGNOSTICS);
     let schemas = [
-        diagnostics.join("cycles.buffy"),
-        Path::new(REPOSITORY).join("schemas/shapes.buffy"),
-        diagnostics.join("naming.buffy"),
+        diagnostics.join("cycles.tafla"),
+        Path::new(REPOSITORY).join("schemas/shapes.tafla"),
+        diagnostics.join("naming.tafla"),
     ];
 
     let mut arguments = vec!["rust", "--out", out.path().to_str().unwrap()];
     arguments.extend(schemas.iter().map(|path| path.to_str().unwrap()));
-    let output = buffy_gen(REPOSITORY, &arguments);
+    let output = tafla_gen(REPOSITORY, &arguments);
 
     assert_eq!(output.status.code(), Some(1));
     // Each schema's errors name it by its path, after a blank line
     let stderr = stderr(&output);
-    assert!(stderr.contains("cycles.buffy:3:7\n"), "{stderr}");
+    assert!(stderr.contains("cycles.tafla:3:7\n"), "{stderr}");
     assert!(
         stderr.contains("in itself\n\nerror: `point` should be PascalCase\n"),
         "{stderr}"
@@ -145,13 +145,13 @@ fn writes_the_valid_schemas_and_prints_the_errors_of_the_others() {
 
 #[test]
 fn prints_its_usage_without_a_target_or_a_schema() {
-    for arguments in [&[][..], &["--help"], &["go", "schema.buffy"], &["rust"]] {
-        let output = buffy_gen(REPOSITORY, arguments);
+    for arguments in [&[][..], &["--help"], &["go", "schema.tafla"], &["rust"]] {
+        let output = tafla_gen(REPOSITORY, arguments);
 
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(
             stderr(&output),
-            "usage: buffy-gen <typescript|javascript|python|java|rust> <schema>... \
+            "usage: tafla-gen <typescript|javascript|python|java|rust> <schema>... \
              [--out <dir>] [--runtime <module>] [--package <package>]\n",
             "{arguments:?}"
         );
@@ -160,15 +160,15 @@ fn prints_its_usage_without_a_target_or_a_schema() {
 
 #[test]
 fn reports_a_schema_it_cannot_read() {
-    let output = buffy_gen(REPOSITORY, &["rust", "schemas/missing.buffy"]);
+    let output = tafla_gen(REPOSITORY, &["rust", "schemas/missing.tafla"]);
 
     assert_eq!(output.status.code(), Some(1));
-    assert!(stderr(&output).starts_with("schemas/missing.buffy: "));
+    assert!(stderr(&output).starts_with("schemas/missing.tafla: "));
 }
 
 #[test]
 fn reports_an_option_without_a_value() {
-    let output = buffy_gen(REPOSITORY, &["rust", "schemas/shapes.buffy", "--out"]);
+    let output = tafla_gen(REPOSITORY, &["rust", "schemas/shapes.tafla", "--out"]);
 
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stderr(&output), "--out needs a value\n");

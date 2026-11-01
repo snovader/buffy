@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { DecodeError } from '@buffy/core';
+import { DecodeError } from 'tafla';
 import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
@@ -22,8 +22,8 @@ import {
     sampleBytes
 } from './shapesTables.ts';
 
-// The code generated from schemas/shapes.buffy, in TypeScript and in
-// JavaScript, writes and reads tables with @buffy/core
+// The code generated from schemas/shapes.tafla, in TypeScript and in
+// JavaScript, writes and reads tables with tafla
 
 const OTHER_VERSIONS = fc
     .integer({ min: 0, max: 0xffff_ffff })

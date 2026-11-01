@@ -1,5 +1,5 @@
 [package]
-name = "buffy-gen"
+name = "tafla-gen"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,12 +8,12 @@ repository.workspace = true
 publish = false
 
 [lib]
-name = "buffy_gen"
+name = "tafla_gen"
 # cdylib for the WebAssembly module, see README.md
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "buffy-gen"
+name = "tafla-gen"
 path = "src/main.rs"
 
 [features]
@@ -28,7 +28,7 @@ rust = []
 
 [dev-dependencies]
 # Runs the Rust generated from the example schemas in tests/generated_*.rs
-buffy-core = { path = "../core" }
+tafla = { path = "../core" }
 proptest = "1"
 # Parses the cases of conformance/generated in tests/shapes_cases.rs, with
 # floats exactly rather than to within an ulp

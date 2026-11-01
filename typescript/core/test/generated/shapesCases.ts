@@ -16,7 +16,7 @@ import {
 } from './shapesTables.ts';
 
 // The cases of conformance/generated: values of the messages and the struct of
-// schemas/shapes.buffy, whose tables the code generated in every language
+// schemas/shapes.tafla, whose tables the code generated in every language
 // writes byte for byte and reads back. The generated TypeScript writes the
 // tables; run `yarn conformance:generate` after changing a case, and every
 // language's tests. conformance/generated/README.md describes the files.
@@ -185,7 +185,7 @@ export function writeShapesCases(cases: readonly ShapesCase[]): ShapesFiles {
     });
 
     const json = formatSuiteJson({
-        schema: 'schemas/shapes.buffy',
+        schema: 'schemas/shapes.tafla',
         cases: descriptions
     });
     return { json, tables };

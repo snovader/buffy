@@ -1,4 +1,4 @@
-# buffy
+# tafla
 
 Binary tables of scalars, strings and typed arrays, in one format with
 implementations in TypeScript, Python, Java and Rust. A builder writes a table
@@ -9,18 +9,18 @@ sources.
 
 ## Status
 
-buffy hasn't been released yet.
+tafla hasn't been released yet.
 
 [SPEC.md](SPEC.md) describes the format.
 
 ## Packages
 
-| Language   | Runtime                               | Code generator                       |
-| ---------- | ------------------------------------- | ------------------------------------ |
-| TypeScript | `@buffy/core` on npm                  | `@buffy/gen` on npm                  |
-| Python     | `buffy-core` on PyPI                  | `buffy-gen` on PyPI                  |
-| Java       | `io.github.snovader.buffy:buffy-core` | `io.github.snovader.buffy:buffy-gen` |
-| Rust       | `buffy-core` on crates.io             | `buffy-gen` on crates.io             |
+| Language   | Runtime                          | Code generator                       |
+| ---------- | -------------------------------- | ------------------------------------ |
+| TypeScript | `tafla` on npm                   | `tafla-gen` on npm                   |
+| Python     | `tafla` on PyPI                  | `tafla-gen` on PyPI                  |
+| Java       | `io.github.snovader.tafla:tafla` | `io.github.snovader.tafla:tafla-gen` |
+| Rust       | `tafla` on crates.io             | `tafla-gen` on crates.io             |
 
 A runtime writes and reads tables. The code generator compiles a schema of
 messages and tables into code that writes and reads them with a language's

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { DecodeError } from '@buffy/core';
+import { DecodeError } from 'tafla';
 import {
     CORRUPTIONS,
     corruptionOf,
@@ -22,8 +22,8 @@ import * as javascript from './layouts/javascript/layouts.js';
 import * as typescript from './layouts/typescript/layouts.ts';
 import type { Offset8Fields } from './layouts/typescript/layouts.ts';
 
-// The code generated from schemas/layouts.buffy, in TypeScript and in
-// JavaScript, writes and reads messages of every layout with @buffy/core. The
+// The code generated from schemas/layouts.tafla, in TypeScript and in
+// JavaScript, writes and reads messages of every layout with tafla. The
 // messages have the same fields, and their layouts and versions are written
 // out here from the schema rather than taken from the generated code.
 

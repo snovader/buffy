@@ -1,5 +1,5 @@
 error: expected `message`, `table` or `struct`, found `enum`
- --> unknown_keyword.buffy:1:1
+ --> unknown_keyword.tafla:1:1
   |
 1 | enum Color {
   | ^^^^

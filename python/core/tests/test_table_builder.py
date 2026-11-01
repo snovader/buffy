@@ -7,7 +7,7 @@ from typing import Any, cast
 from hypothesis import given
 from hypothesis.strategies import integers
 
-from buffy_core import (
+from tafla import (
     SIZEOF_8,
     SIZEOF_16,
     SIZEOF_32,

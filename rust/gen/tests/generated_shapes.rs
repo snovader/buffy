@@ -1,4 +1,4 @@
-//! The code generated from `schemas/shapes.buffy` writes the tables that
+//! The code generated from `schemas/shapes.tafla` writes the tables that
 //! `TableBuilder` writes by hand, reads back what it writes, and reads
 //! corrupted and arbitrary bytes as values or decode errors without
 //! panicking. `typescript/core/test/generated/shapes.test.ts` checks the
@@ -7,7 +7,6 @@
 mod shapes;
 mod tables;
 
-use buffy_core::{DecodeError, TableLayout};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use shapes::generated::{
@@ -22,6 +21,7 @@ use tables::{
     CASES, Header, arbitrary_bytes, arrays, build, check_truncated, expected, float32s, float64s,
     integers, overwrites, placements, strings, truncations,
 };
+use tafla::{DecodeError, TableLayout};
 
 // The headers of the messages, from their attributes in the schema
 const POINT: Header = Header::new(TableLayout::DEFAULT);

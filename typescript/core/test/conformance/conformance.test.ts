@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { DecodeError } from '@buffy/core';
+import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite } from './description.ts';
 import { SUITE_DIRECTORY, writeSuite } from './files.ts';
@@ -8,7 +8,7 @@ import { buildTable, readTable, TableReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;
 
-// The checked-in suite, which the other implementations of buffy load too
+// The checked-in suite, which the other implementations of tafla load too
 const json = await readFile(new URL('cases.json', directory), 'utf8');
 const suite: Suite = JSON.parse(json);
 const tables = await readTables();
@@ -19,7 +19,7 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
     for (const subdirectory of ['valid/', 'invalid/']) {
         for (const name of await readdir(new URL(subdirectory, directory))) {
             const path = `${subdirectory}${name}`;
-            // A plain Uint8Array rather than a Buffer, to compare with buffy's
+            // A plain Uint8Array rather than a Buffer, to compare with tafla's
             tables.set(path, new Uint8Array(await readFile(new URL(path, directory))));
         }
     }
