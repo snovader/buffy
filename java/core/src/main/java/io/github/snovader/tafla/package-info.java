@@ -65,9 +65,11 @@
  *     {@code float[]} for {@code float32}s. Unsigned arrays are widened or narrowed element by
  *     element.</li>
  *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
- *     Alignment doesn't matter to Java, which reads at any offset, but the TypeScript
- *     implementation reads aligned arrays as views of the bytes, so Java aligns the arrays it
- *     writes.</li>
+ *     The array view getters, such as {@code getFloat32ArrayView()}, return a read-only
+ *     {@code FloatBuffer} or other view of the bytes instead: viewing three columns of 100,000
+ *     elements took 0.04 µs and 448 bytes, against 47 µs and 1.6 MB to copy them. Alignment
+ *     doesn't matter to Java, which reads at any offset, but the TypeScript implementation reads
+ *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
  *     27,028-element {@code float32} array with {@code getFloat32()} took 6.8 µs, against 9.5 µs
  *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar

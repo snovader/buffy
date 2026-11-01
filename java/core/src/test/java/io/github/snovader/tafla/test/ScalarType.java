@@ -2,6 +2,11 @@ package io.github.snovader.tafla.test;
 
 import io.github.snovader.tafla.*;
 
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.*;
 
 /**
@@ -133,6 +138,32 @@ enum ScalarType {
         };
     }
 
+    /** Reads an array through its view getter, with unsigned elements widened as the array getters do */
+    long[] readArrayView(ByteBuffer buffer, int position) {
+        return switch (this) {
+            case INT8 -> fromBytes(toArray(buffer.getInt8ArrayView(position)));
+            case UINT8 -> lowBits(fromBytes(toArray(buffer.getUint8ArrayView(position))));
+            case INT16 -> fromShorts(toArray(buffer.getInt16ArrayView(position)));
+            case UINT16 -> lowBits(fromShorts(toArray(buffer.getUint16ArrayView(position))));
+            case INT32 -> fromInts(toArray(buffer.getInt32ArrayView(position)));
+            case UINT32 -> lowBits(fromInts(toArray(buffer.getUint32ArrayView(position))));
+            case INT64 -> toArray(buffer.getInt64ArrayView(position));
+            case UINT64 -> toArray(buffer.getUint64ArrayView(position));
+            case FLOAT32 -> fromFloats(toArray(buffer.getFloat32ArrayView(position)));
+            case FLOAT64 -> fromDoubles(toArray(buffer.getFloat64ArrayView(position)));
+        };
+    }
+
+    /** {@return the values with only their low {@link #size()} bytes, as an unsigned getter reads them} */
+    private long[] lowBits(long[] values) {
+        var mask = (1L << (size() * Byte.SIZE)) - 1;
+        for (int i = 0; i < values.length; i++) {
+            values[i] &= mask;
+        }
+
+        return values;
+    }
+
     /** Puts a value with the JDK's own buffer, in its byte order, to compare tafla's bytes with */
     void put(java.nio.ByteBuffer target, long value) {
         switch (this) {
@@ -236,5 +267,49 @@ enum ScalarType {
         }
 
         return values;
+    }
+
+    // The elements of the JDK's views, copied into arrays
+
+    private static byte[] toArray(java.nio.ByteBuffer view) {
+        var array = new byte[view.remaining()];
+        view.get(array);
+
+        return array;
+    }
+
+    private static short[] toArray(ShortBuffer view) {
+        var array = new short[view.remaining()];
+        view.get(array);
+
+        return array;
+    }
+
+    private static int[] toArray(IntBuffer view) {
+        var array = new int[view.remaining()];
+        view.get(array);
+
+        return array;
+    }
+
+    private static long[] toArray(LongBuffer view) {
+        var array = new long[view.remaining()];
+        view.get(array);
+
+        return array;
+    }
+
+    private static float[] toArray(FloatBuffer view) {
+        var array = new float[view.remaining()];
+        view.get(array);
+
+        return array;
+    }
+
+    private static double[] toArray(DoubleBuffer view) {
+        var array = new double[view.remaining()];
+        view.get(array);
+
+        return array;
     }
 }
