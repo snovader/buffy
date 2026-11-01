@@ -83,6 +83,23 @@ const KEYWORDS: [&str; 54] = [
     "null",
 ];
 
+/// Names that getters and record components can't take, which names take a
+/// `_` after too: the methods of `Object` without parameters, which they would
+/// override, the method of structs' records, and the local that it writes
+/// their components into
+const MEMBERS: [&str; 10] = [
+    "bytes",
+    "clone",
+    "finalize",
+    "getClass",
+    "hashCode",
+    "notify",
+    "notifyAll",
+    "serialize",
+    "toString",
+    "wait",
+];
+
 pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<GeneratedFile> {
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
     let package = options.package.as_deref().unwrap_or(PACKAGE);
@@ -527,7 +544,7 @@ fn code_spans(line: &str) -> String {
 
 fn identifier(name: &str) -> String {
     let name = camel_case(name);
-    if KEYWORDS.contains(&name.as_str()) {
+    if KEYWORDS.contains(&name.as_str()) || MEMBERS.contains(&name.as_str()) {
         format!("{name}_")
     } else {
         name

@@ -92,10 +92,10 @@ or read its tables, or a target couldn't generate its code:
 - Structs hold scalars only, and tables can't hold structs yet. Arrays of
   strings aren't supported.
 
-It doesn't check yet for names that clash with a target's own: a declaration
-named after a class that the generated code imports, such as `List` in Java,
-or a field named after a member that it generates, such as `new` in Rust or
-`builder` in Python.
+It doesn't check yet for declarations whose names clash with a target's own,
+such as one named after a class that the generated code imports, like `List`
+in Java. Fields named after a member of the generated code are renamed
+instead, as the generated code below describes.
 
 Errors point at their cause, as compilers print them, and the checker reports
 every error it finds, after the first syntax error if there's one:
@@ -126,6 +126,11 @@ another version.
 
 Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
+So do names that would clash, in a target, with a member that the generated
+code defines or inherits, or with a local that it reads fields beside, such as
+`constructor_` and `toString_` in TypeScript, `serialize_` and `int_` in
+Python, `hashCode_` and `serialize_` in Java, and `new_` in Rust. `MEMBERS` in
+each target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
 it: Biome for TypeScript and JavaScript, Ruff for Python and rustfmt for
@@ -282,6 +287,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   the command writes and prints what the library generates and finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command and the library's
   options.
+- `tests/members.rs`: fields named after the generated code's members take a
+  `_` in the targets where the names clash.
 - `tests/generated_<schema>.rs`: the golden Rust, compiled against
   `buffy-core` so that clippy and rustfmt check it, reads back what it
   writes, writes the tables that `TableBuilder` writes by hand, rejects other

@@ -38,6 +38,11 @@ const KEYWORDS: [&str; 48] = [
 /// Keywords that can't be raw identifiers, which names take a `_` after
 const PATH_KEYWORDS: [&str; 3] = ["crate", "self", "super"];
 
+/// The method that messages and tables define beside their getters, which
+/// names take a `_` after too. Fields and methods don't share names, so the
+/// other methods don't clash with fields.
+const MEMBERS: [&str; 1] = ["new"];
+
 pub fn generate(
     schema: &Schema,
     stem: &str,
@@ -640,7 +645,7 @@ fn error_doc(error: &str, condition: &str) -> Vec<String> {
 fn identifier(name: &str) -> String {
     if KEYWORDS.contains(&name) {
         format!("r#{name}")
-    } else if PATH_KEYWORDS.contains(&name) {
+    } else if PATH_KEYWORDS.contains(&name) || MEMBERS.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()

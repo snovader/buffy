@@ -17,6 +17,21 @@ const STYLE: Style = Style {
     max_arguments_width: None,
 };
 
+/// Members that classes define or inherit, which names take a `_` after: the
+/// constructor and the other methods of `Object.prototype`, which a getter
+/// would replace, and the writer that structs keep among the private names of
+/// their fields
+const MEMBERS: [&str; 8] = [
+    "constructor",
+    "hasOwnProperty",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toLocaleString",
+    "toString",
+    "valueOf",
+    "writer",
+];
+
 pub fn generate(
     schema: &Schema,
     stem: &str,
@@ -313,7 +328,7 @@ impl Generator<'_> {
         for field in &definition.fields {
             self.private_field(
                 writer,
-                &camel_case(&field.name),
+                &identifier(&field.name),
                 &value_type(field.field_type, self.schema),
             );
         }
@@ -342,7 +357,7 @@ impl Generator<'_> {
             };
             writer.statement(
                 &STYLE,
-                &format!("this.#{} = ", camel_case(&field.name)),
+                &format!("this.#{} = ", identifier(&field.name)),
                 &call(
                     format!("buffer.get{}", scalar_method(scalar)),
                     vec![text(offset.to_string())],
@@ -378,7 +393,7 @@ impl Generator<'_> {
             writer.line(format!(
                 "writer.set{}(fields.{});",
                 scalar_method(scalar),
-                camel_case(&field.name)
+                identifier(&field.name)
             ));
         }
         writer.blank();
@@ -386,7 +401,7 @@ impl Generator<'_> {
         writer.close("}");
 
         for field in &definition.fields {
-            let field_name = camel_case(&field.name);
+            let field_name = identifier(&field.name);
             writer.blank();
             self.getter_doc(
                 writer,
@@ -415,7 +430,7 @@ impl Generator<'_> {
                 writer.lines(&doc_comment(&field.docs));
                 writer.line(format!(
                     "{}: {};",
-                    camel_case(&field.name),
+                    identifier(&field.name),
                     input_type(field.field_type, self.schema)
                 ));
             }
@@ -431,7 +446,7 @@ impl Generator<'_> {
                 let property = format!(
                     "@property {{{}}} {} {description}",
                     input_type(field.field_type, self.schema),
-                    camel_case(&field.name)
+                    identifier(&field.name)
                 );
                 lines.push(property.trim_end().to_owned());
             }
@@ -441,7 +456,7 @@ impl Generator<'_> {
 
     fn setters(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
-            let value = format!("fields.{}", camel_case(&field.name));
+            let value = format!("fields.{}", identifier(&field.name));
             let (method, argument) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("set{}", scalar_method(scalar)), text(value)),
                 FieldType::Array(scalar) => {
@@ -484,7 +499,7 @@ impl Generator<'_> {
                 )
             };
             let return_type = value_type(field.field_type, self.schema);
-            let field_name = camel_case(&field.name);
+            let field_name = identifier(&field.name);
 
             writer.blank();
             self.getter_doc(writer, &field.docs, &return_type);
@@ -622,6 +637,15 @@ impl Generator<'_> {
 fn writer_fits(_writer: &CodeWriter, line: &str) -> bool {
     // Getters are indented once, in a class
     STYLE.indent.len() + line.len() <= STYLE.width
+}
+
+fn identifier(name: &str) -> String {
+    let name = camel_case(name);
+    if MEMBERS.contains(&name.as_str()) {
+        format!("{name}_")
+    } else {
+        name
+    }
 }
 
 fn layout_expression(layout: Layout) -> Expr {
