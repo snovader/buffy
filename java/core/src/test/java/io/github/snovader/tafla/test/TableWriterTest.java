@@ -1,0 +1,317 @@
+package io.github.snovader.tafla.test;
+
+import io.github.snovader.tafla.*;
+import io.github.snovader.tafla.test.FieldDescription.*;
+import net.jqwik.api.*;
+import net.jqwik.api.constraints.*;
+import org.junit.jupiter.api.function.*;
+
+import java.util.*;
+import java.util.function.*;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * {@link TableSizer} and {@link TableWriter} write the bytes that {@link TableBuilder} builds from
+ * the same fields, and fail where it fails. They write nested tables in place, so the descriptions
+ * that they write have every nested table and vector item from its builder, without a header, and
+ * with the root's offset size, as {@link Tables#nestedInPlace} makes them.
+ */
+public class TableWriterTest {
+    @Property
+    void a_table_sized_and_written_from_any_description_holds_the_bytes_that_TableBuilder_builds(
+        @ForAll("inPlaceTables") TableDescription table
+    ) {
+        assertArrayEquals(Tables.build(table).bytes(), Tables.write(table));
+    }
+
+    @Example
+    void a_struct_array_a_nested_table_and_a_vector_are_padded_as_TableBuilder_pads_them() {
+        // A uint8 leaves the uint32[] 3 bytes short of its alignment, the array leaves the structs
+        // 2 bytes short of theirs, and the structs leave the nested table of float64s 6 bytes short
+        var layout = new LayoutDescription(true, true, AddressableSpace.SIZEOF_16);
+        var nested = new TableDescription(
+            LayoutDescription.headerless(AddressableSpace.SIZEOF_16),
+            OptionalLong.empty(),
+            List.of(new ArrayField(ScalarType.FLOAT64, new long[] {Double.doubleToLongBits(6)}))
+        );
+        var item = new TableDescription(
+            LayoutDescription.headerless(AddressableSpace.SIZEOF_16),
+            OptionalLong.empty(),
+            List.of(new StringField("🦀"))
+        );
+        var table = new TableDescription(
+            layout,
+            OptionalLong.of(7),
+            List.of(
+                new ScalarField(ScalarType.UINT8, 1),
+                new ArrayField(ScalarType.UINT32, new long[] {2, 3}),
+                new StructArrayField(
+                    List.of(ScalarType.UINT16, ScalarType.FLOAT64),
+                    List.of(List.of(4L, Double.doubleToLongBits(5)))
+                ),
+                new TableField(Source.BUILDER, nested, OptionalInt.empty()),
+                new VectorField(List.of(new NestedTable(Source.BUILDER, item)))
+            )
+        );
+
+        var bytes = Tables.write(table);
+        assertArrayEquals(Tables.build(table).bytes(), bytes);
+        assertEquals(table, TableReader.strict(bytes, layout).readTable(table));
+    }
+
+    @Property
+    void any_string_is_written_as_TableBuilder_writes_it_with_each_lone_surrogate_as_U_FFFD(
+        @ForAll("utf16Strings") String string
+    ) {
+        var table = new TableDescription(
+            LayoutDescription.headerless(AddressableSpace.SIZEOF_32),
+            OptionalLong.empty(),
+            List.of(new StringField(string))
+        );
+
+        assertArrayEquals(Tables.build(table).bytes(), Tables.write(table), string::toString);
+    }
+
+    // Tables longer than their offsets address
+
+    @Property
+    void a_table_too_long_for_its_offsets_throws_IllegalArgumentException_as_TableBuilder_does(
+        @ForAll("narrowInPlaceTables") TableDescription table,
+        @ForAll @IntRange(max = 300) int length
+    ) {
+        var longer = table.withField(bytesField(length));
+
+        assertEquals(outcomeOf(() -> Tables.build(longer).bytes()), outcomeOf(() -> Tables.write(longer)));
+    }
+
+    // Each try writes and builds tables of up to 64 KiB, so fewer of them
+    @Property(tries = 50)
+    void the_longest_table_of_8_and_16_bit_offsets_is_written_and_one_a_byte_longer_throws_IllegalArgumentException(
+        @ForAll("narrowInPlaceTables") TableDescription table,
+        @ForAll("unpaddedFields") FieldDescription last
+    ) {
+        var offsetSize = table.layout().offsetSize();
+        var max = offsetSize.maxValue();
+        IntFunction<TableDescription> withBytes = length -> table.withField(bytesField(length)).withField(last);
+
+        // The bytes before the last field grow the table by as many bytes, without padding
+        var shortest = withBytes.apply(0);
+        Assume.that(Descriptions.fitsItsLayout(shortest));
+        var room = (int) (max - Tables.build(shortest).bytes().length);
+
+        var longest = withBytes.apply(room);
+        var bytes = Tables.write(longest);
+        assertEquals(max, bytes.length);
+        assertArrayEquals(Tables.build(longest).bytes(), bytes);
+
+        var tooLong = withBytes.apply(room + 1);
+        var exception = assertThrows(IllegalArgumentException.class, () -> Tables.write(tooLong));
+        assertEquals(
+            String.format(
+                "The table's fields make it %d bytes, too long for %d-byte offsets",
+                max + 1,
+                offsetSize.valueOf()
+            ),
+            exception.getMessage()
+        );
+        assertThrows(IllegalArgumentException.class, () -> Tables.build(tooLong));
+    }
+
+    @Example
+    void a_table_of_32_bit_offsets_is_counted_up_to_the_longest_java_array_and_rejected_beyond_before_allocating() {
+        // The longest array that the JDK allocates, after the table's offset and the array's count
+        var longestArray = Integer.MAX_VALUE - 8;
+        var longest = new TableSizer(1);
+        longest.addInt8Array(longestArray - 2 * Integer.BYTES);
+        assertEquals(longestArray, longest.byteLength());
+
+        var tooLong = new TableSizer(1);
+        tooLong.addInt8Array(longestArray - 2 * Integer.BYTES + 1);
+        var exception = assertThrows(IllegalArgumentException.class, tooLong::writer);
+        assertEquals(
+            "The table's fields make it 2147483640 bytes, longer than a Java array can be",
+            exception.getMessage()
+        );
+
+        // Past the 4 GiB that 32-bit offsets address, in a count that an int can't hold
+        var past4GiB = new TableSizer(3);
+        for (int i = 0; i < 3; i++) {
+            past4GiB.addFloat64Array(Integer.MAX_VALUE);
+        }
+        assertThrows(IllegalArgumentException.class, past4GiB::writer);
+    }
+
+    // The header
+
+    @Property
+    void a_header_longer_than_the_offsets_address_is_rejected_as_TableBuilder_rejects_it(
+        @ForAll("narrowSizes") AddressableSpace size,
+        @ForAll boolean sized
+    ) {
+        var layout = TableLayout.builder().sized(sized).offsetSize(size).build();
+        var fields = (int) (size.maxValue() / size.valueOf()) - (sized ? 1 : 0);
+
+        assertEquals(layout.headerSize() + fields * size.valueOf(), new TableSizer(fields, layout).byteLength());
+        assertRejectedAlike(() -> new TableBuilder(fields + 1, layout), () -> new TableSizer(fields + 1, layout));
+    }
+
+    @Example
+    void versions_and_field_counts_are_checked_as_TableBuilder_checks_them() {
+        var versioned = TableLayout.builder().versioned(true).offsetSize(AddressableSpace.SIZEOF_8).build();
+
+        assertRejectedAlike(
+            () -> new TableBuilder(0, TableLayout.DEFAULT, 1),
+            () -> new TableSizer(0, TableLayout.DEFAULT, 1)
+        );
+        assertRejectedAlike(() -> new TableBuilder(0, versioned), () -> new TableSizer(0, versioned));
+        assertRejectedAlike(() -> new TableBuilder(0, versioned, 256), () -> new TableSizer(0, versioned, 256));
+        assertRejectedAlike(() -> new TableBuilder(0, versioned, -1), () -> new TableSizer(0, versioned, -1));
+        assertRejectedAlike(() -> new TableBuilder(-1), () -> new TableSizer(-1));
+    }
+
+    // Fields that differ from those sized
+
+    @Property
+    void fields_that_differ_from_those_sized_are_written_when_they_fill_the_sized_bytes_and_otherwise_throw(
+        @ForAll("inPlaceTables") TableDescription sized,
+        @ForAll("values") FieldDescription other,
+        @ForAll @IntRange(max = 100) int at
+    ) {
+        Assume.that(!sized.fields().isEmpty());
+        var fields = new ArrayList<>(sized.fields());
+        fields.set(at % fields.size(), other);
+        var written = new TableDescription(sized.layout(), sized.version(), fields);
+        Assume.that(Descriptions.fitsItsLayout(written));
+
+        var expected = Tables.build(written).bytes();
+        var writer = Tables.size(sized).writer();
+        if (expected.length == Tables.build(sized).bytes().length) {
+            assertArrayEquals(expected, Tables.write(writer, written));
+        } else {
+            var exception = assertThrows(RuntimeException.class, () -> Tables.write(writer, written));
+            assertTrue(
+                exception instanceof IndexOutOfBoundsException || exception instanceof IllegalStateException,
+                exception::toString
+            );
+        }
+    }
+
+    @Example
+    void a_string_longer_than_the_one_sized_throws_IndexOutOfBoundsException() {
+        var sizer = new TableSizer(1);
+        sizer.addString("a");
+        var writer = sizer.writer();
+
+        assertThrows(IndexOutOfBoundsException.class, () -> writer.setString(0, "ab"));
+    }
+
+    @Example
+    void fields_shorter_than_those_sized_throw_IllegalStateException_from_bytes() {
+        var sizer = new TableSizer(1);
+        sizer.addString("ab");
+        var writer = sizer.writer();
+        writer.setString(0, "a");
+
+        var exception = assertThrows(IllegalStateException.class, writer::bytes);
+        assertEquals("The fields wrote 9 of the table's 10 bytes", exception.getMessage());
+    }
+
+    @Example
+    void negative_counts_struct_sizes_below_1_and_alignments_other_than_1_2_4_or_8_are_rejected_and_change_nothing() {
+        var sizer = new TableSizer(1);
+        assertThrows(IllegalArgumentException.class, () -> sizer.startTable(-1));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addFloat32Array(-1));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addStruct(-1));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addStructArray(-1, 4, 4));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addStructArray(1, 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addStructArray(1, 4, 16));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addTable(3));
+        assertThrows(IllegalArgumentException.class, () -> sizer.addVector(-1));
+        sizer.addVector(0);
+
+        var writer = sizer.writer();
+        assertThrows(IllegalArgumentException.class, () -> writer.startTable(-1));
+        assertThrows(IllegalArgumentException.class, () -> writer.setStructArray(0, new byte[5], 2, 1));
+        assertThrows(IllegalArgumentException.class, () -> writer.setStructArray(0, new byte[4], 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> writer.setTable(0, 3));
+        assertThrows(IllegalArgumentException.class, () -> writer.setVector(0, -1));
+        writer.setVector(0, 0);
+
+        // The table's offset and the vector's count
+        assertArrayEquals(new byte[] {4, 0, 0, 0, 0, 0, 0, 0}, writer.bytes());
+    }
+
+    @Provide
+    Arbitrary<TableDescription> inPlaceTables() {
+        return Arbitraries.oneOf(Descriptions.tables(), Descriptions.nestingTables())
+            .map(Tables::nestedInPlace)
+            .filter(Descriptions::fitsItsLayout);
+    }
+
+    @Provide
+    Arbitrary<TableDescription> narrowInPlaceTables() {
+        return Descriptions.narrowTables().map(Tables::nestedInPlace).filter(Descriptions::fitsItsLayout);
+    }
+
+    @Provide
+    Arbitrary<FieldDescription> values() {
+        return Descriptions.values();
+    }
+
+    /** {@return fields after which a table's length doesn't depend on where they start} */
+    @Provide
+    Arbitrary<FieldDescription> unpaddedFields() {
+        return Descriptions.values().filter(field -> Tables.arrayAlignment(field).orElse(1) == 1);
+    }
+
+    @Provide
+    Arbitrary<AddressableSpace> narrowSizes() {
+        return Arbitraries.of(AddressableSpace.SIZEOF_8, AddressableSpace.SIZEOF_16);
+    }
+
+    /**
+     * {@return strings of any UTF-16 code units}: ASCII, the rest of the Basic Multilingual Plane,
+     * and surrogates, which pair up or stand alone
+     */
+    @Provide
+    Arbitrary<String> utf16Strings() {
+        var units = Arbitraries.frequencyOf(
+            Tuple.of(2, Arbitraries.chars().range('\u0000', '\u007f')),
+            Tuple.of(2, Arbitraries.chars().range('\u0080', '￿')),
+            Tuple.of(1, Arbitraries.chars().range(Character.MIN_HIGH_SURROGATE, Character.MAX_HIGH_SURROGATE)),
+            Tuple.of(1, Arbitraries.chars().range(Character.MIN_LOW_SURROGATE, Character.MAX_LOW_SURROGATE))
+        );
+
+        return units.list().ofMaxSize(16).map(TableWriterTest::stringOf);
+    }
+
+    private static String stringOf(List<Character> units) {
+        var string = new StringBuilder(units.size());
+        units.forEach(string::append);
+
+        return string.toString();
+    }
+
+    /** {@return a {@code uint8[]} of {@code length} zeros} */
+    private static FieldDescription bytesField(int length) {
+        return new ArrayField(ScalarType.UINT8, new long[length]);
+    }
+
+    /** {@return the bytes that {@code write} returns, in hex, or the class of the exception that it throws} */
+    private static String outcomeOf(Supplier<byte[]> write) {
+        try {
+            return HexFormat.of().formatHex(write.get());
+        } catch (RuntimeException exception) {
+            return exception.getClass().getName();
+        }
+    }
+
+    /** Asserts that both throw an {@link IllegalArgumentException} with the same message */
+    private static void assertRejectedAlike(Executable builder, Executable sizer) {
+        var expected = assertThrows(IllegalArgumentException.class, builder);
+        var actual = assertThrows(IllegalArgumentException.class, sizer);
+
+        assertEquals(expected.getMessage(), actual.getMessage());
+    }
+}

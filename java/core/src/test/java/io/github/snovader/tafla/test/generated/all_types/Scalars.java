@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** A field of every scalar type */
 public final class Scalars {
@@ -17,19 +17,31 @@ public final class Scalars {
 
     /** Writes a {@code Scalars} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(10, LAYOUT);
-        builder.setInt8(fields.int8());
-        builder.setUint8(fields.uint8());
-        builder.setInt16(fields.int16());
-        builder.setUint16(fields.uint16());
-        builder.setInt32(fields.int32());
-        builder.setUint32(fields.uint32());
-        builder.setInt64(fields.int64());
-        builder.setUint64(fields.uint64());
-        builder.setFloat32(fields.float32());
-        builder.setFloat64(fields.float64());
+        var sizer = new TableSizer(10, LAYOUT);
+        sizer.addInt8();
+        sizer.addUint8();
+        sizer.addInt16();
+        sizer.addUint16();
+        sizer.addInt32();
+        sizer.addUint32();
+        sizer.addInt64();
+        sizer.addUint64();
+        sizer.addFloat32();
+        sizer.addFloat64();
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setInt8(0, fields.int8());
+        writer.setUint8(1, fields.uint8());
+        writer.setInt16(2, fields.int16());
+        writer.setUint16(3, fields.uint16());
+        writer.setInt32(4, fields.int32());
+        writer.setUint32(5, fields.uint32());
+        writer.setInt64(6, fields.int64());
+        writer.setUint64(7, fields.uint64());
+        writer.setFloat32(8, fields.float32());
+        writer.setFloat64(9, fields.float64());
+
+        return writer.bytes();
     }
 
     public byte int8() {

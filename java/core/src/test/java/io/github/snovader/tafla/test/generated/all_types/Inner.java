@@ -2,9 +2,16 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 public final class Inner {
+    /**
+     * The alignment that a parent pads an {@code Inner} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 8;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -14,15 +21,25 @@ public final class Inner {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds an {@code Inner} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(2);
-        builder.setString(fields.name());
-        builder.setFloat64Array(fields.values());
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(2);
+        sizer.addString(fields.name());
+        sizer.addFloat64Array(fields.values().length);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes an {@code Inner} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(2);
+        writer.setString(0, fields.name());
+        writer.setFloat64Array(1, fields.values());
+        writer.endTable(parent);
     }
 
     public String name() {

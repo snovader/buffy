@@ -222,14 +222,40 @@ public class LayoutsTest {
     }
 
     @Example
-    void layouts_of_8_and_16_bit_offsets_throw_IllegalArgumentException_for_tables_longer_than_they_address() {
+    void layouts_of_8_and_16_bit_offsets_write_tables_as_long_as_they_address_and_throw_IllegalArgumentException_past_them() {
         for (var message : narrowMessages()) {
-            // A name as long as the longest table, after the header and the id
-            var name = "a".repeat((int) message.layout().offsetSize().maxValue());
-            var fields = new LayoutFields(0, name, new int[0]);
+            var max = message.layout().offsetSize().maxValue();
+            var withoutName = Tables.build(message.describe(named(""))).bytes().length;
 
-            assertThrows(IllegalArgumentException.class, () -> message.serialize(fields), message.name());
+            // Names that make the table a few bytes shorter than the longest it can be, to a few longer
+            var longest = 0;
+            var rejected = 0;
+            for (var length = max - withoutName - 3; length <= max - withoutName + 3; length++) {
+                var fields = named("a".repeat((int) length));
+
+                byte[] byHand;
+                try {
+                    byHand = Tables.build(message.describe(fields)).bytes();
+                } catch (IllegalArgumentException tooLong) {
+                    assertThrows(IllegalArgumentException.class, () -> message.serialize(fields), message.name());
+                    rejected++;
+                    continue;
+                }
+
+                assertArrayEquals(byHand, message.serialize(fields), message.name());
+                longest = Math.max(longest, byHand.length);
+            }
+
+            // The padding before the uint16s takes a byte or none, so the longest table is either
+            // as long as the offsets address or a byte shorter
+            assertTrue(longest >= max - 1, message.name() + "'s longest table is " + longest);
+            assertTrue(rejected > 0, message.name());
         }
+    }
+
+    /** {@return the fields of a message named {@code name}, with the largest id and values} */
+    private static LayoutFields named(String name) {
+        return new LayoutFields(0xffff_ffffL, name, new int[] {0, 0xffff});
     }
 
     @Property
