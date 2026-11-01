@@ -150,7 +150,9 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         let files = generate("empty.buffy", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
     }
-    assert!(generate("empty.buffy", source, "java", &Options::default()).is_empty());
+    // Java has a file per definition, so none for an empty schema
+    let files = generate("empty.buffy", source, "java", &Options::default());
+    assert_eq!(files, Vec::new());
 }
 
 #[test]
@@ -170,7 +172,7 @@ fn tables_nested_in_many_fields_of_each_other_generate() {
 
     for name in Target::names() {
         let files = generate("levels.buffy", &source, name, &Options::default());
-        assert!(!files.is_empty());
+        assert_ne!(files, Vec::new(), "{name}");
     }
 }
 
