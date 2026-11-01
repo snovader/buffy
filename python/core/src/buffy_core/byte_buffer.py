@@ -37,15 +37,18 @@ class ByteBuffer:
     copies in the host's byte order on a big-endian host.
 
     Every read checks that it stays within the bytes and raises ``DecodeError``
-    otherwise. A write that doesn't fit in the bytes, or a value that doesn't
-    fit its type, raises ``ValueError`` and writes nothing. That includes
-    lengths, offsets and versions too large for the layout's ``offset_size``,
-    which ``TableBuilder`` rejects before it writes a table.
+    otherwise. A write that doesn't fit in the bytes raises ``ValueError`` and
+    writes nothing. So does an array, string or vector whose count or lengths
+    are too large for the layout's ``offset_size``, which ``TableBuilder``
+    rejects before it writes a table. A scalar, offset or version that doesn't
+    fit its slot raises ``ValueError`` and leaves the position where it was,
+    but CPython's struct zeroes the slot before it checks the value.
     """
 
     __slots__ = [
         "__header_size",
         "__length",
+        "__max_size",
         "__position",
         "__size",
         "__size_struct",
@@ -68,6 +71,8 @@ class ByteBuffer:
         # The width of offsets, lengths and header slots
         self.__size = layout.offset_size()
         self.__size_struct = _SIZES[self.__size]
+        # The largest count or length that a slot holds
+        self.__max_size = (1 << 8 * self.__size) - 1
         # The byte length of the header slots before the root's field offsets
         self.__header_size = layout.header_size()
 
@@ -307,9 +312,11 @@ class ByteBuffer:
         self.__position += SIZEOF_64
 
     def __pack(self, struct: Struct, value: float) -> None:
-        """Writes ``value`` at the position. struct checks the range and the
-        value before it writes, and raises struct.error, which isn't a
-        ValueError, or OverflowError for a float too large for a float32."""
+        """Writes ``value`` at the position. struct raises struct.error, which
+        isn't a ValueError, or OverflowError for a float too large for a
+        float32. It checks the end before it writes, but zeroes the slot before
+        it checks the value. Packing into a copy first would keep the slot, but
+        made each write about 50% slower."""
         try:
             struct.pack_into(self.__view, self.__position, value)
         except (StructError, OverflowError) as error:
@@ -381,9 +388,11 @@ class ByteBuffer:
         self, type_code: TypeCode, item_size: int, values: Buffer | Iterable[float]
     ) -> None:
         source = little_endian_bytes(type_code, as_elements(type_code, values))
+        count = len(source) // item_size
         self.__check_writable(self.__size + len(source))
+        self.__check_size(count)
 
-        self.__set_size(len(source) // item_size)
+        self.__set_size(count)
         self.__write(source)
 
     def set_bytes(self, bytes: Buffer) -> None:
@@ -418,6 +427,7 @@ class ByteBuffer:
         """Writes a string encoded as UTF-8, after its length."""
         source = _byte_view(encoded)
         self.__check_writable(self.__size + len(source))
+        self.__check_size(len(source))
 
         self.__set_size(len(source))
         self.__write(source)
@@ -446,9 +456,12 @@ class ByteBuffer:
     def set_vector(self, vector: Sequence[Buffer]) -> None:
         """Writes the number of items and then each item after its length."""
         sources = [_byte_view(item) for item in vector]
-        self.__check_writable(
-            self.__size * (1 + len(sources)) + sum(len(source) for source in sources)
-        )
+        lengths = [len(source) for source in sources]
+
+        # Check that the count and every item fit before writing any of them
+        self.__check_writable(self.__size * (1 + len(sources)) + sum(lengths))
+        self.__check_size(len(sources))
+        self.__check_size(max(lengths, default=0))
 
         self.__set_size(len(sources))
         for source in sources:
@@ -471,6 +484,15 @@ class ByteBuffer:
     def __check_writable(self, byte_length: int) -> None:
         if self.__position + byte_length > self.__length:
             raise self.__overflow(byte_length)
+
+    def __check_size(self, count: int) -> None:
+        """Raises ``ValueError`` if a count or length doesn't fit in a slot,
+        before anything is written."""
+        if count > self.__max_size:
+            raise ValueError(
+                f"Can't write {count} at {self.__position}: a {self.__size}-byte "
+                f"count or length holds at most {self.__max_size}"
+            )
 
     def __overflow(self, byte_length: int) -> ValueError:
         return ValueError(

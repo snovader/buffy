@@ -100,8 +100,10 @@ Validation is always on:
 
 Using the API wrongly raises other errors, whatever the bytes:
 
-- Writes past the end of a ``ByteBuffer``, and values that don't fit their
-  type, raise ``ValueError`` and write nothing.
+- Writes past the end of a ``ByteBuffer``, and arrays, strings and vectors
+  too long for its ``offset_size``, raise ``ValueError`` and write nothing. A
+  scalar that doesn't fit its type raises ``ValueError`` and leaves the
+  position where it was, though CPython zeroes the scalar's bytes first.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
   created with, a version that doesn't fit, or an array or table given as a
   buffer whose length changed before ``finalize()``. A field that would make
