@@ -11,7 +11,7 @@ use std::fmt::{self, Debug};
 use proptest::arbitrary::Arbitrary;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tafla::{ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
+use tafla::{Alignment, ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
 
 /// The cases of each property: enough to draw every kind of edge value
 /// several times, while `cargo test` stays fast
@@ -71,6 +71,15 @@ pub enum Value {
     F32Array(Vec<Bits<f32>>),
     F64Array(Vec<Bits<f64>>),
     String(String),
+    /// A struct's scalars, those of a struct within it in its place
+    Struct(Vec<Value>),
+    /// The scalars of each struct of an array, of `size` bytes, aligned to
+    /// `alignment`
+    StructArray {
+        size: usize,
+        alignment: Alignment,
+        items: Vec<Vec<Value>>,
+    },
     /// A nested table's fields, which the generated code writes from its
     /// builder at its default alignment, in the default layout
     Table(Vec<Value>),
@@ -238,6 +247,18 @@ fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), Build
         Value::F32Array(values) => builder.set_f32_array(floats(values)),
         Value::F64Array(values) => builder.set_f64_array(floats(values)),
         Value::String(string) => builder.set_str(string),
+        Value::Struct(scalars) => builder.set_struct(struct_bytes(scalars)),
+        Value::StructArray {
+            size,
+            alignment,
+            items,
+        } => {
+            let bytes = items
+                .iter()
+                .flat_map(|scalars| struct_bytes(scalars))
+                .collect::<Vec<_>>();
+            builder.set_struct_array(bytes, *size, *alignment)
+        }
         Value::Table(values) => builder.set_table(nested(values)?),
         Value::Vector(items) => {
             let items = items
@@ -247,6 +268,27 @@ fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), Build
             builder.set_vector(items)
         }
     }
+}
+
+/// A struct's scalars little-endian, one after another, written with the
+/// standard library rather than the generated code
+pub fn struct_bytes(scalars: &[Value]) -> Vec<u8> {
+    scalars
+        .iter()
+        .flat_map(|scalar| match scalar {
+            Value::I8(value) => value.to_le_bytes().to_vec(),
+            Value::U8(value) => value.to_le_bytes().to_vec(),
+            Value::I16(value) => value.to_le_bytes().to_vec(),
+            Value::U16(value) => value.to_le_bytes().to_vec(),
+            Value::I32(value) => value.to_le_bytes().to_vec(),
+            Value::U32(value) => value.to_le_bytes().to_vec(),
+            Value::I64(value) => value.to_le_bytes().to_vec(),
+            Value::U64(value) => value.to_le_bytes().to_vec(),
+            Value::F32(Bits(value)) => value.to_le_bytes().to_vec(),
+            Value::F64(Bits(value)) => value.to_le_bytes().to_vec(),
+            _ => unreachable!("structs hold scalars"),
+        })
+        .collect()
 }
 
 fn floats<T: Copy>(values: &[Bits<T>]) -> Vec<T> {

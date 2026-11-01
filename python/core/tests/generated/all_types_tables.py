@@ -20,10 +20,16 @@ from tests.generated.all_types.all_types import (
     Outer,
     OuterFields,
     Packed,
+    Path,
+    PathFields,
+    Point,
     Reserved,
     ReservedFields,
     Scalars,
     ScalarsFields,
+    Segment,
+    Structs,
+    StructsFields,
     Tree,
     TreeFields,
 )
@@ -31,6 +37,8 @@ from tests.generated.descriptions import (
     message,
     scalar,
     string,
+    struct,
+    struct_array,
     struct_bytes,
     table,
     typed_array,
@@ -108,6 +116,20 @@ def _read_keywords(keywords: Keywords) -> KeywordsFields:
         "self": keywords.self(),
         "type_": keywords.type_(),
     }
+
+
+def read_structs(structs: Structs) -> StructsFields:
+    return {
+        "packed": structs.packed(),
+        "documented": structs.documented(),
+        "segment": structs.segment(),
+        "segments": structs.segments(),
+        "path": _read_path(structs.path()),
+    }
+
+
+def _read_path(path: Path) -> PathFields:
+    return {"start": path.start(), "points": path.points()}
 
 
 # The tables that the generated code writes, in the conformance suite's model
@@ -200,6 +222,37 @@ def describe_reserved(fields: ReservedFields) -> Description:
     )
 
 
+# The scalar types of each struct, in the order that they lie in its bytes
+DOCUMENTED_TYPES = ["uint8", "uint16", "uint32"]
+POINT_TYPES = ["float32", "float32"]
+# A segment's scalars are those of its two points, in their place
+SEGMENT_TYPES = POINT_TYPES * 2
+
+
+def describe_structs(fields: StructsFields) -> Description:
+    """Structs as fields and in arrays, each array aligned to its structs'
+    largest scalar, and in a table nested from its builder"""
+    path = fields["path"]
+
+    return message(
+        DEFAULT_LAYOUT,
+        [
+            struct(describe_packed(fields["packed"])),
+            struct_array(
+                DOCUMENTED_TYPES, map(describe_documented, fields["documented"])
+            ),
+            struct(describe_segment(fields["segment"])),
+            struct_array(SEGMENT_TYPES, map(describe_segment, fields["segments"])),
+            table(
+                [
+                    struct(describe_point(path["start"])),
+                    struct_array(POINT_TYPES, map(describe_point, path["points"])),
+                ]
+            ),
+        ],
+    )
+
+
 def describe_packed(packed: Packed) -> list[Description]:
     """The fields of a ``Packed``, in the order that they lie in its bytes,
     which is the order of the scalar types, as its fields are named"""
@@ -228,10 +281,27 @@ def documented_bytes(documented: Documented) -> bytes:
     return struct_bytes(describe_documented(documented))
 
 
+def describe_point(point: Point) -> list[Description]:
+    return [scalar("float32", point.x), scalar("float32", point.y)]
+
+
+def describe_segment(segment: Segment) -> list[Description]:
+    """The fields of a ``Segment``: those of its points, one after the
+    other"""
+    return [*describe_point(segment.start), *describe_point(segment.end)]
+
+
+def segment_bytes(segment: Segment) -> bytes:
+    """A ``Segment`` as its points' fields lie at fixed offsets,
+    little-endian, without padding"""
+    return struct_bytes(describe_segment(segment))
+
+
 # Values of the fields over each type's full range, with -0.0, NaN and the
-# infinities, strings outside the Basic Multilingual Plane, empty arrays and
-# vectors, and trees a few levels deep. The fields of Scalars, Arrays and
-# Packed are named after their types, as SCALAR_VALUES names its strategies.
+# infinities, strings outside the Basic Multilingual Plane, empty arrays,
+# vectors and arrays of structs, and trees a few levels deep. The fields of
+# Scalars, Arrays and Packed are named after their types, as SCALAR_VALUES
+# names its strategies.
 
 _SCALARS: dict[str, SearchStrategy[Any]] = {
     kind: scalar_values(kind) for kind in SCALAR_VALUES
@@ -292,4 +362,21 @@ documented_structs: SearchStrategy[Documented] = builds(
     one=_SCALARS["uint8"],
     two=_SCALARS["uint16"],
     undocumented=_SCALARS["uint32"],
+)
+
+point_structs: SearchStrategy[Point] = builds(
+    Point, x=_SCALARS["float32"], y=_SCALARS["float32"]
+)
+
+segment_structs: SearchStrategy[Segment] = builds(
+    Segment, start=point_structs, end=point_structs
+)
+
+structs_fields: SearchStrategy[StructsFields] = builds(
+    StructsFields,
+    packed=packed_structs,
+    documented=_arrays(documented_structs),
+    segment=segment_structs,
+    segments=_arrays(segment_structs),
+    path=builds(PathFields, start=point_structs, points=_arrays(point_structs)),
 )

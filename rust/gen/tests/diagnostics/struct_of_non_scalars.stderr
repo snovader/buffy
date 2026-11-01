@@ -1,17 +1,23 @@
-error: struct fields must be scalars
+error: struct fields must be scalars or structs
  --> struct_of_non_scalars.tafla:3:11
   |
 3 |     name: string;
   |           ^^^^^^
 
-error: struct fields must be scalars
+error: struct fields must be scalars or structs
  --> struct_of_non_scalars.tafla:4:14
   |
 4 |     values: [float32];
   |              ^^^^^^^
 
-error: struct fields must be scalars
+error: struct fields must be scalars or structs
  --> struct_of_non_scalars.tafla:5:11
   |
 5 |     pair: Pair;
   |           ^^^^
+
+error: struct fields must be scalars or structs
+ --> struct_of_non_scalars.tafla:6:14
+  |
+6 |     points: [Point];
+  |              ^^^^^

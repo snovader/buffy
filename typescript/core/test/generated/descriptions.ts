@@ -37,6 +37,28 @@ export function string(value: string): FieldDescription {
     return { type: 'string', value };
 }
 
+/** A struct of scalars of these types and values, as generated code writes it */
+export function struct(
+    scalars: ReadonlyArray<readonly [ScalarType, number | bigint]>
+): FieldDescription {
+    return {
+        type: 'struct',
+        fields: scalars.map(([type, value]) => ({ type, value: jsonOf(value) }))
+    };
+}
+
+/** An array of structs of scalars of these types, with each struct's values */
+export function structArray(
+    types: ScalarType[],
+    items: ReadonlyArray<ReadonlyArray<number | bigint>>
+): FieldDescription {
+    return {
+        type: 'struct[]',
+        fields: types,
+        items: items.map(values => values.map(jsonOf))
+    };
+}
+
 /** A table nested from its builder at its default alignment, as generated code nests it */
 export function table(fields: FieldDescription[]): FieldDescription {
     return {

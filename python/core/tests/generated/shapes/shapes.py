@@ -3,7 +3,7 @@
 from collections.abc import Buffer, Iterable, Sequence
 from dataclasses import dataclass
 from struct import Struct, error
-from typing import ClassVar, Final, Self, TypedDict, Unpack
+from typing import ClassVar, Final, Literal, Self, TypedDict, Unpack
 
 from tafla import ByteBuffer, DecodeError, TableBuilder, TableLayout
 
@@ -264,6 +264,8 @@ class Sample:
 
     SIZE: ClassVar[int] = 12
     """The byte length of a ``Sample``"""
+    ALIGNMENT: ClassVar[Literal[4]] = 4
+    """The alignment of an array of a ``Sample``: its largest scalar's size"""
     _STRUCT: ClassVar[Struct] = Struct("<Iff")
 
     key: int
@@ -286,6 +288,19 @@ class Sample:
 
         return cls(*values)
 
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Sample``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        """
+        try:
+            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+        except error as cause:
+            raise DecodeError(
+                f"Samples don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+
     def serialize(self) -> bytes:
         """Returns the bytes of a ``Sample``.
 
@@ -295,3 +310,19 @@ class Sample:
             return self._STRUCT.pack(self.key, self.a, self.b)
         except (error, OverflowError) as cause:
             raise ValueError("Sample's values don't fit its fields") from cause
+
+    @classmethod
+    def serialize_array(cls, items: Sequence[Self]) -> bytearray:
+        """Returns the bytes of ``Sample``s one after another, as an array of them
+        holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        data = bytearray(len(items) * cls.SIZE)
+        try:
+            for index, item in enumerate(items):
+                cls._STRUCT.pack_into(data, index * cls.SIZE, item.key, item.a, item.b)
+        except (error, OverflowError) as cause:
+            raise ValueError("Sample's values don't fit its fields") from cause
+
+        return data

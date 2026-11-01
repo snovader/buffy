@@ -3,9 +3,15 @@ struct Sample {
     name: string;
     values: [float32];
     pair: Pair;
+    points: [Point];
 }
 
 table Pair {
     first: float32;
     second: float32;
+}
+
+struct Point {
+    x: float32;
+    y: float32;
 }

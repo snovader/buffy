@@ -4,7 +4,7 @@ writes and reads tables with tafla."""
 import unittest
 
 from hypothesis import given
-from hypothesis.strategies import binary, integers
+from hypothesis.strategies import binary, integers, lists
 
 from tafla import DecodeError
 from tests.generated import SETTINGS
@@ -15,29 +15,42 @@ from tests.generated.all_types.all_types import (
     Nested,
     NestedFields,
     Packed,
+    Point,
     Reserved,
     ReservedFields,
     Scalars,
     ScalarsFields,
+    Segment,
+    Structs,
+    StructsFields,
 )
 from tests.generated.all_types_tables import (
     arrays_fields,
     describe_arrays,
+    describe_documented,
     describe_nested,
     describe_packed,
+    describe_point,
     describe_reserved,
     describe_scalars,
+    describe_segment,
+    describe_structs,
     documented_bytes,
     documented_structs,
     nested_fields,
     packed_bytes,
     packed_structs,
+    point_structs,
     read_arrays,
     read_nested,
     read_reserved,
     read_scalars,
+    read_structs,
     reserved_fields,
     scalars_fields,
+    segment_bytes,
+    segment_structs,
+    structs_fields,
 )
 from tests.generated.byte_strategies import (
     Overwrite,
@@ -48,6 +61,7 @@ from tests.generated.byte_strategies import (
 )
 from tests.generated.expectations import (
     assert_same_fields,
+    assert_same_structs,
     assert_same_table,
     assert_values_or_decode_error,
 )
@@ -103,6 +117,19 @@ class TestRoundTrip(unittest.TestCase):
             describe_reserved(fields),
         )
 
+    @SETTINGS
+    @given(structs_fields, slices)
+    def test_reads_back_structs_as_fields_in_arrays_and_within_structs(
+        self, fields: StructsFields, slice: Slice
+    ) -> None:
+        data = slice.of(Structs.serialize(**fields))
+
+        assert_same_table(
+            self,
+            describe_structs(read_structs(Structs(data))),
+            describe_structs(fields),
+        )
+
 
 class TestTablesBuiltByHand(unittest.TestCase):
     @SETTINGS
@@ -140,6 +167,15 @@ class TestTablesBuiltByHand(unittest.TestCase):
         by_hand = bytes(build_table(describe_reserved(fields)).bytes())
 
         self.assertEqual(bytes(Reserved.serialize(**fields)), by_hand)
+
+    @SETTINGS
+    @given(structs_fields)
+    def test_writes_the_bytes_of_structs_and_aligned_arrays_that_table_builder_writes(
+        self, fields: StructsFields
+    ) -> None:
+        by_hand = bytes(build_table(describe_structs(fields)).bytes())
+
+        self.assertEqual(bytes(Structs.serialize(**fields)), by_hand)
 
 
 class TestDecodeErrors(unittest.TestCase):
@@ -180,6 +216,15 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_reserved(Reserved(data)))
 
     @SETTINGS
+    @given(structs_fields, corruptions)
+    def test_reads_corrupted_structs_as_values_or_raises_decode_error(
+        self, fields: StructsFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(Structs.serialize(**fields)))
+
+        assert_values_or_decode_error(lambda: read_structs(Structs(data)))
+
+    @SETTINGS
     @given(binary(max_size=64))
     def test_reads_arbitrary_bytes_as_any_message_or_raises_decode_error(
         self, data: bytes
@@ -188,9 +233,34 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_arrays(Arrays(data)))
         assert_values_or_decode_error(lambda: read_nested(Nested(data)))
         assert_values_or_decode_error(lambda: read_reserved(Reserved(data)))
+        assert_values_or_decode_error(lambda: read_structs(Structs(data)))
 
 
 class TestStructs(unittest.TestCase):
+    def test_gives_the_size_and_alignment_of_each_struct(self) -> None:
+        """An array of structs is aligned to the size of its structs' largest
+        scalar"""
+        cases: list[tuple[str, int, int, int, int]] = [
+            ("Packed", Packed.SIZE, Packed.ALIGNMENT, 42, 8),
+            ("Documented", Documented.SIZE, Documented.ALIGNMENT, 7, 4),
+            ("Segment", Segment.SIZE, Segment.ALIGNMENT, 16, 4),
+            ("Point", Point.SIZE, Point.ALIGNMENT, 8, 4),
+        ]
+
+        for name, size, alignment, expected_size, expected_alignment in cases:
+            with self.subTest(name):
+                self.assertEqual((size, alignment), (expected_size, expected_alignment))
+
+    @SETTINGS
+    @given(segment_structs)
+    def test_writes_a_segment_as_the_scalars_of_its_points_one_after_another(
+        self, segment: Segment
+    ) -> None:
+        points = segment.start.serialize() + segment.end.serialize()
+
+        self.assertEqual(segment.serialize(), segment_bytes(segment))
+        self.assertEqual(segment.serialize(), points)
+
     @SETTINGS
     @given(packed_structs)
     def test_writes_a_packed_little_endian_at_fixed_offsets_in_42_bytes(
@@ -247,6 +317,69 @@ class TestStructs(unittest.TestCase):
 
         with self.assertRaises(DecodeError):
             Documented.read(data, offset)
+
+    # serialize_array() writes each struct's serialize() one after another,
+    # and read_array() reads them back, but not a part of one more
+
+    @SETTINGS
+    @given(
+        lists(packed_structs, max_size=8), binary(min_size=1, max_size=Packed.SIZE - 1)
+    )
+    def test_reads_back_every_packed_that_serialize_array_writes(
+        self, items: list[Packed], partial: bytes
+    ) -> None:
+        data = Packed.serialize_array(items)
+
+        self.assertEqual(data, b"".join(item.serialize() for item in items))
+        assert_same_structs(self, Packed.read_array(data), items, describe_packed)
+        with self.assertRaises(DecodeError):
+            Packed.read_array(data + partial)
+
+    @SETTINGS
+    @given(
+        lists(documented_structs, max_size=8),
+        binary(min_size=1, max_size=Documented.SIZE - 1),
+    )
+    def test_reads_back_every_documented_that_serialize_array_writes(
+        self, items: list[Documented], partial: bytes
+    ) -> None:
+        data = Documented.serialize_array(items)
+
+        self.assertEqual(data, b"".join(item.serialize() for item in items))
+        assert_same_structs(
+            self, Documented.read_array(data), items, describe_documented
+        )
+        with self.assertRaises(DecodeError):
+            Documented.read_array(data + partial)
+
+    @SETTINGS
+    @given(
+        lists(segment_structs, max_size=8),
+        binary(min_size=1, max_size=Segment.SIZE - 1),
+    )
+    def test_reads_back_every_segment_that_serialize_array_writes(
+        self, items: list[Segment], partial: bytes
+    ) -> None:
+        data = Segment.serialize_array(items)
+
+        self.assertEqual(data, b"".join(item.serialize() for item in items))
+        assert_same_structs(self, Segment.read_array(data), items, describe_segment)
+        with self.assertRaises(DecodeError):
+            Segment.read_array(data + partial)
+
+    @SETTINGS
+    @given(
+        lists(point_structs, max_size=8), binary(min_size=1, max_size=Point.SIZE - 1)
+    )
+    def test_reads_back_every_point_that_serialize_array_writes(
+        self, items: list[Point], partial: bytes
+    ) -> None:
+        data = Point.serialize_array(items)
+
+        self.assertEqual(data, b"".join(item.serialize() for item in items))
+        assert_same_structs(self, Point.read_array(data), items, describe_point)
+        with self.assertRaises(DecodeError):
+            Point.read_array(data + partial)
 
 
 if __name__ == "__main__":

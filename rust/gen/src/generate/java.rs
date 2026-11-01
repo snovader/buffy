@@ -29,9 +29,9 @@ const STYLE: Style = Style {
 
 /// Names that getters and record components can't take, which names take a
 /// `_` after too: the methods of `Object` without parameters, which they would
-/// override, the method of structs' records, and the local that it writes
-/// their components into
-const MEMBERS: [&str; 10] = [
+/// override, the methods of structs' records, and the parameters that they
+/// write their components with
+const MEMBERS: [&str; 12] = [
     "bytes",
     "clone",
     "finalize",
@@ -39,9 +39,11 @@ const MEMBERS: [&str; 10] = [
     "hashCode",
     "notify",
     "notifyAll",
+    "offset",
     "serialize",
     "toString",
     "wait",
+    "write",
 ];
 
 pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<GeneratedFile> {
@@ -74,9 +76,10 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
                     writer.blank();
                     writer.line("import java.lang.invoke.MethodHandles;");
                     writer.line("import java.lang.invoke.VarHandle;");
+                    writer.line("import java.nio.ByteBuffer;");
                     writer.line("import java.nio.ByteOrder;");
                     writer.blank();
-                    structure(&mut writer, definition);
+                    structure(&mut writer, schema, definition);
                 }
             }
 
@@ -94,10 +97,13 @@ fn imports(
     definition: &Definition,
     layout: Option<Layout>,
 ) {
-    let has_vector = definition
-        .fields
-        .iter()
-        .any(|field| matches!(field.field_type, FieldType::Vector(_)));
+    let has = |predicate: fn(FieldType) -> bool| {
+        definition
+            .fields
+            .iter()
+            .any(|field| predicate(field.field_type))
+    };
+    let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
 
     let mut names = Vec::new();
     if layout.is_some_and(|layout| layout.offset_size != OffsetSize::U32) {
@@ -265,21 +271,29 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     writer.close("}");
 }
 
-fn structure(writer: &mut CodeWriter, definition: &Definition) {
+#[allow(clippy::too_many_lines)]
+fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     let name = &definition.name;
-    let scalars: Vec<(String, Scalar)> = definition
+    // Each field, its offset in the struct, and its own struct's size
+    let mut offset = 0;
+    let fields: Vec<(String, FieldType, usize)> = definition
         .fields
         .iter()
-        .map(|field| match field.field_type {
-            FieldType::Scalar(scalar) => (identifier(&field.name), scalar),
-            _ => unreachable!("structs hold scalars only"),
+        .map(|field| {
+            let at = offset;
+            offset += match field.field_type {
+                FieldType::Scalar(scalar) => usize::from(scalar.size()),
+                FieldType::Struct(index) => schema.struct_size(schema.definition(index)),
+                _ => unreachable!("structs hold scalars and structs only"),
+            };
+            (identifier(&field.name), field.field_type, at)
         })
         .collect();
 
     writer.lines(&javadoc(&definition.docs));
-    let components = scalars
+    let components = fields
         .iter()
-        .map(|(field, scalar)| text(format!("{} {field}", scalar_type(*scalar))))
+        .map(|(field, field_type, _)| text(format!("{} {field}", value_type(*field_type, schema))))
         .collect();
     writer.statement(
         &STYLE,
@@ -291,18 +305,31 @@ fn structure(writer: &mut CodeWriter, definition: &Definition) {
     writer.lines(&javadoc(&[format!("The byte length of {}", article(name))]));
     writer.line(format!(
         "public static final int SIZE = {};",
-        definition.struct_size()
+        schema.struct_size(definition)
+    ));
+    writer.blank();
+    writer.lines(&javadoc(&[format!(
+        "The alignment of an array of {}: its largest scalar's size",
+        article(name)
+    )]));
+    writer.line(format!(
+        "public static final int ALIGNMENT = {};",
+        schema.struct_alignment(definition)
     ));
     writer.blank();
 
-    writer.line(
-        "// The fields lie at fixed offsets, so they're read and written in place, little-endian",
-    );
     let mut handles: Vec<&str> = Vec::new();
-    for (_, scalar) in &scalars {
-        if let Some((handle, array)) = var_handle(*scalar)
+    for (_, field_type, _) in &fields {
+        if let FieldType::Scalar(scalar) = field_type
+            && let Some((handle, array)) = var_handle(*scalar)
             && !handles.contains(&handle)
         {
+            if handles.is_empty() {
+                writer.line(
+                    "// The fields lie at fixed offsets, so they're read and written in place, \
+                     little-endian",
+                );
+            }
             handles.push(handle);
             writer.line(format!("private static final VarHandle {handle} ="));
             writer.indent();
@@ -312,7 +339,9 @@ fn structure(writer: &mut CodeWriter, definition: &Definition) {
             writer.dedent();
         }
     }
-    writer.blank();
+    if !handles.is_empty() {
+        writer.blank();
+    }
 
     writer.lines(&javadoc(&[
         format!("Reads {} at `offset` in `bytes`", article(name)),
@@ -337,28 +366,88 @@ fn structure(writer: &mut CodeWriter, definition: &Definition) {
     writer.line(");");
     writer.close("}");
     writer.blank();
-    let mut offset = 0;
-    let reads = scalars
+    let reads = fields
         .iter()
-        .map(|(_, scalar)| {
-            let read = struct_read(*scalar, &offset_expression("offset", offset));
-            offset += usize::from(scalar.size());
-            text(read)
+        .map(|(_, field_type, at)| {
+            let at = offset_expression("offset", *at);
+            text(match field_type {
+                FieldType::Scalar(scalar) => struct_read(*scalar, &at),
+                FieldType::Struct(index) => {
+                    format!("{}.read(bytes, {at})", schema.definition(*index).name)
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            })
         })
         .collect();
     writer.statement(&STYLE, "return ", &call(format!("new {name}"), reads), ";");
     writer.close("}");
     writer.blank();
 
-    writer.open("public byte[] serialize() {");
-    writer.line("var bytes = new byte[SIZE];");
-    let mut offset = 0;
-    for (field, scalar) in &scalars {
-        writer.line(format!("{};", struct_write(*scalar, offset, field)));
-        offset += usize::from(scalar.size());
-    }
+    writer.lines(&javadoc(&[
+        format!(
+            "Reads {} at `offset` in a little-endian view, such as of an array of them",
+            article(name)
+        ),
+        String::new(),
+        "@throws IndexOutOfBoundsException if the view ends before it does".to_owned(),
+    ]));
+    writer.open(format!(
+        "public static {name} read(ByteBuffer view, int offset) {{"
+    ));
+    let reads = fields
+        .iter()
+        .map(|(_, field_type, at)| {
+            let at = offset_expression("offset", *at);
+            text(match field_type {
+                FieldType::Scalar(scalar) => view_read(*scalar, &at),
+                FieldType::Struct(index) => {
+                    format!("{}.read(view, {at})", schema.definition(*index).name)
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            })
+        })
+        .collect();
+    writer.statement(&STYLE, "return ", &call(format!("new {name}"), reads), ";");
+    writer.close("}");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "{{@return the bytes of `{name}`s one after another, as an array of them holds them}}"
+    )]));
+    writer.open(format!(
+        "public static byte[] serializeArray({name}[] items) {{"
+    ));
+    writer.line("var bytes = new byte[items.length * SIZE];");
+    writer.open("for (int i = 0; i < items.length; i++) {");
+    writer.line("items[i].write(bytes, i * SIZE);");
+    writer.close("}");
     writer.blank();
     writer.line("return bytes;");
+    writer.close("}");
+    writer.blank();
+
+    writer.open("public byte[] serialize() {");
+    writer.line("var bytes = new byte[SIZE];");
+    writer.line("write(bytes, 0);");
+    writer.blank();
+    writer.line("return bytes;");
+    writer.close("}");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "Writes the `{name}` at `offset` in `bytes`, which must hold it"
+    )]));
+    writer.open("public void write(byte[] bytes, int offset) {");
+    for (field, field_type, at) in &fields {
+        let at = offset_expression("offset", *at);
+        match field_type {
+            FieldType::Scalar(scalar) => {
+                writer.line(format!("{};", struct_write(*scalar, &at, field)));
+            }
+            FieldType::Struct(_) => writer.line(format!("{field}.write(bytes, {at});")),
+            _ => unreachable!("structs hold scalars and structs only"),
+        }
+    }
     writer.close("}");
     writer.close("}");
 }
@@ -382,10 +471,12 @@ fn fields_record(writer: &mut CodeWriter, schema: &Schema, definition: &Definiti
 
     // A record of arrays compares them by identity, which doesn't matter for
     // values that are only written
-    let has_array = definition
-        .fields
-        .iter()
-        .any(|field| matches!(field.field_type, FieldType::Array(_)));
+    let has_array = definition.fields.iter().any(|field| {
+        matches!(
+            field.field_type,
+            FieldType::Array(_) | FieldType::StructArray(_)
+        )
+    });
     if has_array {
         writer.line("@SuppressWarnings(\"ArrayRecordComponent\") // Written, not compared");
     }
@@ -395,25 +486,43 @@ fn fields_record(writer: &mut CodeWriter, schema: &Schema, definition: &Definiti
 fn setters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields.{}()", identifier(&field.name));
-        let (method, argument) = match field.field_type {
-            FieldType::Scalar(scalar) => (format!("set{}", method_name(scalar)), text(value)),
-            FieldType::Array(scalar) => (format!("set{}Array", method_name(scalar)), text(value)),
-            FieldType::String => ("setString".to_owned(), text(value)),
+        let (method, arguments) = match field.field_type {
+            FieldType::Scalar(scalar) => (format!("set{}", method_name(scalar)), vec![text(value)]),
+            FieldType::Array(scalar) => (
+                format!("set{}Array", method_name(scalar)),
+                vec![text(value)],
+            ),
+            FieldType::String => ("setString".to_owned(), vec![text(value)]),
+            FieldType::Struct(_) => (
+                "setStruct".to_owned(),
+                vec![text(format!("{value}.serialize()"))],
+            ),
+            FieldType::StructArray(index) => {
+                let structure = &schema.definition(index).name;
+                (
+                    "setStructArray".to_owned(),
+                    vec![
+                        call(format!("{structure}.serializeArray"), vec![text(value)]),
+                        text(format!("{structure}.SIZE")),
+                        text(format!("{structure}.ALIGNMENT")),
+                    ],
+                )
+            }
             FieldType::Table(index) => {
                 let table = &schema.definition(index).name;
                 let builder = call(format!("{table}.builder"), vec![text(value)]);
-                ("setTable".to_owned(), builder)
+                ("setTable".to_owned(), vec![builder])
             }
             FieldType::Vector(index) => {
                 let table = &schema.definition(index).name;
                 let builders = format!("{value}.stream().map({table}::builder).toList()");
-                ("setVector".to_owned(), text(builders))
+                ("setVector".to_owned(), vec![text(builders)])
             }
         };
         writer.statement(
             &STYLE,
             "",
-            &call(format!("builder.{method}"), vec![argument]),
+            &call(format!("builder.{method}"), arguments),
             ";",
         );
     }
@@ -448,6 +557,32 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                 ));
             }
             FieldType::String => writer.line(format!("return buffer.getString({offset});")),
+            FieldType::Struct(index) => {
+                let structure = &schema.definition(index).name;
+                writer.line(format!(
+                    "return {structure}.read(buffer.bytes(), {offset});"
+                ));
+            }
+            FieldType::StructArray(index) => {
+                // An array, as arrays of scalars are, from a loop rather than
+                // a stream to a list, which took 2.6 times as long to read
+                // 100 structs
+                let structure = &schema.definition(index).name;
+                writer.line(format!(
+                    "var view = buffer.getStructArray({offset}, {structure}.SIZE);"
+                ));
+                writer.line(format!(
+                    "var items = new {structure}[view.remaining() / {structure}.SIZE];"
+                ));
+                writer.blank();
+                writer.open("for (int i = 0; i < items.length; i++) {");
+                writer.line(format!(
+                    "items[i] = {structure}.read(view, i * {structure}.SIZE);"
+                ));
+                writer.close("}");
+                writer.blank();
+                writer.line("return items;");
+            }
             FieldType::Table(table) => {
                 let table = &schema.definition(table).name;
                 writer.line(format!("return new {table}(buffer, {offset});"));
@@ -531,7 +666,8 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),
-        FieldType::Table(index) => schema.definition(index).name.clone(),
+        FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
+        FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
         FieldType::Vector(index) => format!("List<{}>", schema.definition(index).name),
     }
 }
@@ -579,16 +715,32 @@ fn struct_read(scalar: Scalar, at: &str) -> String {
     }
 }
 
-fn struct_write(scalar: Scalar, offset: usize, field: &str) -> String {
+/// Reads a scalar from a little-endian view, as the runtime's getters widen
+/// it
+fn view_read(scalar: Scalar, at: &str) -> String {
     match scalar {
-        Scalar::Int8 => format!("bytes[{offset}] = {field}"),
-        Scalar::Uint8 => format!("bytes[{offset}] = (byte) {field}"),
-        Scalar::Int16 => format!("INT16.set(bytes, {offset}, {field})"),
-        Scalar::Uint16 => format!("INT16.set(bytes, {offset}, (short) {field})"),
-        Scalar::Int32 => format!("INT32.set(bytes, {offset}, {field})"),
-        Scalar::Uint32 => format!("INT32.set(bytes, {offset}, (int) {field})"),
-        Scalar::Int64 | Scalar::Uint64 => format!("INT64.set(bytes, {offset}, {field})"),
-        Scalar::Float32 => format!("FLOAT32.set(bytes, {offset}, {field})"),
-        Scalar::Float64 => format!("FLOAT64.set(bytes, {offset}, {field})"),
+        Scalar::Int8 => format!("view.get({at})"),
+        Scalar::Uint8 => format!("(short) Byte.toUnsignedInt(view.get({at}))"),
+        Scalar::Int16 => format!("view.getShort({at})"),
+        Scalar::Uint16 => format!("Short.toUnsignedInt(view.getShort({at}))"),
+        Scalar::Int32 => format!("view.getInt({at})"),
+        Scalar::Uint32 => format!("Integer.toUnsignedLong(view.getInt({at}))"),
+        Scalar::Int64 | Scalar::Uint64 => format!("view.getLong({at})"),
+        Scalar::Float32 => format!("view.getFloat({at})"),
+        Scalar::Float64 => format!("view.getDouble({at})"),
+    }
+}
+
+fn struct_write(scalar: Scalar, at: &str, field: &str) -> String {
+    match scalar {
+        Scalar::Int8 => format!("bytes[{at}] = {field}"),
+        Scalar::Uint8 => format!("bytes[{at}] = (byte) {field}"),
+        Scalar::Int16 => format!("INT16.set(bytes, {at}, {field})"),
+        Scalar::Uint16 => format!("INT16.set(bytes, {at}, (short) {field})"),
+        Scalar::Int32 => format!("INT32.set(bytes, {at}, {field})"),
+        Scalar::Uint32 => format!("INT32.set(bytes, {at}, (int) {field})"),
+        Scalar::Int64 | Scalar::Uint64 => format!("INT64.set(bytes, {at}, {field})"),
+        Scalar::Float32 => format!("FLOAT32.set(bytes, {at}, {field})"),
+        Scalar::Float64 => format!("FLOAT64.set(bytes, {at}, {field})"),
     }
 }

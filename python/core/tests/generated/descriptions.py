@@ -4,8 +4,8 @@ writes the same table by hand with ``TableBuilder``, as the suite builds its
 tables, and ``comparable_table()`` compares what the generated code reads with
 what it wrote."""
 
-import struct
 from collections.abc import Buffer, Iterable
+from struct import pack
 
 from tests.tables import DEFAULT_LAYOUT, FORMATS, Description, from_json, to_json
 
@@ -30,6 +30,21 @@ def typed_array(kind: str, values: Buffer | Iterable[float]) -> Description:
 
 def string(value: str) -> Description:
     return {"type": "string", "value": value}
+
+
+def struct(fields: list[Description]) -> Description:
+    """A struct of scalar fields, which lie one after another in its bytes"""
+    return {"type": "struct", "fields": fields}
+
+
+def struct_array(types: list[str], items: Iterable[list[Description]]) -> Description:
+    """An array of structs of scalars of these types, from each struct's scalar
+    fields, as ``struct()`` takes them"""
+    return {
+        "type": "struct[]",
+        "fields": types,
+        "items": [[field["value"] for field in fields] for fields in items],
+    }
 
 
 def table(fields: list[Description]) -> Description:
@@ -70,6 +85,6 @@ def struct_bytes(fields: list[Description]) -> bytes:
     packed = bytearray()
     for field in fields:
         kind = field["type"]
-        packed += struct.pack(f"<{FORMATS[kind]}", from_json(kind, field["value"]))
+        packed += pack(f"<{FORMATS[kind]}", from_json(kind, field["value"]))
 
     return bytes(packed)

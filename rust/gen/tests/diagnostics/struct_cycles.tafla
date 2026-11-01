@@ -1,0 +1,24 @@
+// A struct can hold another struct, but not itself, even within another one
+
+struct Point {
+    x: float32;
+    next: Point;
+}
+
+struct Inner {
+    outer: Outer;
+}
+
+struct Outer {
+    inner: Inner;
+}
+
+struct Line {
+    from: Vertex;
+    to: Vertex;
+}
+
+struct Vertex {
+    x: float32;
+    y: float32;
+}

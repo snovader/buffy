@@ -1,6 +1,7 @@
 // Every type of field: each scalar alone and as an array, strings, nested
-// tables, vectors of tables and structs, with doc comments on each kind of
-// declaration and field names that are keywords in some target language.
+// tables, vectors of tables, and structs alone, as fields, in arrays and
+// within other structs, with doc comments on each kind of declaration and
+// field names that are keywords in some target language.
 
 /// A field of every scalar type
 message Scalars {
@@ -70,6 +71,36 @@ table Keywords {
 /// A message that nests the table of keywords, so that it's written
 message Reserved {
     keywords: Keywords;
+}
+
+/// Structs as fields, in place like scalars, and in arrays, which are aligned
+/// to their structs' largest scalar
+message Structs {
+    /// A struct of every scalar type
+    packed: Packed;
+    /// An array of structs of 7 bytes, aligned to 4
+    documented: [Documented];
+    /// A struct of structs
+    segment: Segment;
+    segments: [Segment];
+    /// A table nested in the message, which holds structs too
+    path: Path;
+}
+
+table Path {
+    start: Point;
+    points: [Point];
+}
+
+/// Two points, whose scalars lie in the segment's place
+struct Segment {
+    start: Point;
+    end: Point;
+}
+
+struct Point {
+    x: float32;
+    y: float32;
 }
 
 /// A struct of every scalar type, at fixed offsets without padding

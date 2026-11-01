@@ -12,6 +12,7 @@ import {
     describeNested,
     describeReserved,
     describeScalars,
+    describeStructs,
     documentedBytes,
     NESTED_FIELDS,
     packedBytes,
@@ -21,7 +22,9 @@ import {
     readNested,
     readReserved,
     readScalars,
-    SCALARS_FIELDS
+    readStructs,
+    SCALARS_FIELDS,
+    STRUCTS_FIELDS
 } from './allTypesTables.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
 
@@ -65,6 +68,15 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 expect(readReserved(new allTypes.Reserved(bytes))).toEqual(fields);
             }
         );
+
+        it.prop([STRUCTS_FIELDS, SLICES])(
+            'should read back structs as fields, in arrays and within structs, wherever their bytes lie',
+            (fields, slice) => {
+                const bytes = sliceOf(allTypes.Structs.serialize(fields), slice);
+
+                expect(readStructs(new allTypes.Structs(bytes))).toEqual(fields);
+            }
+        );
     });
 
     describe('tables built by hand', () => {
@@ -101,6 +113,15 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 const byHand = buildTable(describeReserved(fields)).bytes();
 
                 expect(allTypes.Reserved.serialize(fields)).toStrictEqual(byHand);
+            }
+        );
+
+        it.prop([STRUCTS_FIELDS])(
+            'should write the bytes of Structs, with its arrays aligned to their structs, that TableBuilder writes',
+            fields => {
+                const byHand = buildTable(describeStructs(fields)).bytes();
+
+                expect(allTypes.Structs.serialize(fields)).toStrictEqual(byHand);
             }
         );
     });
@@ -146,6 +167,16 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             }
         );
 
+        it.prop([STRUCTS_FIELDS, CORRUPTIONS])(
+            'should read corrupted Structs as values or throw DecodeError',
+            (fields, corruption) => {
+                const bytes = allTypes.Structs.serialize(fields);
+                const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
+
+                expectValuesOrDecodeError(() => readStructs(new allTypes.Structs(corrupted)));
+            }
+        );
+
         it.prop([fc.uint8Array({ maxLength: 64 })])(
             'should read arbitrary bytes as any message or throw DecodeError',
             bytes => {
@@ -153,6 +184,7 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 expectValuesOrDecodeError(() => readArrays(new allTypes.Arrays(bytes)));
                 expectValuesOrDecodeError(() => readNested(new allTypes.Nested(bytes)));
                 expectValuesOrDecodeError(() => readReserved(new allTypes.Reserved(bytes)));
+                expectValuesOrDecodeError(() => readStructs(new allTypes.Structs(bytes)));
             }
         );
     });

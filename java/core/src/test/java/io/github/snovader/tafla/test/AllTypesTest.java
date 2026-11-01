@@ -1,9 +1,12 @@
 package io.github.snovader.tafla.test;
 
+import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.test.generated.all_types.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
+
+import java.util.List;
 
 import static io.github.snovader.tafla.test.AllTypesTables.*;
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
@@ -46,6 +49,15 @@ public class AllTypesTest {
         var bytes = Reserved.serialize(fields);
 
         assertEquals(describeReserved(fields), describeReserved(readReserved(new Reserved(bytes))));
+    }
+
+    @Property
+    void structs_read_back_structs_as_fields_in_arrays_within_structs_and_in_a_nested_table(
+        @ForAll("structs") Structs.Fields fields
+    ) {
+        var bytes = Structs.serialize(fields);
+
+        assertEquals(describeStructs(fields), describeStructs(readStructs(new Structs(bytes))));
     }
 
     @Example
@@ -97,6 +109,15 @@ public class AllTypesTest {
         assertArrayEquals(byHand, Reserved.serialize(fields), () -> describeReserved(fields).toString());
     }
 
+    @Property
+    void structs_are_written_with_arrays_aligned_to_their_structs_as_TableBuilder_writes_them(
+        @ForAll("structs") Structs.Fields fields
+    ) {
+        var byHand = Tables.build(describeStructs(fields)).bytes();
+
+        assertArrayEquals(byHand, Structs.serialize(fields), () -> describeStructs(fields).toString());
+    }
+
     // Decode exceptions
 
     @Property
@@ -140,11 +161,22 @@ public class AllTypesTest {
     }
 
     @Property
+    void corrupted_structs_read_as_values_or_throw_DecodeException(
+        @ForAll("structs") Structs.Fields fields,
+        @ForAll("corruptions") Corruption corruption
+    ) {
+        var bytes = corruption.applyTo(Structs.serialize(fields));
+
+        assertValuesOrDecodeException(() -> readStructs(new Structs(bytes)));
+    }
+
+    @Property
     void any_bytes_read_as_any_message_or_throw_DecodeException(@ForAll @Size(max = 64) byte[] bytes) {
         assertValuesOrDecodeException(() -> readScalars(new Scalars(bytes)));
         assertValuesOrDecodeException(() -> readArrays(new Arrays(bytes)));
         assertValuesOrDecodeException(() -> readNested(new Nested(bytes)));
         assertValuesOrDecodeException(() -> readReserved(new Reserved(bytes)));
+        assertValuesOrDecodeException(() -> readStructs(new Structs(bytes)));
     }
 
     // Structs
@@ -221,6 +253,89 @@ public class AllTypesTest {
         }
     }
 
+    @Example
+    void a_structs_size_is_the_sum_of_its_scalars_sizes_and_its_alignment_the_largest_of_them() {
+        assertSizeAndAlignment(PACKED_TYPES, Packed.SIZE, Packed.ALIGNMENT);
+        assertSizeAndAlignment(DOCUMENTED_TYPES, Documented.SIZE, Documented.ALIGNMENT);
+        assertSizeAndAlignment(SEGMENT_TYPES, Segment.SIZE, Segment.ALIGNMENT);
+        assertSizeAndAlignment(POINT_TYPES, Point.SIZE, Point.ALIGNMENT);
+
+        // A Packed's float64s and int64s align it to 8, and the others' 32-bit scalars to 4
+        assertEquals(
+            List.of(8, 4, 4, 4),
+            List.of(Packed.ALIGNMENT, Documented.ALIGNMENT, Segment.ALIGNMENT, Point.ALIGNMENT)
+        );
+    }
+
+    private static void assertSizeAndAlignment(List<ScalarType> types, int size, int alignment) {
+        assertEquals(StructBytes.size(types), size, () -> "The size of a struct of " + types);
+        assertEquals(StructBytes.alignment(types), alignment, () -> "The alignment of a struct of " + types);
+    }
+
+    @Property
+    void a_struct_reads_the_same_from_its_bytes_and_from_a_view_of_them_at_any_offset(
+        @ForAll @Size(max = 16) byte[] before,
+        @ForAll("packeds") Packed packed,
+        @ForAll("documenteds") Documented documented,
+        @ForAll("segments") Segment segment,
+        @ForAll("points") Point point
+    ) {
+        // The structs one after another, unaligned after the bytes before them, which a struct array's
+        // view holds as tafla's read-only, little-endian buffer
+        var parts = List.of(before, packed.serialize(), documented.serialize(), segment.serialize(), point.serialize());
+        var bytes = concatenated(parts);
+        var view = new ByteBuffer(bytes).getStruct(0, bytes.length);
+
+        var offset = before.length;
+        assertEquals(describePacked(packed), describePacked(Packed.read(bytes, offset)));
+        assertEquals(describePacked(packed), describePacked(Packed.read(view, offset)));
+
+        offset += Packed.SIZE;
+        assertEquals(describeDocumented(documented), describeDocumented(Documented.read(bytes, offset)));
+        assertEquals(describeDocumented(documented), describeDocumented(Documented.read(view, offset)));
+
+        offset += Documented.SIZE;
+        assertEquals(describeSegment(segment), describeSegment(Segment.read(bytes, offset)));
+        assertEquals(describeSegment(segment), describeSegment(Segment.read(view, offset)));
+
+        offset += Segment.SIZE;
+        assertEquals(describePoint(point), describePoint(Point.read(bytes, offset)));
+        assertEquals(describePoint(point), describePoint(Point.read(view, offset)));
+    }
+
+    @Property
+    void serializeArray_writes_each_structs_serialized_bytes_one_after_another(
+        @ForAll @Size(max = 4) List<@From("packeds") Packed> packeds,
+        @ForAll @Size(max = 4) List<@From("documenteds") Documented> documenteds,
+        @ForAll @Size(max = 4) List<@From("segments") Segment> segments,
+        @ForAll @Size(max = 4) List<@From("points") Point> points
+    ) {
+        assertArrayEquals(
+            concatenated(packeds.stream().map(Packed::serialize).toList()),
+            Packed.serializeArray(packeds.toArray(Packed[]::new))
+        );
+        assertArrayEquals(
+            concatenated(documenteds.stream().map(Documented::serialize).toList()),
+            Documented.serializeArray(documenteds.toArray(Documented[]::new))
+        );
+        assertArrayEquals(
+            concatenated(segments.stream().map(Segment::serialize).toList()),
+            Segment.serializeArray(segments.toArray(Segment[]::new))
+        );
+        assertArrayEquals(
+            concatenated(points.stream().map(Point::serialize).toList()),
+            Point.serializeArray(points.toArray(Point[]::new))
+        );
+    }
+
+    /** {@return the bytes of the parts, one after another} */
+    private static byte[] concatenated(List<byte[]> parts) {
+        var bytes = java.nio.ByteBuffer.allocate(parts.stream().mapToInt(part -> part.length).sum());
+        parts.forEach(bytes::put);
+
+        return bytes.array();
+    }
+
     @Provide
     Arbitrary<Scalars.Fields> scalars() {
         return scalarsFields();
@@ -249,6 +364,21 @@ public class AllTypesTest {
     @Provide
     Arbitrary<Documented> documenteds() {
         return documentedFields();
+    }
+
+    @Provide
+    Arbitrary<Structs.Fields> structs() {
+        return structsFields();
+    }
+
+    @Provide
+    Arbitrary<Segment> segments() {
+        return segmentFields();
+    }
+
+    @Provide
+    Arbitrary<Point> points() {
+        return pointFields();
     }
 
     @Provide
