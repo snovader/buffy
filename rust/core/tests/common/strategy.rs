@@ -10,7 +10,9 @@
 use proptest::{char, collection::vec, num, option, prelude::*, sample::select};
 use tafla::{Alignment, OffsetSize};
 
-use super::description::{Field, Layout, Nested, Source, Table};
+use super::description::{
+    Field, Layout, Nested, ScalarType, Source, Table, struct_alignment, struct_size, struct_types,
+};
 
 /// How deeply tables nest: the root's fields can hold tables whose fields
 /// hold tables
@@ -48,15 +50,16 @@ pub fn offset_size() -> impl Strategy<Value = OffsetSize> + Clone {
     select(OFFSET_SIZES.to_vec())
 }
 
-/// The most fields, array elements, characters and vector items that a
-/// table holds. A table of 1-byte offsets, or nested in one, holds few
-/// enough to fit in its 255 bytes more often than not, and others hold
-/// enough for 2-byte lengths and offsets past 255.
+/// The most fields, array elements, characters, structs in an array and
+/// vector items that a table holds. A table of 1-byte offsets, or nested in
+/// one, holds few enough to fit in its 255 bytes more often than not, and
+/// others hold enough for 2-byte lengths and offsets past 255.
 #[derive(Clone, Copy)]
 struct Limits {
     fields: usize,
     elements: usize,
     characters: usize,
+    structs: usize,
     items: usize,
 }
 
@@ -67,6 +70,7 @@ impl Limits {
                 fields: 5,
                 elements: 6,
                 characters: 6,
+                structs: 2,
                 items: 2,
             }
         } else {
@@ -74,14 +78,15 @@ impl Limits {
                 fields: 8,
                 elements: 24,
                 characters: 16,
+                structs: 6,
                 items: 4,
             }
         }
     }
 }
 
-/// The strategies of scalars, arrays and strings, which a strategy of
-/// tables creates once for all its fields: creating them for each kind of
+/// The strategies of scalars, arrays, strings and structs, which a strategy
+/// of tables creates once for all its fields: creating them for each kind of
 /// field took Miri 16 seconds for every test
 struct Values {
     large: BoxedStrategy<Field>,
@@ -172,21 +177,22 @@ fn field(
     .boxed()
 }
 
-/// Scalars, arrays and strings, which hold values rather than tables
+/// Scalars, arrays, strings and structs, which hold values rather than
+/// tables
 fn value(limits: Limits) -> BoxedStrategy<Field> {
     let elements = 0..=limits.elements;
 
     prop_oneof![
-        1 => int8().prop_map(Field::I8),
-        1 => uint8().prop_map(Field::U8),
-        1 => int16().prop_map(Field::I16),
-        1 => uint16().prop_map(Field::U16),
-        1 => int32().prop_map(Field::I32),
-        1 => uint32().prop_map(Field::U32),
-        1 => int64().prop_map(Field::I64),
-        1 => uint64().prop_map(Field::U64),
-        1 => float32().prop_map(Field::F32),
-        1 => float64().prop_map(Field::F64),
+        1 => scalar(ScalarType::I8),
+        1 => scalar(ScalarType::U8),
+        1 => scalar(ScalarType::I16),
+        1 => scalar(ScalarType::U16),
+        1 => scalar(ScalarType::I32),
+        1 => scalar(ScalarType::U32),
+        1 => scalar(ScalarType::I64),
+        1 => scalar(ScalarType::U64),
+        1 => scalar(ScalarType::F32),
+        1 => scalar(ScalarType::F64),
         1 => vec(int8(), elements.clone()).prop_map(Field::I8Array),
         1 => vec(uint8(), elements.clone()).prop_map(Field::U8Array),
         1 => vec(int16(), elements.clone()).prop_map(Field::I16Array),
@@ -197,10 +203,57 @@ fn value(limits: Limits) -> BoxedStrategy<Field> {
         1 => vec(uint64(), elements.clone()).prop_map(Field::U64Array),
         1 => vec(float32(), elements.clone()).prop_map(Field::F32Array),
         1 => vec(float64(), elements).prop_map(Field::F64Array),
-        // As likely as three types of number
+        // Each as likely as three types of number
         3 => string(limits.characters).prop_map(Field::String),
+        3 => struct_field(),
+        3 => struct_array(limits.structs),
     ]
     .boxed()
+}
+
+/// Scalar fields of a type
+fn scalar(scalar: ScalarType) -> BoxedStrategy<Field> {
+    match scalar {
+        ScalarType::I8 => int8().prop_map(Field::I8).boxed(),
+        ScalarType::U8 => uint8().prop_map(Field::U8).boxed(),
+        ScalarType::I16 => int16().prop_map(Field::I16).boxed(),
+        ScalarType::U16 => uint16().prop_map(Field::U16).boxed(),
+        ScalarType::I32 => int32().prop_map(Field::I32).boxed(),
+        ScalarType::U32 => uint32().prop_map(Field::U32).boxed(),
+        ScalarType::I64 => int64().prop_map(Field::I64).boxed(),
+        ScalarType::U64 => uint64().prop_map(Field::U64).boxed(),
+        ScalarType::F32 => float32().prop_map(Field::F32).boxed(),
+        ScalarType::F64 => float64().prop_map(Field::F64).boxed(),
+    }
+}
+
+/// Structs of one to four scalars of any types
+fn struct_field() -> impl Strategy<Value = Field> {
+    struct_scalar_types()
+        .prop_flat_map(|types| struct_scalars(&types))
+        .prop_map(Field::Struct)
+}
+
+/// Arrays of up to `structs` structs of the same scalars, empty too
+fn struct_array(structs: usize) -> impl Strategy<Value = Field> {
+    let items = move |types: Vec<ScalarType>| {
+        let items = vec(struct_scalars(&types), 0..=structs);
+        (Just(types), items)
+    };
+
+    struct_scalar_types()
+        .prop_flat_map(items)
+        .prop_map(|(types, items)| Field::StructArray { types, items })
+}
+
+/// The types of the scalars of a struct, of one to four
+fn struct_scalar_types() -> impl Strategy<Value = Vec<ScalarType>> {
+    vec(select(ScalarType::ALL.to_vec()), 1..=4)
+}
+
+/// The scalars of structs of `types`
+fn struct_scalars(types: &[ScalarType]) -> Vec<BoxedStrategy<Field>> {
+    types.iter().copied().map(scalar).collect()
 }
 
 macro_rules! integers {
@@ -379,6 +432,13 @@ fn longest(field: &Field, width: u64) -> u64 {
         Field::U64Array(values) => array(values.len(), 8),
         Field::F64Array(values) => array(values.len(), 8),
         Field::String(string) => width + string.len() as u64,
+        Field::Struct(scalars) => struct_size(struct_types(scalars)) as u64,
+        Field::StructArray { types, items } => {
+            let size = struct_size(types.iter().copied()) as u64;
+            let alignment = struct_alignment(types.iter().copied()).bytes() as u64;
+
+            alignment - 1 + width + items.len() as u64 * size
+        }
         Field::Table { nested, .. } => 7 + longest_table(&nested.table),
         Field::Vector(items) => {
             let items = items.iter();

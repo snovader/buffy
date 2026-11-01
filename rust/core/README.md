@@ -1,9 +1,9 @@
 # tafla
 
-Binary tables of scalars, strings and arrays, in tafla's format.
+Binary tables of scalars, strings, arrays and structs, in tafla's format.
 `TableBuilder` writes a table at its exact size, copying arrays in bulk,
-and `ByteBuffer` reads fields back by offset, borrowing arrays and strings
-from the bytes. Every read checks that it stays within the bytes it was
+and `ByteBuffer` reads fields back by offset, borrowing arrays, strings and
+structs from the bytes. Every read checks that it stays within the bytes it was
 given.
 
 ```rust
@@ -54,15 +54,21 @@ and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
-- Header slots, offsets and length prefixes are all `offset_size` bytes wide:
-  1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
+- Header slots, offsets, counts and vector item ends are all `offset_size`
+  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or
+  4 GiB.
 - Offsets count from the table's start. A table nested with `set_table()` has
   no header, and its offsets count from its own start.
-- Arrays and strings start with their element count. Arrays are padded so
-  that their elements are aligned to their size from the table's start.
-  `set_table()` aligns a nested table to the largest element size of its
-  arrays when given its builder, and to 4 bytes by default when given bytes.
-- A vector starts with its item count, and each item with its byte length.
+- A struct is its scalars, one after another without padding, which
+  `set_struct()` writes from their bytes and `get_struct()` returns.
+- Arrays, strings and arrays of structs start with their count. Arrays are
+  padded so that their elements are aligned to their size from the table's
+  start, and arrays of structs to the size of their largest scalar.
+  `set_table()` aligns a nested table to the largest alignment of its arrays
+  when given its builder, and to 4 bytes by default when given bytes.
+- A vector starts with its item count, then the end of each item, counted
+  from the vector's start, and then the items, so `Vector::get()` finds any
+  item from two ends without reading the others.
 
 The crate writes the same bytes as the TypeScript runtime, `tafla` on
 npm, for the same fields, and reads its tables; `tests/compatibility.rs` checks
@@ -87,7 +93,7 @@ repository's conformance suite, which covers the whole format.
   `to_cow()` falls back to a copy otherwise. `TableBuilder` aligns arrays
   from the table's start, so they're aligned in memory when the table is, as
   a `Vec<u8>` from the system allocator typically is but isn't guaranteed to
-  be. Byte arrays and strings are always slices.
+  be. Byte arrays, strings, structs and vector items are always slices.
 
 ## Performance
 
@@ -129,6 +135,10 @@ Validation is always on:
 - `DecodeError::OutOfRange` gives the read's position and length and the
   bytes available, and `DecodeError::InvalidUtf8` has the `Utf8Error` as its
   source.
+- `get_vector()` checks the vector's count and ends, and each item is checked
+  when `Vector::get()` or the iterator reads it, which returns a `Result`. An
+  item that ends before the one before it is
+  `DecodeError::ItemEndsBeforeStart`.
 - `ByteBuffer` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
   the example does, so that every decoding failure is a `DecodeError`.
@@ -141,10 +151,11 @@ than panicking, since WebAssembly builds abort on panic:
 
 - A setter returns an error for a field beyond the number the table was
   created with, or one that would make the table too long for its
-  `offset_size`, and leaves the builder as it was. `to_bytes()`, and nesting
-  a builder, return an error while fields are left to set. A version that
-  doesn't fit, or a header too long for its `offset_size`, is an error from
-  the constructor.
+  `offset_size`, and leaves the builder as it was, as `set_struct_array()`
+  does for bytes that aren't a whole number of structs. `to_bytes()`, and
+  nesting a builder, return an error while fields are left to set. A version
+  that doesn't fit, or a header too long for its `offset_size`, is an error
+  from the constructor.
 - The compiler requires a version exactly for a versioned layout, and offers
   `ByteBuffer::version()` only for one, through `TableLayout`'s `VERSIONED`
   parameter.

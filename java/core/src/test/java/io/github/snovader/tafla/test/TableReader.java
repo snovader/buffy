@@ -83,6 +83,8 @@ final class TableReader {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
             case StringField ignored -> new StringField(buffer.getString(position));
+            case StructField struct -> StructBytes.read(buffer, position, struct.types());
+            case StructArrayField array -> StructBytes.readArray(buffer, position, array.fields());
             case TableField table -> new TableField(table.from(), readNested(position, table.table()), table.alignment());
             case VectorField vector -> new VectorField(readVector(position, vector.items()));
         };
@@ -109,6 +111,12 @@ final class TableReader {
         var vector = buffer.getVector(position);
         if (strict) {
             assertEquals(items.size(), offsets.length, "The vector doesn't hold its items");
+        }
+
+        // Finding each item from its ends alone finds the same item as reading every item
+        assertEquals(offsets.length, buffer.getVectorLength(position), "The vector's length");
+        for (int index = 0; index < offsets.length; index++) {
+            assertEquals(offsets[index], buffer.getVectorOffset(position, index), "Item " + index + " from its ends");
         }
 
         var read = new ArrayList<NestedTable>(items.size());

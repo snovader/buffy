@@ -8,11 +8,12 @@
 //! from its position to the end of its parent, since its length isn't
 //! written. Vector items are read as tables of their own, from the bytes
 //! that `Vector` returns; an item without a header has the same offsets
-//! either way.
+//! either way. The scalars of structs are read at their offsets in the bytes
+//! that `get_struct()` and `get_struct_array()` return.
 
-use tafla::{ByteBuffer, DecodeError};
+use tafla::{ByteBuffer, DecodeError, TableLayout};
 
-use super::description::{Field, Layout, Nested, Table};
+use super::description::{Field, Layout, Nested, ScalarType, Table, struct_size, struct_types};
 
 /// Why bytes didn't read as a description
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +29,8 @@ pub enum ReadError {
         iterated: usize,
         described: usize,
     },
+    /// `Vector::get()` found item `index` other than iterating did
+    Get { index: usize },
 }
 
 impl From<DecodeError> for ReadError {
@@ -149,6 +152,25 @@ impl<const V: bool> Reader<'_, V> {
             Field::F32Array(_) => Field::F32Array(buffer.get_f32_array(position)?.to_vec()),
             Field::F64Array(_) => Field::F64Array(buffer.get_f64_array(position)?.to_vec()),
             Field::String(_) => Field::String(buffer.get_str(position)?.to_owned()),
+            Field::Struct(scalars) => {
+                let size = struct_size(struct_types(scalars));
+                let bytes = buffer.get_struct(position, size)?;
+
+                Field::Struct(read_struct(bytes, struct_types(scalars))?)
+            }
+            Field::StructArray { types, .. } => {
+                let size = struct_size(types.iter().copied());
+                let bytes = buffer.get_struct_array(position, size)?;
+                let items = bytes
+                    .chunks_exact(size)
+                    .map(|bytes| read_struct(bytes, types.iter().copied()))
+                    .collect::<Result<_, _>>()?;
+
+                Field::StructArray {
+                    types: types.clone(),
+                    items,
+                }
+            }
             Field::Table { nested, alignment } => Field::Table {
                 nested: Nested {
                     from: nested.from,
@@ -186,10 +208,19 @@ impl<const V: bool> Reader<'_, V> {
         })
     }
 
+    /// Reads a vector's items, after checking that finding each from its
+    /// ends alone, and none past the last, finds what iterating finds
     fn read_vector(&self, position: usize, items: &[Nested]) -> Result<Vec<Nested>, ReadError> {
         let vector = self.0.get_vector(position)?;
-        let bytes: Vec<&[u8]> = vector.iter().collect();
+        let iterated: Vec<_> = vector.iter().collect();
 
+        for index in 0..=iterated.len() {
+            if vector.get(index) != iterated.get(index).cloned() {
+                return Err(ReadError::Get { index });
+            }
+        }
+
+        let bytes = iterated.into_iter().collect::<Result<Vec<_>, _>>()?;
         if vector.len() != items.len() || bytes.len() != items.len() {
             return Err(ReadError::Items {
                 count: vector.len(),
@@ -207,4 +238,41 @@ impl<const V: bool> Reader<'_, V> {
 
         bytes.into_iter().zip(items).map(read_item).collect()
     }
+}
+
+/// Reads the scalars of a struct of `types` at their offsets in its bytes,
+/// which a `ByteBuffer` reads in any layout
+fn read_struct(
+    bytes: &[u8],
+    types: impl IntoIterator<Item = ScalarType>,
+) -> Result<Vec<Field>, DecodeError> {
+    let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let mut scalars = Vec::new();
+
+    let mut offset = 0;
+    for scalar in types {
+        scalars.push(read_scalar(&buffer, scalar, offset)?);
+        offset += scalar.size();
+    }
+
+    Ok(scalars)
+}
+
+fn read_scalar(
+    buffer: &ByteBuffer<'_>,
+    scalar: ScalarType,
+    position: usize,
+) -> Result<Field, DecodeError> {
+    Ok(match scalar {
+        ScalarType::I8 => Field::I8(buffer.get_i8(position)?),
+        ScalarType::U8 => Field::U8(buffer.get_u8(position)?),
+        ScalarType::I16 => Field::I16(buffer.get_i16(position)?),
+        ScalarType::U16 => Field::U16(buffer.get_u16(position)?),
+        ScalarType::I32 => Field::I32(buffer.get_i32(position)?),
+        ScalarType::U32 => Field::U32(buffer.get_u32(position)?),
+        ScalarType::I64 => Field::I64(buffer.get_i64(position)?),
+        ScalarType::U64 => Field::U64(buffer.get_u64(position)?),
+        ScalarType::F32 => Field::F32(buffer.get_f32(position)?),
+        ScalarType::F64 => Field::F64(buffer.get_f64(position)?),
+    })
 }

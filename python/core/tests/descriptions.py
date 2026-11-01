@@ -5,7 +5,8 @@ They cover every layout, element type and kind of field: integers at their
 limits, 64-bit ones included; floats of both widths with -0.0, NaN and the
 infinities, and float32s that are exact; strings with characters outside the
 Basic Multilingual Plane and U+FEFF, but no lone surrogates, which
-``set_string()`` rejects; nested tables from builders and from bytes, with and
+``set_string()`` rejects; structs of one to four scalars of any type, alone and
+in arrays, empty too; nested tables from builders and from bytes, with and
 without an alignment; and vectors of tables of any layout.
 
 They follow the format's rules: a table nested with ``set_table()`` has no
@@ -35,6 +36,7 @@ from hypothesis.strategies import (
     one_of,
     sampled_from,
     text,
+    tuples,
 )
 
 from tests.tables import (
@@ -43,6 +45,8 @@ from tests.tables import (
     Description,
     OffsetSize,
     from_json,
+    struct_alignment,
+    struct_of,
     to_json_number,
 )
 
@@ -53,6 +57,8 @@ MAX_DEPTH = 2
 MAX_FIELDS = 6
 MAX_ELEMENTS = 8
 MAX_ITEMS = 3
+MAX_STRUCT_SCALARS = 4
+MAX_STRUCTS = 4
 
 # The most padding before a nested table, which aligns it to at most 8
 _MAX_TABLE_PADDING = 7
@@ -136,6 +142,31 @@ STRING_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
     {"type": just("string"), "value": STRINGS}
 )
 
+# A struct's scalars are described as scalar fields are
+STRUCT_FIELDS: SearchStrategy[Description] = lists(
+    SCALAR_FIELDS, min_size=1, max_size=MAX_STRUCT_SCALARS
+).map(lambda scalars: {"type": "struct", "fields": scalars})
+
+# The scalar types of a struct
+STRUCT_TYPES: SearchStrategy[list[str]] = lists(
+    sampled_from(list(SCALAR_VALUES)), min_size=1, max_size=MAX_STRUCT_SCALARS
+)
+
+
+def _struct_arrays(types: list[str]) -> SearchStrategy[Description]:
+    """Arrays of structs of scalars of these types, empty too"""
+    struct_values = tuples(*(SCALAR_VALUES[kind] for kind in types)).map(list)
+    return fixed_dictionaries(
+        {
+            "type": just("struct[]"),
+            "fields": just(types),
+            "items": lists(struct_values, max_size=MAX_STRUCTS),
+        }
+    )
+
+
+STRUCT_ARRAY_FIELDS: SearchStrategy[Description] = STRUCT_TYPES.flatmap(_struct_arrays)
+
 
 LAYOUTS: SearchStrategy[Description] = fixed_dictionaries(
     {
@@ -210,7 +241,13 @@ def _fitting_layout(
 def _field_lists(
     depth: int, offset_size: OffsetSize
 ) -> SearchStrategy[list[Description]]:
-    kinds = [SCALAR_FIELDS, ARRAY_FIELDS, STRING_FIELDS]
+    kinds = [
+        SCALAR_FIELDS,
+        ARRAY_FIELDS,
+        STRING_FIELDS,
+        STRUCT_FIELDS,
+        STRUCT_ARRAY_FIELDS,
+    ]
     if depth > 0:
         kinds += [
             _table_fields(depth - 1, offset_size),
@@ -218,8 +255,8 @@ def _field_lists(
         ]
 
     # A kind of field is drawn first, since one_of() would flatten the scalars'
-    # and arrays' one_of() into a branch per type, and draw a string, table or
-    # vector one time in 23
+    # and arrays' one_of() into a branch per type, and draw a string, struct,
+    # table or vector one time in 25
     fields = sampled_from(kinds).flatmap(lambda kind: kind)
 
     return lists(fields, max_size=MAX_FIELDS)
@@ -278,6 +315,14 @@ def _longest_field_length(field: Description, offset_size: int) -> int:
 
     if kind == "string":
         return offset_size + len(field["value"].encode())
+
+    if kind == "struct":
+        return struct_of(scalar["type"] for scalar in field["fields"]).size
+
+    if kind == "struct[]":
+        types = field["fields"]
+        padding = struct_alignment(types) - 1
+        return padding + offset_size + struct_of(types).size * len(field["items"])
 
     if kind.endswith("[]"):
         element_size = ELEMENT_SIZES[kind.removesuffix("[]")]

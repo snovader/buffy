@@ -129,7 +129,7 @@ impl Workload<ListShape> for Tafla {
 
         let mut items = Vec::with_capacity(vector.len());
         for item in &vector {
-            items.push(read_item(item)?);
+            items.push(read_item(item?)?);
         }
 
         Ok(List { items })

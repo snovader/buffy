@@ -55,9 +55,13 @@ public class TableBuilderTest {
         INT8_ARRAY,
         FLOAT64_ARRAY,
         STRING,
+        STRUCT_ARRAY,
         NESTED_TABLE,
         VECTOR_ITEMS,
         VECTOR_ITEM;
+
+        /** The scalars of the structs of {@link #STRUCT_ARRAY}: 3 bytes, aligned to 2 */
+        private static final List<ScalarType> STRUCT = List.of(ScalarType.UINT16, ScalarType.UINT8);
 
         /** An empty table, which takes no bytes and is read in place */
         private static final TableDescription EMPTY = new TableDescription(
@@ -70,7 +74,8 @@ public class TableBuilderTest {
         int unit(AddressableSpace offsetSize) {
             return switch (this) {
                 case FLOAT64_ARRAY -> Double.BYTES;
-                // Each item's length
+                case STRUCT_ARRAY -> StructBytes.size(STRUCT);
+                // Each item's end
                 case VECTOR_ITEMS -> offsetSize.valueOf();
                 default -> Byte.BYTES;
             };
@@ -82,6 +87,7 @@ public class TableBuilderTest {
                 case INT8_ARRAY -> new ArrayField(ScalarType.INT8, new long[length]);
                 case FLOAT64_ARRAY -> new ArrayField(ScalarType.FLOAT64, new long[length]);
                 case STRING -> new StringField("a".repeat(length));
+                case STRUCT_ARRAY -> new StructArrayField(STRUCT, Collections.nCopies(length, List.of(1L, 2L)));
                 case NESTED_TABLE -> new TableField(from, tableOfBytes(length), OptionalInt.empty());
                 case VECTOR_ITEMS -> new VectorField(Collections.nCopies(length, new NestedTable(from, EMPTY)));
                 case VECTOR_ITEM -> new VectorField(List.of(new NestedTable(from, tableOfBytes(length))));
@@ -144,6 +150,59 @@ public class TableBuilderTest {
 
         assertThrows(IllegalArgumentException.class, () -> builder.setTable(new byte[0], alignment));
         assertThrows(IllegalArgumentException.class, () -> builder.setTable(new TableBuilder(0), alignment));
+        assertThrows(IllegalArgumentException.class, () -> builder.setStructArray(new byte[0], 1, alignment));
+    }
+
+    @Example
+    void should_reject_a_struct_size_below_1_or_bytes_that_arent_whole_structs_and_leave_the_builder_as_it_was() {
+        var builder = new TableBuilder(1);
+
+        var exception = assertThrows(IllegalArgumentException.class, () -> builder.setStructArray(new byte[5], 2, 1));
+        assertEquals("5 bytes aren't a whole number of 2-byte structs", exception.getMessage());
+        exception = assertThrows(IllegalArgumentException.class, () -> builder.setStructArray(new byte[4], 0, 1));
+        assertEquals("A struct's size must be positive, not 0", exception.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> builder.setStructArray(new byte[4], -1, 1));
+
+        builder.setStructArray(new byte[] {1, 2, 3, 4}, 2, 2);
+        assertArrayEquals(new byte[] {4, 0, 0, 0, 2, 0, 0, 0, 1, 2, 3, 4}, builder.bytes());
+    }
+
+    @Example
+    void should_count_structs_and_pad_so_that_they_start_at_a_multiple_of_their_alignment() {
+        var builder = new TableBuilder(2);
+        builder.setUint8((short) 7);
+        builder.setStructArray(new byte[16], 8, 8);
+
+        // The count goes at 12, after the uint8 at 8 and 3 bytes of padding, so that the structs
+        // start at 16
+        var buffer = new ByteBuffer(builder.bytes());
+        assertEquals(12, buffer.rootOffset(1));
+        assertEquals(2, buffer.getUint32(12));
+        assertEquals(16, buffer.getStructArray(12, 8).remaining());
+    }
+
+    @Example
+    void should_write_a_struct_unpadded_as_its_bytes_are_when_writing() {
+        var struct = new byte[] {1, 2, 3};
+        var builder = new TableBuilder(2);
+        builder.setUint8((short) 7);
+        builder.setStruct(struct);
+        struct[0] = 4;
+
+        assertArrayEquals(new byte[] {8, 0, 0, 0, 9, 0, 0, 0, 7, 4, 2, 3}, builder.bytes());
+    }
+
+    @Example
+    void should_pad_a_builder_to_the_alignment_of_its_arrays_of_structs() {
+        var nested = new TableBuilder(1);
+        nested.setStructArray(new byte[9], 9, 8);
+
+        var parent = new TableBuilder(2);
+        parent.setUint8((short) 1);
+        parent.setTable(nested);
+
+        // After the uint8 at 8, padded to 16
+        assertEquals(16, new ByteBuffer(parent.bytes()).rootOffset(1));
     }
 
     @Example

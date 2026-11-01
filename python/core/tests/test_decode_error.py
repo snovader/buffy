@@ -47,11 +47,77 @@ class TestDecodeError(unittest.TestCase):
 
                 self.assertIsInstance(context.exception.__cause__, UnicodeDecodeError)
 
-    def test_rejects_a_vector_count_before_allocating_for_it(self) -> None:
+    def test_raises_from_struct_and_vector_getters_outside_the_bytes(self) -> None:
+        # Bytes that a read past the slice's end would find
+        backing = bytearray(b"\x41" * 32)
+        buffer = ByteBuffer(memoryview(backing)[:8])
+        # A vector's count of 1 and its item's end at 13, which is also read as
+        # the count of an array of structs
+        backing[:8] = bytes([1, 0, 0, 0, 13, 0, 0, 0])
+
+        reads: list[tuple[str, Callable[[], object], str]] = [
+            ("get_struct", lambda: buffer.get_struct(4, 5), "5 bytes at 4 of 8"),
+            ("get_struct", lambda: buffer.get_struct(-1, 1), "1 bytes at -1 of 8"),
+            ("get_struct", lambda: buffer.get_struct(4, -1), "-1 bytes at 4 of 8"),
+            (
+                "get_struct_array",
+                lambda: buffer.get_struct_array(4, 2),
+                "26 bytes at 8 of 8",
+            ),
+            ("get_vector", lambda: buffer.get_vector(0), "5 bytes at 8 of 8"),
+            (
+                "get_vector_offsets",
+                lambda: buffer.get_vector_offsets(0),
+                "5 bytes at 8 of 8",
+            ),
+            (
+                "get_vector_offset",
+                lambda: buffer.get_vector_offset(0, 0),
+                "5 bytes at 8 of 8",
+            ),
+        ]
+
+        for name, get, range_ in reads:
+            with (
+                self.subTest(read=name, range=range_),
+                self.assertRaisesRegex(DecodeError, f"Read exceeds .*: {range_}"),
+            ):
+                get()
+
+    def test_raises_for_a_vector_item_that_ends_before_it_starts(self) -> None:
+        # A count of 2 puts the first item after the ends, at 12, but it ends
+        # at 11
+        buffer = ByteBuffer(bytes([2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0]))
+
+        reads: list[tuple[str, Callable[[], object]]] = [
+            ("get_vector", lambda: buffer.get_vector(0)),
+            ("get_vector_offsets", lambda: buffer.get_vector_offsets(0)),
+            ("get_vector_offset", lambda: buffer.get_vector_offset(0, 0)),
+        ]
+
+        for name, get in reads:
+            with (
+                self.subTest(read=name),
+                self.assertRaisesRegex(
+                    DecodeError, "The vector item at 12 ends before it starts, at 11"
+                ),
+            ):
+                get()
+
+    def test_rejects_counts_before_allocating_for_them_or_viewing_their_bytes(
+        self,
+    ) -> None:
         buffer = ByteBuffer((2**32 - 1).to_bytes(4, "little") + bytes(4))
 
-        with self.assertRaises(DecodeError):
-            buffer.get_vector_offsets(0)
+        reads: list[tuple[str, Callable[[], object]]] = [
+            ("get_vector_offsets", lambda: buffer.get_vector_offsets(0)),
+            ("get_vector", lambda: buffer.get_vector(0)),
+            ("get_struct_array", lambda: buffer.get_struct_array(0, 8)),
+        ]
+
+        for name, get in reads:
+            with self.subTest(read=name), self.assertRaises(DecodeError):
+                get()
 
 
 if __name__ == "__main__":

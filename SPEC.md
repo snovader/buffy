@@ -51,30 +51,42 @@ readers ignore them.
 
 ## Values
 
-| Type                                    | Bytes at the field's offset                                                  |
-| --------------------------------------- | ---------------------------------------------------------------------------- |
-| `int8` … `uint64`, `float32`, `float64` | The value, in 1, 2, 4 or 8 bytes                                             |
-| Array of one of those types             | A count `n`, then `n` elements                                               |
-| String                                  | A count `n`, then `n` bytes of UTF-8                                         |
-| Nested table                            | The table's bytes, with no length prefix                                     |
-| Vector of tables                        | A count `n`, then `n` items, each a length `l` and then `l` bytes of a table |
+| Type                                    | Bytes at the field's offset                                    |
+| --------------------------------------- | -------------------------------------------------------------- |
+| `int8` … `uint64`, `float32`, `float64` | The value, in 1, 2, 4 or 8 bytes                               |
+| Array of one of those types             | A count `n`, then `n` elements                                 |
+| String                                  | A count `n`, then `n` bytes of UTF-8                           |
+| Struct                                  | Its scalars, one after another                                 |
+| Array of structs                        | A count `n`, then `n` structs                                  |
+| Nested table                            | The table's bytes, with no length prefix                       |
+| Vector of tables                        | A count `n`, then the end of each item, then the `n` items     |
 
-Counts and lengths are `offsetSize` bytes wide, as offsets are.
+Counts, lengths and item ends are `offsetSize` bytes wide, as offsets are.
 
 - **Scalars** aren't aligned.
+- **Structs** are a fixed sequence of scalars, which the format defines, as
+  it defines a table's fields; a struct within a struct adds its scalars in
+  its place. A struct has no header, offsets or padding, so its scalars lie
+  at fixed offsets from its start. Its size is the sum of its scalars' sizes,
+  and its alignment the largest of them. A struct field isn't aligned, like a
+  scalar.
 - **Arrays** are aligned: writers pad before an array's count so that its
-  first element starts at a multiple of the element's size from the start of
-  the table. Readers must accept unaligned arrays too, since tables can
+  first element starts at a multiple of its alignment from the start of the
+  table, which is the element's size for scalars, and the struct's alignment
+  for structs. Readers must accept unaligned arrays too, since tables can
   arrive at any position in memory.
 - **Strings** must be valid UTF-8, without a terminator. Readers reject
   invalid UTF-8.
 - **Nested tables** are padded to their alignment. A nested builder is
-  aligned to the largest element size of its arrays and of its own nested
+  aligned to the largest alignment of its arrays and of its own nested
   tables, or 1 if it has neither; a nested table given as bytes is aligned to
   4 unless the writer passes another alignment. A nested table has no length
   prefix, so its own offsets lead to its fields.
-- **Vectors** hold tables of any layout. Items aren't padded, so their arrays
-  may be unaligned.
+- **Vectors** hold tables of any layout. Each item's end is its offset from
+  the vector's position, which is that of its count. Item `i` starts where
+  item `i - 1` ends, and item 0 right after the last end, so readers find any
+  item from at most two ends, without reading the items before it. Items
+  aren't padded, so their arrays may be unaligned.
 
 ### Reading nested tables
 
@@ -89,9 +101,10 @@ its length isn't written.
 Readers decode untrusted bytes. An implementation:
 
 - Checks every read against the bytes it was given, including offsets,
-  counts and lengths, and fails with its decode error when a read would leave
-  them, rather than reading other memory or allocating for a count that the
-  bytes can't hold.
+  counts, lengths and item ends, and fails with its decode error when a read
+  would leave them, rather than reading other memory or allocating for a
+  count that the bytes can't hold. A vector item must start no later than it
+  ends.
 - Rejects strings that aren't valid UTF-8 with its decode error.
 - Reports every failure to decode as its decode error, and doesn't crash,
   panic or hang on any input.

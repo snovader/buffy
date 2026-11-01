@@ -28,6 +28,35 @@ it('should reject impossible vector counts before allocating their offsets', () 
     expect(() => buffer.getVectorOffsets(0)).toThrow('Read exceeds the supplied buffer');
 });
 
+it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError', index => {
+    const builder = new TableBuilder(1);
+    builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
+    const buffer = builder.finalize();
+
+    expect(() => buffer.getVectorOffset(buffer.rootOffset(0), index)).toThrow(
+        new RangeError(`Item ${index} is outside the vector of 2 at 4`)
+    );
+});
+
+it('should find each vector item from its ends, as reading every item finds it', () => {
+    const builder = new TableBuilder(1);
+    builder.setVector([new Uint8Array([1]), new Uint8Array(0), new Uint8Array([2, 3])]);
+    const buffer = builder.finalize();
+    const vector = buffer.rootOffset(0);
+
+    // The count and the three ends, at 4, then the items from 20
+    expect(Array.from(buffer.getVectorOffsets(vector))).toStrictEqual([20, 21, 21]);
+    expect([0, 1, 2].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual([
+        20, 21, 21
+    ]);
+    expect(buffer.getVectorLength(vector)).toBe(3);
+    expect(buffer.getVector(vector)).toStrictEqual([
+        new Uint8Array([1]),
+        new Uint8Array(0),
+        new Uint8Array([2, 3])
+    ]);
+});
+
 describe('versioned tables', () => {
     it.each([
         [SIZEOF_8, MAX_VALUES[1] + 1],

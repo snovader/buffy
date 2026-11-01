@@ -425,6 +425,32 @@ export class ByteBuffer {
         return this.#view.buffer.slice(byteOffset, byteOffset + byteLength);
     }
 
+    /**
+     * Returns a view of the `size` bytes of the struct at `position`, whose
+     * scalars lie at fixed offsets from its start
+     */
+    getStruct(position: number, size: number): Uint8Array {
+        this.#assertRange(position, size);
+        return this.#bytes.subarray(position, position + size);
+    }
+
+    /**
+     * Returns a view of the structs of the array at `position`, each of
+     * `size` bytes, one after another after the count. Their number is the
+     * view's length over `size`.
+     *
+     * @throws {RangeError} If `size` isn't a positive integer.
+     */
+    getStructArray(position: number, size: number): Uint8Array {
+        assertStructSize(size);
+
+        const count = this.#getSize(position);
+        const start = position + this.#size;
+        this.#assertRange(start, count * size);
+
+        return this.#bytes.subarray(start, start + count * size);
+    }
+
     setInt8(value: number): void {
         this.#view.setInt8(this.#position, value);
         this.#position += SIZEOF_8;
@@ -681,7 +707,21 @@ export class ByteBuffer {
         this.#position += length * SIZEOF_64;
     }
 
-    /** Writes `bytes` as they are, without a length prefix */
+    /**
+     * Writes the count of the `size`-byte structs in `bytes`, and then the
+     * bytes. Padding that aligns the structs goes before the count.
+     *
+     * @throws {RangeError} If `bytes` aren't a whole number of structs.
+     */
+    setStructArray(bytes: Uint8Array, size: number): void {
+        const count = structCount(bytes.length, size);
+
+        this.#assertWritable(this.#size + bytes.length);
+        this.#setSize(count);
+        this.setBytes(bytes);
+    }
+
+    /** Writes `bytes` as they are, without a length prefix, such as a struct */
     setBytes(bytes: Uint8Array): void {
         this.#bytes.set(bytes, this.#position);
         this.#position += bytes.length;
@@ -761,38 +801,75 @@ export class ByteBuffer {
         this.setBytes(bytes);
     }
 
+    /** Returns the number of items of the vector at `position` */
+    getVectorLength(position: number): number {
+        return this.#getSize(position);
+    }
+
+    /**
+     * Returns the position of item `index` of the vector at `position`. It's
+     * read from the ends of that item and the one before it, without reading
+     * any other item.
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     */
+    getVectorOffset(position: number, index: number): number {
+        const count = this.#getSize(position);
+        if (!(Number.isInteger(index) && index >= 0 && index < count)) {
+            throw new RangeError(
+                `Item ${index} is outside the vector of ${count} at ${position}`
+            );
+        }
+
+        const start =
+            index === 0
+                ? (count + 1) * this.#size
+                : this.#getSize(position + index * this.#size);
+        const end = this.#getSize(position + (index + 1) * this.#size);
+
+        return this.#itemOffset(position, start, end);
+    }
+
     getVectorOffsets(position: number): Uint32Array {
         const count = this.#getSize(position);
-        // Every vector item needs at least its size prefix. Validate before
-        // allocating the offset array from an untrusted count.
+        // Validate the item ends before allocating the offset array from an
+        // untrusted count
         this.#assertRange(position + this.#size, count * this.#size);
         const offsets = new Uint32Array(count);
 
-        for (let i = 0, offset = position + this.#size; i < count; i++) {
-            const length = this.#getSize(offset);
-            this.#assertRange(offset + this.#size, length);
-            offsets[i] = offset + this.#size;
-            offset += this.#size + length;
+        let start = (count + 1) * this.#size;
+        for (let i = 0; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this.#size);
+            offsets[i] = this.#itemOffset(position, start, end);
+            start = end;
         }
 
         return offsets;
     }
 
     getVector(position: number): Uint8Array[] {
-        const offsets = this.getVectorOffsets(position);
-        const vector = new Array<Uint8Array>(offsets.length);
+        const count = this.#getSize(position);
+        this.#assertRange(position + this.#size, count * this.#size);
+        const vector = new Array<Uint8Array>(count);
 
-        // An indexed loop, since `Array.from` goes through the iterator
-        // protocol for typed arrays
-        for (let i = 0; i < offsets.length; i++) {
-            vector[i] = this.getUint8Array(offsets[i] - this.#size);
+        let start = (count + 1) * this.#size;
+        for (let i = 0; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this.#size);
+            const offset = this.#itemOffset(position, start, end);
+            vector[i] = this.#bytes.subarray(offset, offset + end - start);
+            start = end;
         }
 
         return vector;
     }
 
+    /**
+     * Writes the count of items, the end of each, counted from the vector's
+     * position, and then the items
+     */
     setVector(vector: Uint8Array[]): void {
-        // Check that the count and every item fit before writing any of them
+        // Check that the count, the ends and every item fit before writing
+        // any of them
         let byteLength = this.#size;
         for (const bytes of vector) {
             byteLength += this.#size + bytes.length;
@@ -801,10 +878,32 @@ export class ByteBuffer {
 
         this.#setSize(vector.length);
 
+        let end = (vector.length + 1) * this.#size;
         for (const bytes of vector) {
-            this.#setSize(bytes.length);
+            end += bytes.length;
+            this.#setSize(end);
+        }
+
+        for (const bytes of vector) {
             this.setBytes(bytes);
         }
+    }
+
+    /**
+     * Checks that a vector item, from `start` to `end` from the vector's
+     * position, starts no later than it ends and lies within the bytes.
+     *
+     * @returns The item's position.
+     */
+    #itemOffset(position: number, start: number, end: number): number {
+        if (start > end) {
+            throw new DecodeError(
+                `The vector item at ${position + start} ends before it starts, at ${position + end}`
+            );
+        }
+
+        this.#assertRange(position + start, end - start);
+        return position + start;
     }
 
     #assertRange(position: number, byteLength: number): void {
@@ -854,5 +953,30 @@ export class ByteBuffer {
         }
 
         this.#position += this.#size;
+    }
+}
+
+/**
+ * The number of structs of `size` bytes in `byteLength` bytes
+ *
+ * @throws {RangeError} If `size` isn't a positive integer, or the bytes
+ * aren't a whole number of structs.
+ */
+export function structCount(byteLength: number, size: number): number {
+    assertStructSize(size);
+    if (byteLength % size !== 0) {
+        throw new RangeError(
+            `${byteLength} bytes aren't a whole number of ${size}-byte structs`
+        );
+    }
+
+    return byteLength / size;
+}
+
+function assertStructSize(size: number): void {
+    if (!(Number.isInteger(size) && size > 0)) {
+        throw new RangeError(
+            `A struct's size must be a positive integer, not ${size}`
+        );
     }
 }

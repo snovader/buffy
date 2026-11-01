@@ -74,22 +74,35 @@ public class ByteBufferTest {
         }
     }
 
-    /** Writes a scalar, array or string from the buffer's position with the buffer's own setter */
+    /**
+     * Writes a scalar, array, string, struct or array of structs from the buffer's position with
+     * the buffer's own setter
+     */
     private static void write(ByteBuffer buffer, FieldDescription field) {
         switch (field) {
             case ScalarField scalar -> scalar.type().write(buffer, scalar.value());
             case ArrayField array -> array.type().writeArray(buffer, array.values());
             case StringField string -> buffer.setString(string.value().getBytes(StandardCharsets.UTF_8));
+            case StructField struct -> buffer.setBytes(StructBytes.pack(struct.types(), List.of(struct.values())));
+            case StructArrayField array -> buffer.setStructArray(
+                StructBytes.pack(array.fields(), array.items()),
+                StructBytes.size(array.fields())
+            );
             default -> throw new IllegalArgumentException("Not a value: " + field);
         }
     }
 
-    /** {@return the scalar, array or string of the field's type at the buffer's start} */
+    /**
+     * {@return the scalar, array, string, struct or array of structs of the field's type at the
+     * buffer's start}
+     */
     private static FieldDescription readAtStart(ByteBuffer buffer, FieldDescription field) {
         return switch (field) {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, 0));
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, 0));
             case StringField ignored -> new StringField(buffer.getString(0));
+            case StructField struct -> StructBytes.read(buffer, 0, struct.types());
+            case StructArrayField array -> StructBytes.readArray(buffer, 0, array.fields());
             default -> throw new IllegalArgumentException("Not a value: " + field);
         };
     }
@@ -126,8 +139,97 @@ public class ByteBufferTest {
         int[] offsets = buffer.getVectorOffsets(0);
         for (int i = 0; i < vector.length; i++) {
             assertArrayEquals(vector[i], Arrays.copyOfRange(buffer.bytes(), offsets[i], offsets[i] + vector[i].length));
+            assertEquals(offsets[i], buffer.getVectorOffset(0, i));
         }
+        assertEquals(vector.length, buffer.getVectorLength(0));
         assertArrayEquals(vector, buffer.getVector(0));
+    }
+
+    @Example
+    void should_find_each_vector_item_from_its_ends_as_reading_every_item_finds_it() {
+        var builder = new TableBuilder(1);
+        builder.setVector(new byte[][] {{1}, {}, {2, 3}});
+        var buffer = new ByteBuffer(builder.bytes());
+        var vector = buffer.rootOffset(0);
+
+        // The count at 4 and the three ends, 17, 17 and 19 from there, then the items from 20
+        var countAndEnds = new byte[] {3, 0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0};
+        assertArrayEquals(countAndEnds, Arrays.copyOfRange(buffer.bytes(), vector, 20));
+
+        var offsets = new int[] {20, 21, 21};
+        assertArrayEquals(offsets, buffer.getVectorOffsets(vector));
+        for (int i = 0; i < offsets.length; i++) {
+            assertEquals(offsets[i], buffer.getVectorOffset(vector, i), "Item " + i);
+        }
+        assertEquals(3, buffer.getVectorLength(vector));
+        assertArrayEquals(new byte[][] {{1}, {}, {2, 3}}, buffer.getVector(vector));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_reject_an_item_outside_a_vector_with_IndexOutOfBoundsException(
+        @ForAll @IntRange(min = -2, max = 4) int index
+    ) {
+        Assume.that(index < 0 || index >= 2);
+
+        var builder = new TableBuilder(1);
+        builder.setVector(new byte[][] {{1}, {2, 3}});
+        var buffer = new ByteBuffer(builder.bytes());
+
+        var exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorOffset(4, index));
+        assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
+    }
+
+    @Example
+    void struct_views_are_read_only_little_endian_and_start_at_the_struct() {
+        // A uint8 field, and then a struct of a uint16 and a float32
+        var builder = new TableBuilder(2);
+        builder.setUint8((short) 7);
+        builder.setStruct(new byte[] {0x34, 0x12, 0, 0, (byte) 0xc0, 0x3f});
+        var buffer = new ByteBuffer(builder.bytes());
+
+        var struct = buffer.getStruct(buffer.rootOffset(1), 6);
+        assertTrue(struct.isReadOnly());
+        assertEquals(ByteOrder.LITTLE_ENDIAN, struct.order());
+        assertEquals(6, struct.remaining());
+        assertEquals(0x1234, struct.getShort(0));
+        assertEquals(1.5f, struct.getFloat(2));
+        assertThrows(ReadOnlyBufferException.class, () -> struct.put(0, (byte) 1));
+    }
+
+    @Example
+    void struct_array_views_hold_every_struct_after_the_count() {
+        var layout = TableLayout.builder().offsetSize(AddressableSpace.SIZEOF_16).build();
+        var buffer = new ByteBuffer(new byte[Short.BYTES + 6], layout);
+        buffer.setStructArray(new byte[] {1, 0, 2, 3, 0, 4}, 3);
+
+        assertArrayEquals(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, buffer.bytes());
+
+        // Structs of a uint16 and a uint8
+        var structs = buffer.getStructArray(0, 3);
+        assertTrue(structs.isReadOnly());
+        assertEquals(ByteOrder.LITTLE_ENDIAN, structs.order());
+        assertEquals(2, structs.remaining() / 3);
+        assertEquals(1, structs.getShort(0));
+        assertEquals(2, structs.get(2));
+        assertEquals(3, structs.getShort(3));
+        assertEquals(4, structs.get(5));
+    }
+
+    @Example
+    void should_reject_a_struct_size_below_1_or_bytes_that_arent_whole_structs_and_write_nothing() {
+        var buffer = ByteBuffer.allocate(Integer.BYTES + 4);
+
+        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[5], 2));
+        assertEquals("5 bytes aren't a whole number of 2-byte structs", exception.getMessage());
+        exception = assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[4], 0));
+        assertEquals("A struct's size must be positive, not 0", exception.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[4], -2));
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setStructArray(new byte[6], 2));
+        assertArrayEquals(new byte[8], buffer.bytes());
+
+        assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, 0));
+        assertThrows(IllegalArgumentException.class, () -> buffer.getStruct(0, -1));
+        assertEquals(0, buffer.getStruct(8, 0).remaining());
     }
 
     @Example
@@ -140,7 +242,11 @@ public class ByteBufferTest {
         assertThrows(DecodeException.class, () -> buffer.getUint8ArrayView(0));
         assertThrows(DecodeException.class, () -> buffer.getUint32ArrayView(0));
         assertThrows(DecodeException.class, () -> buffer.getString(0));
+        assertThrows(DecodeException.class, () -> buffer.getStructArray(0, 1));
+        assertThrows(DecodeException.class, () -> buffer.getVectorLength(0));
+        assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
         assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
+        assertThrows(DecodeException.class, () -> buffer.getVector(0));
     }
 
     @Example
@@ -150,6 +256,7 @@ public class ByteBufferTest {
 
         assertThrows(DecodeException.class, () -> buffer.getFloat64Array(0));
         assertThrows(DecodeException.class, () -> buffer.getFloat64ArrayView(0));
+        assertThrows(DecodeException.class, () -> buffer.getStructArray(0, Double.BYTES));
     }
 
     @Example

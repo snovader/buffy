@@ -492,21 +492,15 @@ impl Generator<'_> {
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
                     writer.line("let vector = self.buffer.get_vector(position)?;");
-                    writer.blank();
-
+                    // Collecting into a `Result` would grow the items from
+                    // nothing, since its size hint starts at zero
+                    writer.line("let mut items = Vec::with_capacity(vector.len());");
+                    writer.open("for item in vector {");
                     // Each item is a table of its own bytes
-                    let map = format!(".map(|item| {table}::new(item, 0))");
-                    let chain = format!("vector.iter(){map}.collect()");
-                    if chain.len() <= CHAIN_WIDTH {
-                        writer.line(format!("Ok({chain})"));
-                    } else {
-                        writer.line("Ok(vector");
-                        writer.indent();
-                        writer.line(".iter()");
-                        writer.line(map);
-                        writer.line(".collect())");
-                        writer.dedent();
-                    }
+                    writer.line(format!("items.push({table}::new(item?, 0));"));
+                    writer.close("}");
+                    writer.blank();
+                    writer.line("Ok(items)");
                 }
             }
             writer.close("}");

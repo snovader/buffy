@@ -12,8 +12,8 @@ use crate::{ArrayView, DecodeError, Element, OffsetSize, TableLayout, Vector};
 /// [`DecodeError`] otherwise, so no bytes, however corrupted, make a read
 /// panic or return values from outside them. Strings must be valid UTF-8.
 ///
-/// Arrays and strings are read in place, borrowing the bytes rather than
-/// copying them.
+/// Arrays, strings, structs and vector items are read in place, borrowing
+/// the bytes rather than copying them.
 #[derive(Clone, Copy, Debug)]
 pub struct ByteBuffer<'a, const VERSIONED: bool = false> {
     bytes: &'a [u8],
@@ -150,30 +150,48 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
         str::from_utf8(bytes).map_err(|source| DecodeError::InvalidUtf8 { position, source })
     }
 
-    /// Reads the vector at `position`, checking that each of its items lies
-    /// within the bytes.
+    /// Reads the `size` bytes of the struct at `position`, whose scalars lie
+    /// at fixed offsets from its start
     ///
     /// # Errors
     ///
-    /// [`DecodeError::OutOfRange`] if the vector or any of its items doesn't
-    /// lie within the bytes.
+    /// [`DecodeError::OutOfRange`] if the struct doesn't lie within the
+    /// bytes.
+    pub fn get_struct(&self, position: usize, size: usize) -> Result<&'a [u8], DecodeError> {
+        self.range(position, size as u64)
+    }
+
+    /// Reads the bytes of the structs of the array at `position`, each of
+    /// `size` bytes, one after another after the count. Their number is the
+    /// bytes' length over `size`. Structs of 0 bytes take none, so a `size`
+    /// of 0 returns no bytes, whatever the count.
+    ///
+    /// # Errors
+    ///
+    /// [`DecodeError::OutOfRange`] if the array doesn't lie within the bytes.
+    pub fn get_struct_array(&self, position: usize, size: usize) -> Result<&'a [u8], DecodeError> {
+        self.array_bytes(position, size)
+    }
+
+    /// Reads the vector at `position`, checking that its count and the ends
+    /// of its items lie within the bytes. Each item is checked when it's
+    /// read.
+    ///
+    /// # Errors
+    ///
+    /// [`DecodeError::OutOfRange`] if the count or the ends don't lie within
+    /// the bytes.
     pub fn get_vector(&self, position: usize) -> Result<Vector<'a>, DecodeError> {
         let width = self.offset_size().bytes();
         let count = self.get_size(position)?;
-        let start = position + width;
 
-        // Every item needs at least its length prefix, so this rejects an
-        // impossible count before walking it
-        self.range(start, count as u64 * width as u64)?;
-
-        let mut end = start;
-        for _ in 0..count {
-            let item = self.array_bytes(end, 1)?;
-            end += width + item.len();
-        }
+        // Every item has an end, so this rejects an impossible count before
+        // any item is read
+        self.range(position + width, count as u64 * width as u64)?;
 
         Ok(Vector::new(
-            &self.bytes[start..end],
+            &self.bytes[position..],
+            position,
             count,
             self.offset_size(),
         ))
@@ -225,9 +243,11 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     fn array_bytes(&self, position: usize, element_size: usize) -> Result<&'a [u8], DecodeError> {
         let length = self.get_size(position)?;
 
-        // The length prefix lies within the bytes, so this doesn't overflow
+        // The length prefix lies within the bytes, so this doesn't overflow.
+        // A struct can be as large as a usize, and a byte length past u64
+        // lies past any bytes, so the product saturates.
         let start = position + self.offset_size().bytes();
-        self.range(start, length as u64 * element_size as u64)
+        self.range(start, (length as u64).saturating_mul(element_size as u64))
     }
 
     #[inline]

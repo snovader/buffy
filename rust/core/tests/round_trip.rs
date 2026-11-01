@@ -1,6 +1,7 @@
 //! Tables read back the values that they were built from. The examples show
-//! builders borrowing and owning values, and `ArrayView` reading arrays in
-//! place or copying them.
+//! builders borrowing and owning values, `ArrayView` reading arrays in place
+//! or copying them, structs read from their bytes, and vector items found
+//! from their ends.
 
 mod common;
 
@@ -49,7 +50,70 @@ fn test_round_trip_owned_values() {
     );
 
     let vector = buffer.get_vector(buffer.root_offset(2).unwrap()).unwrap();
-    assert_eq!(vector.iter().collect::<Vec<_>>(), [&[1, 2][..], &[3]]);
+    assert_eq!(
+        vector.iter().collect::<Vec<_>>(),
+        [Ok(&[1, 2][..]), Ok(&[3])]
+    );
+}
+
+#[test]
+fn test_vector_items_found_from_their_ends() {
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    builder.set_vector([&[1][..], &[], &[2, 3]]).unwrap();
+
+    let bytes = builder.to_bytes().unwrap();
+    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let position = buffer.root_offset(0).unwrap();
+
+    // The count and the three ends, at 4, then the items, from 20
+    assert_eq!(
+        bytes[position..20],
+        [3, 0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0]
+    );
+    assert_eq!(bytes[20..], [1, 2, 3]);
+
+    let vector = buffer.get_vector(position).unwrap();
+    assert_eq!(vector.len(), 3);
+    assert_eq!(vector.get(2), Some(Ok(&[2, 3][..])));
+    assert_eq!(vector.get(1), Some(Ok(&[][..])));
+    assert_eq!(vector.get(3), None);
+}
+
+#[test]
+fn test_round_trip_structs() {
+    // A struct of a u16 and an f32, of 6 bytes, whose arrays are aligned to 4
+    let point = |x: u16, y: f32| [&x.to_le_bytes()[..], &y.to_le_bytes()].concat();
+    let points = [point(1, 1.5), point(2, -0.25)].concat();
+
+    let mut builder = TableBuilder::new(3, TableLayout::DEFAULT).unwrap();
+    builder.set_u8(7).unwrap();
+    builder.set_struct(point(3, 2.5)).unwrap();
+    builder
+        .set_struct_array(&points, 6, Alignment::Four)
+        .unwrap();
+
+    let bytes = builder.to_bytes().unwrap();
+    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+
+    // The struct follows the u8 at 12 unpadded, at 13
+    let position = buffer.root_offset(1).unwrap();
+    assert_eq!(position, 13);
+    assert_eq!(buffer.get_struct(position, 6).unwrap(), point(3, 2.5));
+
+    // The array's count is padded from 19 to 20, so that its structs start
+    // at 24
+    let position = buffer.root_offset(2).unwrap();
+    assert_eq!(position, 20);
+    assert_eq!(buffer.get_u32(position), Ok(2));
+
+    let structs = buffer.get_struct_array(position, 6).unwrap();
+    let read_y = |point: &[u8; 6]| ByteBuffer::new(point, TableLayout::DEFAULT).get_f32(2);
+    let ys: Result<Vec<_>, _> = structs.as_chunks().0.iter().map(read_y).collect();
+    assert_eq!(structs, points);
+    assert_eq!(ys, Ok(vec![1.5, -0.25]));
+
+    // Structs of 0 bytes take none, whatever the count
+    assert_eq!(buffer.get_struct_array(position, 0), Ok(&[][..]));
 }
 
 #[test]
@@ -111,7 +175,7 @@ fn test_builder_nested_several_times() {
 
     let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
     let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
-    assert_eq!(vector.iter().collect::<Vec<_>>(), [&own[..], &own]);
+    assert_eq!(vector.iter().collect::<Vec<_>>(), [Ok(&own[..]), Ok(&own)]);
 }
 
 fn bits_of(values: impl IntoIterator<Item = f64>) -> Vec<u64> {
