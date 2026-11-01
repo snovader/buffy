@@ -1,16 +1,150 @@
 package io.github.snovader.buffy.test;
 
 import io.github.snovader.buffy.*;
+import io.github.snovader.buffy.test.FieldDescription.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
 import java.util.*;
 
-import static io.github.snovader.buffy.test.Field.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TableBuilderTest {
     private static final TableLayout SIZED = TableLayout.builder().sized(true).build();
+
+    // Tables of up to 64 KiB, so fewer of them
+    @Property(tries = 250)
+    void a_field_too_long_for_the_offset_size_throws_from_its_setter_and_leaves_the_builder_as_it_was(
+        @ForAll("narrowTables") TableDescription table,
+        @ForAll GrowingField growing,
+        @ForAll Source from,
+        @ForAll @IntRange(min = 1, max = 100) int excess
+    ) {
+        var offsetSize = table.layout().offsetSize();
+        var max = offsetSize.maxValue();
+        Assume.that(Descriptions.maxLength(table.withField(growing.ofLength(0, from))) <= max);
+
+        // The longest field that fits, and one longer by `excess` elements
+        var empty = Tables.build(table.withField(growing.ofLength(0, from))).bytes();
+        var longest = (int) (max - empty.length) / growing.unit(offsetSize);
+        var fits = growing.ofLength(longest, from);
+        var tooLong = growing.ofLength(longest + excess, from);
+
+        var builder = Tables.createBuilder(table.withField(fits));
+        for (var field : table.fields()) {
+            Tables.setField(builder, field);
+        }
+
+        assertThrows(IllegalArgumentException.class, () -> Tables.setField(builder, tooLong));
+        Tables.setField(builder, fits);
+
+        // The longest table reads back, and the rejected field left no trace in it
+        var longestTable = table.withField(fits);
+        var bytes = builder.bytes();
+        assertArrayEquals(Tables.build(longestTable).bytes(), bytes);
+        assertEquals(longestTable, TableReader.strict(bytes, table.layout()).readTable(longestTable));
+    }
+
+    @Provide
+    Arbitrary<TableDescription> narrowTables() {
+        return Descriptions.narrowTables();
+    }
+
+    /** A field of any length, which grows by the same bytes with each element */
+    enum GrowingField {
+        INT8_ARRAY,
+        FLOAT64_ARRAY,
+        STRING,
+        NESTED_TABLE,
+        VECTOR_ITEMS,
+        VECTOR_ITEM;
+
+        /** An empty table, which takes no bytes and is read in place */
+        private static final TableDescription EMPTY = new TableDescription(
+            LayoutDescription.headerless(AddressableSpace.SIZEOF_32),
+            OptionalLong.empty(),
+            List.of()
+        );
+
+        /** {@return the bytes that each element adds in a table of offsets {@code offsetSize} wide} */
+        int unit(AddressableSpace offsetSize) {
+            return switch (this) {
+                case FLOAT64_ARRAY -> Double.BYTES;
+                // Each item's length
+                case VECTOR_ITEMS -> offsetSize.valueOf();
+                default -> Byte.BYTES;
+            };
+        }
+
+        /** {@return the field with {@code length} elements, nesting tables from {@code from}} */
+        FieldDescription ofLength(int length, Source from) {
+            return switch (this) {
+                case INT8_ARRAY -> new ArrayField(ScalarType.INT8, new long[length]);
+                case FLOAT64_ARRAY -> new ArrayField(ScalarType.FLOAT64, new long[length]);
+                case STRING -> new StringField("a".repeat(length));
+                case NESTED_TABLE -> new TableField(from, tableOfBytes(length), OptionalInt.empty());
+                case VECTOR_ITEMS -> new VectorField(Collections.nCopies(length, new NestedTable(from, EMPTY)));
+                case VECTOR_ITEM -> new VectorField(List.of(new NestedTable(from, tableOfBytes(length))));
+            };
+        }
+
+        /** {@return a table of an array of {@code length} bytes} */
+        private static TableDescription tableOfBytes(int length) {
+            var bytes = new ArrayField(ScalarType.INT8, new long[length]);
+            return new TableDescription(EMPTY.layout(), OptionalLong.empty(), List.of(bytes));
+        }
+    }
+
+    @Property
+    void a_complete_builder_writes_the_same_table_wherever_it_is_nested_and_when_written_itself(
+        @ForAll("headerlessTables") TableDescription table
+    ) {
+        var nested = Tables.build(table);
+
+        // Written straight into its parent, before it's written itself, and then copied
+        var beforeWritten = parentOf(nested);
+        var written = nested.bytes();
+        var afterWritten = parentOf(nested);
+
+        assertArrayEquals(Tables.build(table).bytes(), written);
+        assertArrayEquals(beforeWritten, afterWritten);
+    }
+
+    private static byte[] parentOf(TableBuilder nested) {
+        var parent = new TableBuilder(2);
+        parent.setTable(nested);
+        parent.setVector(List.of(nested, nested));
+
+        return parent.bytes();
+    }
+
+    @Provide
+    Arbitrary<TableDescription> headerlessTables() {
+        return Descriptions.headerlessTables();
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void a_version_is_written_up_to_the_largest_that_its_slot_holds_and_rejected_beyond(
+        @ForAll AddressableSpace offsetSize
+    ) {
+        var layout = versioned(offsetSize);
+        var max = offsetSize.maxValue();
+
+        var buffer = new ByteBuffer(new TableBuilder(0, layout, max).bytes(), layout);
+        assertEquals(max, buffer.getVersion());
+
+        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
+        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, -1));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void an_alignment_other_than_1_2_4_or_8_is_rejected(@ForAll @IntRange(min = -16, max = 64) int alignment) {
+        Assume.that(alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8);
+        var builder = new TableBuilder(1);
+
+        assertThrows(IllegalArgumentException.class, () -> builder.setTable(new byte[0], alignment));
+        assertThrows(IllegalArgumentException.class, () -> builder.setTable(new TableBuilder(0), alignment));
+    }
 
     @Example
     void should_reject_a_field_beyond_the_number_the_table_holds() {
@@ -63,52 +197,6 @@ public class TableBuilderTest {
     }
 
     @Example
-    void should_write_the_version_after_the_length() {
-        // Length, version (7), offset of the field and the field (42)
-        assertVersionedTable(AddressableSpace.SIZEOF_8, true, new byte[] {4, 7, 3, 42});
-        assertVersionedTable(AddressableSpace.SIZEOF_16, true, new byte[] {7, 0, 7, 0, 6, 0, 42});
-        assertVersionedTable(
-            AddressableSpace.SIZEOF_32,
-            true,
-            new byte[] {13, 0, 0, 0, 7, 0, 0, 0, 12, 0, 0, 0, 42}
-        );
-        assertVersionedTable(AddressableSpace.SIZEOF_32, false, new byte[] {7, 0, 0, 0, 8, 0, 0, 0, 42});
-    }
-
-    private static void assertVersionedTable(AddressableSpace size, boolean sized, byte[] expected) {
-        var layout = TableLayout.builder().sized(sized).versioned(true).offsetSize(size).build();
-        var builder = new TableBuilder(1, layout, 7);
-        builder.setInt8((byte) 42);
-        var bytes = builder.bytes();
-
-        var buffer = new ByteBuffer(bytes, layout);
-
-        assertArrayEquals(expected, bytes);
-        assertEquals(7, buffer.getVersion());
-        assertEquals(42, buffer.getInt8(buffer.rootOffset(0)));
-    }
-
-    @Example
-    void should_write_the_largest_version_that_its_slot_holds() {
-        var layout = TableLayout.builder().versioned(true).build();
-        var buffer = new ByteBuffer(new TableBuilder(0, layout, 4294967295L).bytes(), layout);
-
-        assertEquals(4294967295L, buffer.getVersion());
-    }
-
-    @Example
-    void should_reject_a_version_that_its_slot_cannot_hold() {
-        var oneByte = versioned(AddressableSpace.SIZEOF_8);
-        var twoBytes = versioned(AddressableSpace.SIZEOF_16);
-        var fourBytes = versioned(AddressableSpace.SIZEOF_32);
-
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, oneByte, 256));
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, twoBytes, 65536));
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, fourBytes, 1L << 32));
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, fourBytes, -1));
-    }
-
-    @Example
     void should_need_a_version_exactly_when_the_layout_has_a_slot_for_it() {
         var exception = assertThrows(
             IllegalArgumentException.class,
@@ -121,69 +209,12 @@ public class TableBuilderTest {
     }
 
     @Example
-    void should_reject_reading_the_version_of_an_unversioned_table() {
-        var buffer = new ByteBuffer(new TableBuilder(0, SIZED).bytes(), SIZED);
-
-        assertThrows(IllegalStateException.class, buffer::getVersion);
-    }
-
-    @Example
     void should_write_a_lone_surrogate_as_the_replacement_character() {
         var builder = new TableBuilder(1);
         builder.setString("a\uD800b\uDC00\uD83D\uDE00");
 
         var buffer = new ByteBuffer(builder.bytes());
         assertEquals("a\uFFFDb\uFFFD\uD83D\uDE00", buffer.getString(buffer.rootOffset(0)));
-    }
-
-    @Property
-    void should_fit_a_field_up_to_the_largest_table_and_reject_one_element_more(
-        @ForAll("limitedSizes") AddressableSpace size,
-        @ForAll boolean sized,
-        @ForAll("growingFields") GrowingField field
-    ) {
-        var layout = TableLayout.builder().sized(sized).offsetSize(size).build();
-        var max = (int) size.maxValue();
-
-        var empty = new TableBuilder(1, layout);
-        field.ofLength(0, size).setOn(empty);
-        var length = (max - empty.bytes().length) / field.unit(size);
-
-        var longest = new TableBuilder(1, layout);
-        var longestField = field.ofLength(length, size);
-        longestField.setOn(longest);
-
-        var buffer = new ByteBuffer(longest.bytes(), layout);
-        assertTrue(buffer.bytes().length <= max);
-        assertTrue(buffer.bytes().length > max - field.unit(size));
-        assertTrue(longestField.matches(longestField.readFrom(buffer, buffer.rootOffset(0))));
-
-        // The setter throws and leaves the builder as it was
-        var tooLong = new TableBuilder(1, layout);
-        assertThrows(IllegalArgumentException.class, () -> field.ofLength(length + 1, size).setOn(tooLong));
-        field.ofLength(0, size).setOn(tooLong);
-        assertArrayEquals(empty.bytes(), tooLong.bytes());
-    }
-
-    @Property
-    void should_reject_the_field_that_makes_the_table_longer_than_its_offsets_address(
-        @ForAll("limitedSizes") AddressableSpace size
-    ) {
-        var layout = TableLayout.builder().offsetSize(size).build();
-        var max = (int) size.maxValue();
-
-        // Two offsets, the array's length prefix and bytes, and then one byte
-        var fits = new TableBuilder(2, layout);
-        fits.setInt8Array(new byte[max - 3 * size.valueOf() - 1]);
-        fits.setUint8((short) 7);
-
-        var buffer = new ByteBuffer(fits.bytes(), layout);
-        assertEquals(max, buffer.bytes().length);
-        assertEquals(7, buffer.getUint8(buffer.rootOffset(1)));
-
-        var tooLong = new TableBuilder(2, layout);
-        tooLong.setInt8Array(new byte[max - 3 * size.valueOf()]);
-        assertThrows(IllegalArgumentException.class, () -> tooLong.setUint8((short) 7));
     }
 
     @Property
@@ -196,6 +227,11 @@ public class TableBuilderTest {
 
         assertDoesNotThrow(() -> new TableBuilder(fields, layout));
         assertThrows(IllegalArgumentException.class, () -> new TableBuilder(fields + 1, layout));
+    }
+
+    @Provide
+    Arbitrary<AddressableSpace> limitedSizes() {
+        return Arbitraries.of(AddressableSpace.SIZEOF_8, AddressableSpace.SIZEOF_16);
     }
 
     @Example
@@ -211,96 +247,6 @@ public class TableBuilderTest {
         builder.setVector(new byte[][] {{1}});
         var buffer = new ByteBuffer(builder.bytes());
         assertArrayEquals(new byte[][] {{1}}, buffer.getVector(buffer.rootOffset(0)));
-    }
-
-    @Provide
-    Arbitrary<AddressableSpace> limitedSizes() {
-        return Arbitraries.of(AddressableSpace.SIZEOF_8, AddressableSpace.SIZEOF_16);
-    }
-
-    @Provide
-    Arbitrary<GrowingField> growingFields() {
-        return Arbitraries.of(GrowingField.values());
-    }
-
-    /** A field of any length, and the bytes that each element adds */
-    enum GrowingField {
-        BYTE_ARRAY,
-        TYPED_ARRAY,
-        STRING,
-        VECTOR_COUNT,
-        VECTOR_ITEM;
-
-        int unit(AddressableSpace size) {
-            return switch (this) {
-                case TYPED_ARRAY -> Double.BYTES;
-                case VECTOR_COUNT -> size.valueOf();
-                default -> Byte.BYTES;
-            };
-        }
-
-        Field ofLength(int length, AddressableSpace size) {
-            return switch (this) {
-                case BYTE_ARRAY -> new Field(Field.Type.INT8_ARRAY, new byte[length]);
-                case TYPED_ARRAY -> new Field(Field.Type.FLOAT64_ARRAY, new double[length]);
-                case STRING -> new Field(Field.Type.STRING, "a".repeat(length));
-                case VECTOR_COUNT -> {
-                    var vector = new byte[length][];
-                    Arrays.fill(vector, new byte[0]);
-                    yield new Field(Field.Type.VECTOR, vector);
-                }
-                case VECTOR_ITEM -> new Field(Field.Type.VECTOR, new byte[][] {new byte[length]});
-            };
-        }
-    }
-
-    @Property
-    void should_write_the_same_bytes_as_nesting_the_tables_bytes_at_its_arrays_alignment(
-        @ForAll @Size(max = 6) List<@From("fields") Field> parentFields,
-        @ForAll @Size(max = 6) List<@From("fields") Field> nestedFields
-    ) {
-        var withBuilder = builderOf(parentFields, 1, TableLayout.DEFAULT);
-        withBuilder.setTable(builderOf(nestedFields));
-
-        var withBytes = builderOf(parentFields, 1, TableLayout.DEFAULT);
-        withBytes.setTable(builderOf(nestedFields).bytes(), alignmentOf(nestedFields));
-
-        assertArrayEquals(withBytes.bytes(), withBuilder.bytes());
-    }
-
-    @Property
-    void should_read_back_tables_nested_two_deep(
-        @ForAll @Size(max = 6) List<@From("fields") Field> outerFields,
-        @ForAll @Size(max = 6) List<@From("fields") Field> middleFields,
-        @ForAll @Size(max = 6) List<@From("fields") Field> innerFields
-    ) {
-        var middle = builderOf(middleFields, 1, TableLayout.DEFAULT);
-        middle.setTable(builderOf(innerFields));
-
-        var outer = builderOf(outerFields, 1, SIZED);
-        outer.setTable(middle);
-
-        var buffer = new ByteBuffer(outer.bytes(), SIZED);
-        var middlePosition = buffer.rootOffset(outerFields.size());
-        var innerPosition = buffer.fieldOffset(middlePosition, middleFields.size());
-
-        for (int i = 0; i < innerFields.size(); i++) {
-            var field = innerFields.get(i);
-            assertTrue(field.matches(field.readFrom(buffer, buffer.fieldOffset(innerPosition, i))));
-        }
-    }
-
-    @Property
-    void should_write_a_vector_of_builders_as_a_vector_of_their_bytes(
-        @ForAll @Size(max = 5) List<@Size(max = 6) List<@From("fields") Field>> items
-    ) {
-        var withBuilders = new TableBuilder(1);
-        withBuilders.setVector(items.stream().map(Field::builderOf).toList());
-
-        var withBytes = new TableBuilder(1);
-        withBytes.setVector(items.stream().map(item -> builderOf(item).bytes()).toArray(byte[][]::new));
-
-        assertArrayEquals(withBytes.bytes(), withBuilders.bytes());
     }
 
     @Example
@@ -336,64 +282,6 @@ public class TableBuilderTest {
     }
 
     @Example
-    void should_reject_a_builder_that_makes_its_parent_too_long_and_leave_it_as_it_was() {
-        var nested = new TableBuilder(1);
-        nested.setInt8Array(new byte[255 - 8]);
-
-        var parent = new TableBuilder(1, TableLayout.builder().offsetSize(AddressableSpace.SIZEOF_8).build());
-        assertThrows(IllegalArgumentException.class, () -> parent.setTable(nested));
-        assertThrows(IllegalArgumentException.class, () -> parent.setVector(List.of(nested)));
-
-        parent.setVector(List.of());
-        assertArrayEquals(new byte[] {1, 0}, parent.bytes());
-    }
-
-    @Example
-    void should_write_a_builder_nested_several_times_or_written_itself_the_same_each_time() {
-        var nested = new TableBuilder(2);
-        nested.setFloat64Array(new double[] {1, 2});
-        nested.setString("nested");
-
-        // Written straight into the parent, and then copied once written itself
-        var first = new TableBuilder(2);
-        first.setTable(nested);
-        first.setVector(List.of(nested, nested));
-        var written = first.bytes();
-
-        var own = nested.bytes();
-        var second = new TableBuilder(2);
-        second.setTable(nested);
-        second.setVector(List.of(nested, nested));
-
-        assertArrayEquals(written, second.bytes());
-
-        var buffer = new ByteBuffer(second.bytes());
-        assertArrayEquals(new byte[][] {own, own}, buffer.getVector(buffer.rootOffset(1)));
-    }
-
-    @Property
-    void should_copy_a_builder_of_other_offsets_in_a_vector_as_its_own_bytes(
-        @ForAll AddressableSpace nestedSize,
-        @ForAll AddressableSpace parentSize
-    ) {
-        var layout = TableLayout.builder().offsetSize(nestedSize).build();
-        var nested = new TableBuilder(2, layout);
-        nested.setString("another width");
-        nested.setUint16Array(new int[] {1, 2});
-
-        var parentLayout = TableLayout.builder().offsetSize(parentSize).build();
-        var parent = new TableBuilder(1, parentLayout);
-        parent.setVector(List.of(nested));
-
-        var buffer = new ByteBuffer(parent.bytes(), parentLayout);
-        var item = buffer.getVector(buffer.rootOffset(0))[0];
-        assertArrayEquals(nested.bytes(), item);
-
-        var read = new ByteBuffer(item, layout);
-        assertEquals("another width", read.getString(read.rootOffset(0)));
-    }
-
-    @Example
     void should_write_a_nested_builders_array_elements_as_they_are_when_its_parent_is_written() {
         var values = new float[] {1, 2};
         var nested = new TableBuilder(1);
@@ -419,11 +307,6 @@ public class TableBuilderTest {
 
         var buffer = new ByteBuffer(parent.bytes());
         assertEquals(1, buffer.getVectorOffsets(buffer.rootOffset(0)).length);
-    }
-
-    @Provide
-    Arbitrary<Field> fields() {
-        return Field.any();
     }
 
     private static TableLayout versioned(AddressableSpace size) {

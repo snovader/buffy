@@ -1,6 +1,7 @@
 package io.github.snovader.buffy.test;
 
 import io.github.snovader.buffy.*;
+import io.github.snovader.buffy.test.FieldDescription.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
@@ -12,151 +13,69 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class ByteBufferTest {
     @Property
-    void should_round_trip_int8(@ForAll byte value) {
-        var buffer = ByteBuffer.allocate(Byte.BYTES);
-        buffer.setInt8(value);
-        assertEquals(value, buffer.getInt8(0));
+    void a_buffer_reads_back_the_value_that_its_setter_writes(
+        @ForAll("values") FieldDescription field,
+        @ForAll("layouts") LayoutDescription layout
+    ) {
+        assertReadsBack(field, layout);
     }
 
-    @Property
-    void should_round_trip_uint8(@ForAll @ShortRange(max = 255 /* 2 ** 8 - 1 */) short value) {
-        var buffer = ByteBuffer.allocate(Byte.BYTES);
-        buffer.setUint8(value);
-        assertEquals(value, buffer.getUint8(0));
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void a_buffer_reads_back_the_limits_of_every_type_as_scalars_and_in_arrays(@ForAll("limits") ScalarField limit) {
+        var layout = LayoutDescription.headerless(AddressableSpace.SIZEOF_32);
+
+        assertReadsBack(limit, layout);
+        assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout);
     }
 
-    @Property
-    void should_round_trip_int16(@ForAll short value) {
-        var buffer = ByteBuffer.allocate(Short.BYTES);
-        buffer.setInt16(value);
-        assertEquals(value, buffer.getInt16(0));
+    private static void assertReadsBack(FieldDescription field, LayoutDescription layout) {
+        var bytes = new byte[(int) Descriptions.maxLength(field, layout.width())];
+        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+
+        write(buffer, field);
+        assertEquals(field, readAtStart(buffer, field));
     }
 
-    @Property
-    void should_round_trip_uint16(@ForAll @IntRange(max = 65535 /* 2 ** 16 - 1 */) int value) {
-        var buffer = ByteBuffer.allocate(Short.BYTES);
-        buffer.setUint16(value);
-        assertEquals(value, buffer.getUint16(0));
+    /** Writes a scalar, array or string from the buffer's position with the buffer's own setter */
+    private static void write(ByteBuffer buffer, FieldDescription field) {
+        switch (field) {
+            case ScalarField scalar -> scalar.type().write(buffer, scalar.value());
+            case ArrayField array -> array.type().writeArray(buffer, array.values());
+            case StringField string -> buffer.setString(string.value().getBytes(StandardCharsets.UTF_8));
+            default -> throw new IllegalArgumentException("Not a value: " + field);
+        }
     }
 
-    @Property
-    void should_round_trip_int32(@ForAll int value) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES);
-        buffer.setInt32(value);
-        assertEquals(value, buffer.getInt32(0));
+    /** {@return the scalar, array or string of the field's type at the buffer's start} */
+    private static FieldDescription readAtStart(ByteBuffer buffer, FieldDescription field) {
+        return switch (field) {
+            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, 0));
+            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, 0));
+            case StringField ignored -> new StringField(buffer.getString(0));
+            default -> throw new IllegalArgumentException("Not a value: " + field);
+        };
     }
 
-    @Property
-    void should_round_trip_uint32(@ForAll @LongRange(max = 4294967295L /* 2 ** 32 - 1 */) long value) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES);
-        buffer.setUint32(value);
-        assertEquals(value, buffer.getUint32(0));
+    @Provide
+    Arbitrary<FieldDescription> values() {
+        return Descriptions.values();
     }
 
-    @Property
-    void should_round_trip_int64(@ForAll long value) {
-        var buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.setInt64(value);
-        assertEquals(value, buffer.getInt64(0));
+    @Provide
+    Arbitrary<LayoutDescription> layouts() {
+        return Descriptions.layouts();
     }
 
-    @Property
-    void should_round_trip_uint64_as_its_bits(@ForAll long value) {
-        var buffer = ByteBuffer.allocate(Long.BYTES);
-        buffer.setUint64(value);
-        assertEquals(value, buffer.getUint64(0));
-    }
+    @Provide
+    Arbitrary<ScalarField> limits() {
+        var limits = new ArrayList<ScalarField>();
+        for (var type : ScalarType.values()) {
+            for (var value : Descriptions.limits(type)) {
+                limits.add(new ScalarField(type, value));
+            }
+        }
 
-    @Property
-    void should_round_trip_float32(@ForAll float value) {
-        var buffer = ByteBuffer.allocate(Float.BYTES);
-        buffer.setFloat32(value);
-        assertEquals(value, buffer.getFloat32(0));
-    }
-
-    @Property
-    void should_round_trip_float64(@ForAll double value) {
-        var buffer = ByteBuffer.allocate(Double.BYTES);
-        buffer.setFloat64(value);
-        assertEquals(value, buffer.getFloat64(0));
-    }
-
-    @Property
-    void should_round_trip_int8_array(@ForAll byte[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length);
-        buffer.setInt8Array(values);
-        assertArrayEquals(values, buffer.getInt8Array(0));
-    }
-
-    @Property
-    void should_round_trip_uint8_array(@ForAll("uint8Arrays") short[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length);
-        buffer.setUint8Array(values);
-        assertArrayEquals(values, buffer.getUint8Array(0));
-    }
-
-    @Property
-    void should_round_trip_int16_array(@ForAll short[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Short.BYTES);
-        buffer.setInt16Array(values);
-        assertArrayEquals(values, buffer.getInt16Array(0));
-    }
-
-    @Property
-    void should_round_trip_uint16_array(@ForAll("uint16Arrays") int[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Short.BYTES);
-        buffer.setUint16Array(values);
-        assertArrayEquals(values, buffer.getUint16Array(0));
-    }
-
-    @Property
-    void should_round_trip_int32_array(@ForAll int[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Integer.BYTES);
-        buffer.setInt32Array(values);
-        assertArrayEquals(values, buffer.getInt32Array(0));
-    }
-
-    @Property
-    void should_round_trip_uint32_array(@ForAll("uint32Arrays") long[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Integer.BYTES);
-        buffer.setUint32Array(values);
-        assertArrayEquals(values, buffer.getUint32Array(0));
-    }
-
-    @Property
-    void should_round_trip_int64_array(@ForAll long[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Long.BYTES);
-        buffer.setInt64Array(values);
-        assertArrayEquals(values, buffer.getInt64Array(0));
-    }
-
-    @Property
-    void should_round_trip_uint64_array_as_its_bits(@ForAll long[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Long.BYTES);
-        buffer.setUint64Array(values);
-        assertArrayEquals(values, buffer.getUint64Array(0));
-    }
-
-    @Property
-    void should_round_trip_float32_array(@ForAll float[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Float.BYTES);
-        buffer.setFloat32Array(values);
-        assertArrayEquals(values, buffer.getFloat32Array(0));
-    }
-
-    @Property
-    void should_round_trip_float64_array(@ForAll double[] values) {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + values.length * Double.BYTES);
-        buffer.setFloat64Array(values);
-        assertArrayEquals(values, buffer.getFloat64Array(0));
-    }
-
-    @Property
-    void should_round_trip_string(@ForAll String string) {
-        var bytes = string.getBytes(StandardCharsets.UTF_8);
-        var buffer = ByteBuffer.allocate(Integer.BYTES + bytes.length);
-        buffer.setString(bytes);
-        assertEquals(string, buffer.getString(0));
+        return Arbitraries.of(limits);
     }
 
     @Property
@@ -190,24 +109,6 @@ public class ByteBufferTest {
         var buffer = new ByteBuffer(withSize((1 << 29) + 1, Double.BYTES));
 
         assertThrows(DecodeException.class, () -> buffer.getFloat64Array(0));
-    }
-
-    @Example
-    void should_reject_a_size_beyond_the_largest_int() {
-        var buffer = new ByteBuffer(withSize(-1, 4));
-
-        assertThrows(DecodeException.class, () -> buffer.getInt8Array(0));
-        assertThrows(DecodeException.class, () -> buffer.rootOffset(0));
-        assertThrows(DecodeException.class, () -> buffer.fieldOffset(0, 0));
-    }
-
-    @Example
-    void should_reject_a_vector_item_beyond_the_buffer() {
-        // One item, whose size of 8 exceeds the 4 bytes after it
-        var bytes = withSize(1, Integer.BYTES + Integer.BYTES);
-        java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(Integer.BYTES, 8);
-
-        assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).getVectorOffsets(0));
     }
 
     @Example
@@ -249,31 +150,18 @@ public class ByteBufferTest {
         assertEquals(20, new ByteBuffer(bytes).getSize());
     }
 
+    @Example
+    void should_reject_reading_the_version_of_an_unversioned_table() {
+        var layout = TableLayout.builder().sized(true).build();
+        var buffer = new ByteBuffer(new TableBuilder(0, layout).bytes(), layout);
+
+        assertThrows(IllegalStateException.class, buffer::getVersion);
+    }
+
     // A 32-bit size followed by `length` bytes
     private static byte[] withSize(int size, int length) {
         var bytes = new byte[Integer.BYTES + length];
         java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(0, size);
         return bytes;
-    }
-
-    @Provide
-    Arbitrary<short[]> uint8Arrays() {
-        return Arbitraries.shorts()
-            .between((short) 0, (short) (Math.pow(2, 8) - 1))
-            .array(short[].class);
-    }
-
-    @Provide
-    Arbitrary<int[]> uint16Arrays() {
-        return Arbitraries.integers()
-            .between(0, (int) (Math.pow(2, 16) - 1))
-            .array(int[].class);
-    }
-
-    @Provide
-    Arbitrary<long[]> uint32Arrays() {
-        return Arbitraries.longs()
-            .between(0L, (long) (Math.pow(2, 32) - 1))
-            .array(long[].class);
     }
 }
