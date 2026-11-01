@@ -9,7 +9,7 @@ import {
 } from './shapesCases.ts';
 import { SHAPES } from './shapesTables.ts';
 
-// The code generated from schemas/shapes.buffy writes the tables of
+// The code generated from schemas/shapes.tafla writes the tables of
 // conformance/generated, which the code generated in every language writes
 // and reads too
 
@@ -24,7 +24,7 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
 
     for (const name of await readdir(new URL('shapes/', directory))) {
         const path = `shapes/${name}`;
-        // A plain Uint8Array rather than a Buffer, to compare with buffy's
+        // A plain Uint8Array rather than a Buffer, to compare with tafla's
         tables.set(path, new Uint8Array(await readFile(new URL(path, directory))));
     }
 

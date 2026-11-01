@@ -2,7 +2,7 @@
     "compilerOptions": {
         "allowImportingTsExtensions": true,
         "composite": true,
-        "customConditions": ["@buffy/source"],
+        "customConditions": ["tafla-source"],
         "declarationMap": false,
         "emitDeclarationOnly": true,
         "erasableSyntaxOnly": true,

@@ -1,4 +1,4 @@
-//! The code generated from `schemas/shapes.buffy` writes the tables of
+//! The code generated from `schemas/shapes.tafla` writes the tables of
 //! `conformance/generated`, which the generated TypeScript wrote, byte for
 //! byte, and reads back their values. `conformance/generated/README.md`
 //! describes the cases in `shapes.json`.
@@ -8,7 +8,6 @@ mod tables;
 
 use std::{fmt::Debug, fs, path::Path, str::FromStr};
 
-use buffy_core::{BuildError, DecodeError};
 use serde_json::Value as Json;
 use shapes::generated::{
     ColumnsFields, Document, DocumentFields, ItemFields, ItemList, ItemListFields, PairFields,
@@ -19,6 +18,7 @@ use shapes::{
     read_item_list, read_point,
 };
 use tables::{Fields, expected};
+use tafla::{BuildError, DecodeError};
 
 const GENERATED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance/generated");
 
@@ -41,7 +41,7 @@ struct Case {
 fn cases() -> Vec<Case> {
     let json = fs::read_to_string(Path::new(GENERATED).join("shapes.json")).unwrap();
     let suite: Json = serde_json::from_str(&json).unwrap();
-    assert_eq!(suite["schema"], "schemas/shapes.buffy");
+    assert_eq!(suite["schema"], "schemas/shapes.tafla");
 
     suite["cases"]
         .as_array()
@@ -61,7 +61,7 @@ fn case_of(case: &Json) -> Case {
         "Document" => document(fields, &bytes),
         "ItemList" => item_list(fields, &bytes),
         "Sample" => sample(fields, &bytes),
-        other => panic!("{name}: shapes.buffy has no {other}"),
+        other => panic!("{name}: shapes.tafla has no {other}"),
     };
 
     Case {

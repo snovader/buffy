@@ -1,12 +1,12 @@
-# buffy format
+# tafla format
 
-This document describes buffy's binary format. Every implementation writes
+This document describes tafla's binary format. Every implementation writes
 and reads it, and the conformance suite in `conformance/` checks them against
 it byte for byte. Until the first release, the format may still change.
 
 ## Overview
 
-A buffy table holds a fixed number of fields, read by their index. The bytes
+A tafla table holds a fixed number of fields, read by their index. The bytes
 don't describe themselves: the reader knows each field's type from the format
 it reads, such as code generated from a schema. A table has no magic number,
 schema identifier or checksum; a format that needs one can add it as a field

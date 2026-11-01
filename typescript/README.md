@@ -1,6 +1,6 @@
-# buffy for TypeScript
+# tafla for TypeScript
 
-`core/` holds `@buffy/core`, the runtime. Its tests also generate the
+`core/` holds `tafla`, the runtime. Its tests also generate the
 repository's conformance suite. `benchmarks/` times it, and compares it with
 other libraries; its README describes how.
 
@@ -23,7 +23,7 @@ repository from `core/test/conformance/cases.ts`, and the tables of the
 generated code in its `generated` directory from
 `core/test/generated/shapesCases.ts`.
 
-`core/test/generated` holds the TypeScript and JavaScript that buffy-gen
+`core/test/generated` holds the TypeScript and JavaScript that tafla-gen
 generates from the example schemas in `schemas/`, in a directory of each
 schema, and the tests that run them, of the JavaScript through its JSDoc
 types. They're the generator's golden files, which `rust/gen/README.md`
@@ -34,11 +34,11 @@ CI runs them in Node 24 and 26.
 
 ## Source and build
 
-Within this project, the `@buffy/source` condition resolves `@buffy/core` and
+Within this project, the `tafla-source` condition resolves `tafla` and
 its `#` imports to its TypeScript source: tests pass it to Node, and the
 TypeScript configs set it in `customConditions`. Without it, as for the
 package's users, they resolve to the build in `dist`.
 
-`yarn workspace @buffy/core build` compiles the package to `dist`, and packing
+`yarn workspace tafla build` compiles the package to `dist`, and packing
 it builds it first. `yarn package:check` packs it, checks the archive with Are
 the Types Wrong and publint, and imports the build to read back a table.

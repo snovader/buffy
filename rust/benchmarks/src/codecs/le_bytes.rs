@@ -5,9 +5,9 @@ const SAMPLE_SIZE: usize = 12;
 
 /// The standard library's `to_le_bytes()` and `from_le_bytes()`, for the
 /// fixed-size record only: the obvious Rust code for fields at fixed offsets,
-/// which buffy's README recommends for them.
+/// which tafla's README recommends for them.
 ///
-/// It writes the record as buffy's codec does, as buffy-gen generates a
+/// It writes the record as tafla's codec does, as tafla-gen generates a
 /// struct's writer, so the two serialize the same way. Reading takes the
 /// record's bytes as an array, and fails only when there are fewer.
 #[derive(Clone, Copy, Debug)]

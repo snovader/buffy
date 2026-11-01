@@ -8,17 +8,17 @@
 
 use std::fmt::{self, Debug};
 
-use buffy_core::{ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
 use proptest::arbitrary::Arbitrary;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tafla::{ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
 
 /// The cases of each property: enough to draw every kind of edge value
 /// several times, while `cargo test` stays fast
 pub const CASES: u32 = 128;
 
 /// A float compared by its bits, so that -0 differs from 0 and a NaN equals
-/// a NaN of the same sign and payload only. buffy writes a float's IEEE 754
+/// a NaN of the same sign and payload only. tafla writes a float's IEEE 754
 /// bits as they are, and the Rust runtime reads them back as they are.
 #[derive(Clone, Copy)]
 pub struct Bits<T>(pub T);

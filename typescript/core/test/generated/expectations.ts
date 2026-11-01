@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import { DecodeError } from '@buffy/core';
+import { DecodeError } from 'tafla';
 
 /**
  * Expects reading bytes to return values or throw `DecodeError`, rather than

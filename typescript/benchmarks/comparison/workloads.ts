@@ -1,5 +1,5 @@
 /**
- * Generic table shapes, sized to bracket how buffy is used: small tables of
+ * Generic table shapes, sized to bracket how tafla is used: small tables of
  * scalars and a string, documents whose header nests a table of numeric
  * columns, vectors of small nested tables, and fixed-size records.
  */
@@ -67,7 +67,7 @@ export const RECORD: RecordInput = {
     x: 59.3293,
     y: 18.0686,
     id: -631_152_000n,
-    name: 'buffy-benchmarks'
+    name: 'tafla-benchmarks'
 };
 
 export const SAMPLE: SampleInput = {

@@ -1,5 +1,5 @@
 error: unexpected character `@`
- --> unexpected_character.buffy:3:5
+ --> unexpected_character.tafla:3:5
   |
 3 |     @y: float64;
   |     ^

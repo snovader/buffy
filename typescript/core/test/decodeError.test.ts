@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteBuffer, DecodeError } from '@buffy/core';
+import { ByteBuffer, DecodeError } from 'tafla';
 
 describe('DecodeError', () => {
     it('should be a RangeError named DecodeError', () => {

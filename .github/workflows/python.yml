@@ -132,10 +132,10 @@ jobs:
         run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks -p test_round_trips.py
 
       - name: Run benchmarks briefly
-        run: uv run --locked python -m buffy_benchmarks --debug-single-value --quiet
+        run: uv run --locked python -m tafla_benchmarks --debug-single-value --quiet
 
       - name: Print encoded sizes
-        run: uv run --locked python -m buffy_benchmarks.encoding
+        run: uv run --locked python -m tafla_benchmarks.encoding
 
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Python.

@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { TableBuilder, type ByteBuffer } from '@buffy/core';
+import { TableBuilder, type ByteBuffer } from 'tafla';
 
 type TypedArray =
     | Int8Array<ArrayBuffer>

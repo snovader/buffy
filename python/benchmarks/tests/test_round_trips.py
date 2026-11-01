@@ -7,9 +7,9 @@ from collections.abc import Buffer
 from dataclasses import replace
 from typing import Any, override
 
-from buffy_benchmarks.check import RoundTripError, comparable, serialize_checked
-from buffy_benchmarks.codecs import CODECS, Workload, samples
-from buffy_benchmarks.workloads import (
+from tafla_benchmarks.check import RoundTripError, comparable, serialize_checked
+from tafla_benchmarks.codecs import CODECS, Workload, samples
+from tafla_benchmarks.workloads import (
     DOCUMENT_ROWS,
     LIST_ITEMS,
     RECORD,

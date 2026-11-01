@@ -94,38 +94,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buffy-benchmarks"
-version = "0.0.0"
-dependencies = [
- "buffy-core",
- "criterion",
- "flatbuffers",
- "prost",
- "rkyv",
- "rmp-serde",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "buffy-core"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde_json",
-]
-
-[[package]]
-name = "buffy-gen"
-version = "0.0.0"
-dependencies = [
- "buffy-core",
- "proptest",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -887,6 +855,38 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tafla"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
+name = "tafla-benchmarks"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "flatbuffers",
+ "prost",
+ "rkyv",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tafla",
+]
+
+[[package]]
+name = "tafla-gen"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "tafla",
+ "tempfile",
 ]
 
 [[package]]

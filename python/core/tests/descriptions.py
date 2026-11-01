@@ -97,7 +97,7 @@ SCALAR_VALUES: dict[str, SearchStrategy[Any]] = {
 
 
 def scalar_values(kind: str) -> SearchStrategy[Any]:
-    """The values of a scalar type as buffy takes them, rather than as JSON
+    """The values of a scalar type as tafla takes them, rather than as JSON
     holds them: ints, and floats with -0.0, NaN and the infinities, such as
     the fields of generated code take"""
     return SCALAR_VALUES[kind].map(partial(from_json, kind))

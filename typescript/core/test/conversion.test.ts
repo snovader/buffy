@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder } from '@buffy/core';
+import { ByteBuffer, TableBuilder } from 'tafla';
 
 type NumberArrayType =
     | 'Float32'

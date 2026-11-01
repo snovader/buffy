@@ -1,7 +1,7 @@
-# buffy conformance suite
+# tafla conformance suite
 
-Golden tables written by TypeScript buffy, the reference implementation. Every
-implementation of buffy reads each table back, compares its values with the
+Golden tables written by TypeScript tafla, the reference implementation. Every
+implementation of tafla reads each table back, compares its values with the
 table's description in `cases.json`, and rebuilds it with its own
 `TableBuilder`, byte for byte. Corrupted and truncated tables must fail with a
 decode error. That makes "one format, several implementations" a checked claim.
@@ -10,7 +10,7 @@ decode error. That makes "one format, several implementations" a checked claim.
 | -------------- | ---------------------------------------------------------------------------- |
 | TypeScript     | `typescript/core/test/conformance/conformance.test.ts`                       |
 | Python         | `python/core/tests/test_conformance.py`                                      |
-| Java           | `java/core/src/test/java/io/github/snovader/buffy/test/ConformanceTest.java` |
+| Java           | `java/core/src/test/java/io/github/snovader/tafla/test/ConformanceTest.java` |
 | Rust           | `rust/core/tests/conformance.rs`                                             |
 
 Each language's CI runs its test when this directory changes.
@@ -21,7 +21,7 @@ Each language's CI runs its test when this directory changes.
 - `valid/<name>.bin`: the table of each valid case
 - `invalid/<name>.bin`: the corrupted table of each invalid case
 - `generated/`: the tables that the code generated from the example schema
-  `schemas/shapes.buffy` writes in every language, which
+  `schemas/shapes.tafla` writes in every language, which
   [`generated/README.md`](generated/README.md) describes
 
 The TypeScript runtime's `test/conformance` writes them:

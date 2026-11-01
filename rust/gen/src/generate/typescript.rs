@@ -1,4 +1,4 @@
-//! TypeScript, and JavaScript with `JSDoc` types, for `@buffy/core`. Messages
+//! TypeScript, and JavaScript with `JSDoc` types, for `tafla`. Messages
 //! and tables are classes that read fields lazily from their bytes, and are
 //! written from interfaces of their fields. Structs are read eagerly.
 
@@ -8,7 +8,7 @@ use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Sche
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
-const RUNTIME: &str = "@buffy/core";
+const RUNTIME: &str = "tafla";
 
 const STYLE: Style = Style {
     width: 80,

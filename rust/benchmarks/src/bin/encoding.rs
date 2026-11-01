@@ -4,14 +4,14 @@
 
 use std::panic::{self, AssertUnwindSafe};
 
-use buffy_benchmarks::codec::{Codec, Error, Suite, Workload};
-use buffy_benchmarks::codecs::LeBytes;
-use buffy_benchmarks::for_each_codec;
-use buffy_benchmarks::workloads::{
+use rkyv::util::AlignedVec;
+use tafla_benchmarks::codec::{Codec, Error, Suite, Workload};
+use tafla_benchmarks::codecs::LeBytes;
+use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, List, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape,
 };
-use rkyv::util::AlignedVec;
 
 const NAME_WIDTH: usize = 16;
 const COLUMN_WIDTH: usize = 12;

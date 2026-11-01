@@ -1,10 +1,10 @@
-# buffy for Java
+# tafla for Java
 
-`core/` holds `io.github.snovader.buffy:buffy-core`, the runtime, whose module
-and package are `io.github.snovader.buffy`. Its package documentation has an
+`core/` holds `io.github.snovader.tafla:tafla`, the runtime, whose module
+and package are `io.github.snovader.tafla`. Its package documentation has an
 example.
 
-`benchmarks/` compares buffy with FlatBuffers, protobuf, MessagePack and SBE
+`benchmarks/` compares tafla with FlatBuffers, protobuf, MessagePack and SBE
 in JMH benchmarks, on the same workloads as the TypeScript comparison. Its
 [README](benchmarks/README.md) describes them and has results.
 
@@ -23,8 +23,8 @@ and NullAway. Run the commands below from this directory.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
 
-The test module holds the Java that buffy-gen generates from the example
+The test module holds the Java that tafla-gen generates from the example
 schemas in `schemas/`, in a package of each schema,
-`io.github.snovader.buffy.test.generated.<schema>`, which its tests run.
+`io.github.snovader.tafla.test.generated.<schema>`, which its tests run.
 They're the generator's golden files, which `rust/gen/README.md` describes:
 rewrite them with the generator rather than by hand.

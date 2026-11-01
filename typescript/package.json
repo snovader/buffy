@@ -1,5 +1,5 @@
 {
-  "name": "buffy-typescript",
+  "name": "tafla-typescript",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -8,13 +8,13 @@
   ],
   "scripts": {
     "bench": "vitest bench --run --reporter=verbose",
-    "bench:compare": "node --conditions=@buffy/source benchmarks/comparison/main.ts",
-    "conformance:generate": "node --conditions=@buffy/source core/test/conformance/generate.ts && node --conditions=@buffy/source core/test/generated/generate.ts",
+    "bench:compare": "node --conditions=tafla-source benchmarks/comparison/main.ts",
+    "conformance:generate": "node --conditions=tafla-source core/test/conformance/generate.ts && node --conditions=tafla-source core/test/generated/generate.ts",
     "format:check": "biome format .",
     "format:write": "yarn format:check --write",
     "lint:check": "biome lint .",
     "lint:write": "yarn lint:check --write",
-    "package:check": "yarn workspace @buffy/core pack -o ../.cache/buffy-core.tgz && attw --profile esm-only .cache/buffy-core.tgz && publint core && node core/test/dist.ts",
+    "package:check": "yarn workspace tafla pack -o ../.cache/tafla.tgz && attw --profile esm-only .cache/tafla.tgz && publint core && node core/test/dist.ts",
     "test": "vitest run",
     "typecheck": "tsc -b"
   },

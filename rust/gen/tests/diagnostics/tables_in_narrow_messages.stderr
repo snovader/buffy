@@ -1,11 +1,11 @@
 error: `Offset8` can't nest tables, since its offsets are 8 bits wide
- --> tables_in_narrow_messages.buffy:5:11
+ --> tables_in_narrow_messages.tafla:5:11
   |
 5 |     pair: Pair;
   |           ^^^^ nested tables need 32-bit offsets
 
 error: `Offset16` can't nest tables, since its offsets are 16 bits wide
-  --> tables_in_narrow_messages.buffy:10:13
+  --> tables_in_narrow_messages.tafla:10:13
    |
 10 |     pairs: [Pair];
    |             ^^^^ nested tables need 32-bit offsets

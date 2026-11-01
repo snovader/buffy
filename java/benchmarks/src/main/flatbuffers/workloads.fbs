@@ -1,7 +1,7 @@
 // The workloads' tables, the same as the TypeScript comparison's. The Java classes in
-// src/main/java/io/github/snovader/buffy/benchmarks/generated/flatbuffers are written by hand in the
+// src/main/java/io/github/snovader/tafla/benchmarks/generated/flatbuffers are written by hand in the
 // shape that `flatc --java` generates from this schema.
-namespace io.github.snovader.buffy.benchmarks.generated.flatbuffers;
+namespace io.github.snovader.tafla.benchmarks.generated.flatbuffers;
 
 table Record { x: double; y: double; id: long; name: string; }
 

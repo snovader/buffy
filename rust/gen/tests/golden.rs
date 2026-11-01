@@ -1,7 +1,7 @@
 //! The code generated from each example schema in `schemas/`, for each
 //! target, matches the files checked in under a directory of the schema's
 //! name in the test tree of the target's language, as `GOLDEN_ROOTS` in
-//! `tests/common/mod.rs` lists them. `BUFFY_GEN_UPDATE=1` rewrites them.
+//! `tests/common/mod.rs` lists them. `TAFLA_GEN_UPDATE=1` rewrites them.
 
 mod common;
 
@@ -9,11 +9,11 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use buffy_gen::compile;
 use common::{
     GOLDEN_ROOTS, Golden, PYTHON_CACHE, REPOSITORY, assert_no_differences, compare_tree,
     example_schemas, targets, update,
 };
+use tafla_gen::compile;
 
 #[test]
 fn generated_code_matches_the_golden_files() {

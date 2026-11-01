@@ -1,4 +1,4 @@
-import { ByteBuffer } from '@buffy/core';
+import { ByteBuffer } from 'tafla';
 import {
     type Alignment,
     type Corruption,

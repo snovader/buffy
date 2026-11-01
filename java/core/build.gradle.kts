@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.errorprone)
 }
 
-group = "io.github.snovader.buffy"
+group = "io.github.snovader.tafla"
 
 dependencies {
     api(libs.jspecify)
@@ -54,5 +54,5 @@ tasks.named<Test>("test") {
     // its generated/, see conformance/README.md
     val conformance = rootProject.layout.projectDirectory.dir("../conformance")
     inputs.dir(conformance)
-    systemProperty("buffy.conformance", conformance.asFile.absolutePath)
+    systemProperty("tafla.conformance", conformance.asFile.absolutePath)
 }

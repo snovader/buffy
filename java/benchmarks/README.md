@@ -1,6 +1,6 @@
 # Benchmarks
 
-`./gradlew :benchmarks:jmh` compares buffy's Java runtime with other Java
+`./gradlew :benchmarks:jmh` compares tafla's Java runtime with other Java
 libraries that encode small tables and numeric columns, in JMH benchmarks. It
 runs the workloads of the TypeScript comparison in `typescript/benchmarks/`,
 with the same values, so that the two languages' numbers compare. Run the
@@ -17,7 +17,7 @@ commands below from `java/`.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as Java
-arrays: the uint32 keys as a `long[]`, as buffy reads them, and the float32s
+arrays: the uint32 keys as a `long[]`, as tafla reads them, and the float32s
 as `float[]`s. Column `a` of each document is also summed through each
 library's per-element accessor. `Workloads` ports the TypeScript generator, so
 the inputs are the same values, which `WorkloadsTest` checks against values
@@ -33,10 +33,10 @@ what it does with a truncated document, as the TypeScript comparison does.
 
 - There are no `number[]` inputs. Java's arrays are typed, and its closest
   counterpart, a `List<Float>` of boxed values, isn't what a codec is given.
-- Java's buffy has no `StructWriter`, so the fixed-size record is written with
+- Java's tafla has no `StructWriter`, so the fixed-size record is written with
   `ByteBuffer`'s setters into `ByteBuffer.allocate(12)` and read with its
-  getters at fixed positions. buffy's package documentation suggests
-  `MethodHandles.byteArrayViewVarHandle` for such records, which isn't buffy,
+  getters at fixed positions. tafla's package documentation suggests
+  `MethodHandles.byteArrayViewVarHandle` for such records, which isn't tafla,
   so it isn't timed.
 - msgpack-core has no typed arrays, and msgpackr's extension that copies their
   bytes is msgpackr's own, so MessagePack's columns are arrays of float32s and
@@ -51,16 +51,16 @@ what it does with a truncated document, as the TypeScript comparison does.
 
 | Library                                                       | Why it's comparable                                                                                                                                            |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| buffy (`:core`)                                               | The reference that the others are compared with.                                                                                                               |
-| `com.google.flatbuffers:flatbuffers-java` 25.2.10             | Zero-copy tables with offsets and vectors, like buffy.                                                                                                         |
+| tafla (`:core`)                                               | The reference that the others are compared with.                                                                                                               |
+| `com.google.flatbuffers:flatbuffers-java` 25.2.10             | Zero-copy tables with offsets and vectors, like tafla.                                                                                                         |
 | `com.google.protobuf:protobuf-java` 4.36.2                    | The most used schema-based codec, with packed repeated floats.                                                                                                 |
 | `org.msgpack:msgpack-core` 0.9.12                             | MessagePack's Java implementation: a schemaless format, whose tables are maps with their keys.                                                                 |
-| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record only: fields at fixed offsets, written and read in place through flyweights, like buffy's fixed-size record. |
+| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record only: fields at fixed offsets, written and read in place through flyweights, like tafla's fixed-size record. |
 
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **buffy** nests tables from their builders. Arrays of the elements' own Java
+- **tafla** nests tables from their builders. Arrays of the elements' own Java
   type are copied in bulk, and the uint32 keys are narrowed and widened element
   by element.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
@@ -104,7 +104,7 @@ of 1 s, with a fixed 2 GiB heap.
   every workload.
 - After JMH's own summary, the mean with its 99.9% confidence interval, the
   `jmh` task prints each benchmark's fastest iteration and its ratio to
-  buffy's, as the TypeScript comparison reports the fastest round, since load
+  tafla's, as the TypeScript comparison reports the fastest round, since load
   from other processes only slows iterations. JMH's results, with every
   iteration, are saved in `build/results/jmh/results.json`.
 
@@ -128,7 +128,7 @@ benchmarks, `-p` sets a parameter, and `-prof gc` adds the bytes allocated per
 operation.
 
 ```sh
-./gradlew :benchmarks:jmh --jmhArgs="Document -p codec=buffy"
+./gradlew :benchmarks:jmh --jmhArgs="Document -p codec=tafla"
 ```
 
 A quick run of one fork, with one warm-up and one measured iteration of
@@ -162,7 +162,7 @@ after constructing a benchmark's state.
 - JMH doesn't interleave the codecs, as above.
 - The Apple M2 Pro has 6 performance and 4 efficiency cores, and macOS can move
   the benchmark's thread to an efficiency core when others are busy.
-- Only JDK 25 was timed, though buffy compiles for Java 21.
+- Only JDK 25 was timed, though tafla compiles for Java 21.
 - msgpack-core uses `sun.misc.Unsafe`'s memory access, which JDK 24 and later
   warn about, and a later JDK will remove. The JMH forks allow it, so that the
   warning doesn't interrupt the output, and the tests print it.
@@ -173,7 +173,7 @@ after constructing a benchmark's state.
   their length. Reusing a `FlatBufferBuilder` with `clear()` would make small
   messages cheaper, but the TypeScript comparison doesn't reuse it either.
 - Summing 100,000 floats one after another into a `double` is bound by the
-  latency of each addition, about 0.86 ns here, so buffy's and FlatBuffers'
+  latency of each addition, about 0.86 ns here, so tafla's and FlatBuffers'
   accessors sum the large document in the same time, though not the small one.
 
 ## Results
@@ -185,9 +185,9 @@ median of 2.2. JMH's mean was within 5% of the fastest iteration for 41 of the
 50 benchmarks, and at most 39% above it, where one of protobuf's three forks
 read the fixed-size record in 0.0135 µs and the others in 0.018–0.030 µs.
 
-Fastest iteration in µs per operation, and its ratio to buffy's:
+Fastest iteration in µs per operation, and its ratio to tafla's:
 
-| Benchmark                                          | buffy  | flatbuffers    | protobuf        | msgpack         | sbe            |
+| Benchmark                                          | tafla  | flatbuffers    | protobuf        | msgpack         | sbe            |
 | -------------------------------------------------- | -----: | -------------: | --------------: | --------------: | -------------: |
 | record: serialize                                  | 0.0478 |  0.146 (3.05×) |  0.0297 (0.62×) |  0.0819 (1.71×) |                |
 | record: deserialize                                | 0.0140 | 0.0195 (1.39×) |  0.0322 (2.29×) |   0.131 (9.32×) |                |
@@ -202,15 +202,15 @@ Fastest iteration in µs per operation, and its ratio to buffy's:
 | fixed-size record: serialize                       | 0.0021 | 0.129 (61.33×) |  0.0049 (2.31×) | 0.0759 (36.01×) | 0.0063 (2.97×) |
 | fixed-size record: deserialize                     | 0.0025 | 0.0035 (1.42×) |  0.0135 (5.49×) | 0.0908 (37.04×) | 0.0059 (2.41×) |
 
-- buffy reads every shape fastest. FlatBuffers reads documents within 5% of
+- tafla reads every shape fastest. FlatBuffers reads documents within 5% of
   it, since both copy the float columns in bulk and widen the keys one by one.
-- buffy writes documents 4.6 to 42 times faster than the others, whose
+- tafla writes documents 4.6 to 42 times faster than the others, whose
   columns are written element by element.
-- The vector of 100 nested tables is the one shape that buffy writes slowest:
+- The vector of 100 nested tables is the one shape that tafla writes slowest:
   6.6 µs, against protobuf's 1.7 µs. protobuf also writes the record faster.
-- The sums of 100,000 floats take 86 µs through buffy's and FlatBuffers'
+- The sums of 100,000 floats take 86 µs through tafla's and FlatBuffers'
   accessors alike, bound by the additions; the 100-row sums differ.
-- The fixed-size record takes 2 to 3 ns with buffy's `ByteBuffer`, and 6 ns
+- The fixed-size record takes 2 to 3 ns with tafla's `ByteBuffer`, and 6 ns
   with SBE, which writes and checks its 8-byte header too.
 
 An iteration can also run faster than the rest when fewer garbage collections
@@ -222,15 +222,15 @@ against 1,030 to 1,107 µs for its other 14 iterations.
 ```
 Encoded size (bytes)
                         record     doc 100  doc 100000      vector       fixed
-  buffy                     60        1296     1200096        3208          12
+  tafla                     60        1296     1200096        3208          12
   flatbuffers               72        1328     1200128        2832          32
   protobuf                  47        1243     1187503        1900          16
   msgpack                   53        1573     1499239        3510          24
   sbe                                                                       20
 
 Truncated document of 100000 rows: deserialize()
-  buffy             600048 B  threw DecodeException: Read exceeds the supplied buffer: 400000 bytes at
-  buffy                 24 B  threw DecodeException: Read exceeds the supplied buffer: 8 bytes at 24 of
+  tafla             600048 B  threw DecodeException: Read exceeds the supplied buffer: 400000 bytes at
+  tafla                 24 B  threw DecodeException: Read exceeds the supplied buffer: 8 bytes at 24 of
   flatbuffers       600064 B  threw IndexOutOfBoundsException
   flatbuffers           24 B  threw IndexOutOfBoundsException
   protobuf          593751 B  threw InvalidProtocolBufferException: While parsing a protocol message, the input ended

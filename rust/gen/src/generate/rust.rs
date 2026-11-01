@@ -1,4 +1,4 @@
-//! Rust for `buffy_core`. Messages and tables are `Copy` views that read
+//! Rust for `tafla`. Messages and tables are `Copy` views that read
 //! fields lazily, borrowing strings and arrays from the bytes; they're written
 //! from structs of their fields, with tables nested from their builders.
 //! Structs are plain structs read and written at fixed offsets.
@@ -10,7 +10,7 @@ use super::{GeneratedFile, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
 /// The runtime's crate, unless [`Options::runtime`] names another
-const RUNTIME: &str = "buffy_core";
+const RUNTIME: &str = "tafla";
 
 const STYLE: Style = Style {
     width: 100,
@@ -25,6 +25,10 @@ const CHAIN_WIDTH: usize = 60;
 
 /// rustfmt's `fn_call_width`, past which it breaks a call's arguments
 const FN_CALL_WIDTH: usize = 60;
+
+/// The widest `use` statement with a list that rustfmt keeps on one line, two
+/// columns less than its `max_width`
+const USE_LIST_WIDTH: usize = 98;
 
 /// Strict and reserved keywords, which names take as raw identifiers
 const KEYWORDS: [&str; 48] = [
@@ -126,7 +130,7 @@ impl Generator<'_> {
         names.push("TableLayout");
 
         let statement = format!("use {runtime}::{{{}}};", names.join(", "));
-        if statement.len() <= STYLE.width {
+        if statement.len() <= USE_LIST_WIDTH {
             writer.line(statement);
         } else {
             writer.open(format!("use {runtime}::{{"));

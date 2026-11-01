@@ -1,5 +1,5 @@
 error: expected a type, found `;`
- --> field_without_type.buffy:2:8
+ --> field_without_type.tafla:2:8
   |
 2 |     x: ;
   |        ^

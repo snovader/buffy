@@ -29,7 +29,7 @@ import type {
     TreeFields
 } from './all_types/typescript/allTypes.ts';
 
-// The code generated from schemas/all_types.buffy, how tests read its
+// The code generated from schemas/all_types.tafla, how tests read its
 // messages back and describe them to build their tables by hand, and
 // arbitrary values of their fields.
 
@@ -202,7 +202,7 @@ export function describeReserved({
 
 /**
  * A `Packed` as its fields lie at fixed offsets, little-endian, written with
- * DataView rather than buffy
+ * DataView rather than tafla
  */
 export function packedBytes(fields: PackedFields): Uint8Array {
     const bytes = new Uint8Array(42);

@@ -3,7 +3,7 @@
 //! target, as keywords do, so that the code compiles and keeps its members.
 //! Targets where the name doesn't clash keep it.
 
-use buffy_gen::{Options, Target, compile};
+use tafla_gen::{Options, Target, compile};
 
 const SCHEMA: &str = "\
 message Members {
@@ -28,7 +28,7 @@ struct Frame {
 
 fn generate(target: &str) -> String {
     let target = Target::from_name(target).unwrap();
-    let files = compile("members.buffy", SCHEMA, target, &Options::default()).unwrap();
+    let files = compile("members.tafla", SCHEMA, target, &Options::default()).unwrap();
 
     files.into_iter().map(|file| file.contents).collect()
 }

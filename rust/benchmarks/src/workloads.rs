@@ -1,6 +1,6 @@
 //! Generic table shapes, with the TypeScript comparison's values.
 //!
-//! The shapes are sized to bracket how buffy is used: small tables of scalars
+//! The shapes are sized to bracket how tafla is used: small tables of scalars
 //! and a string, documents whose header nests a table of numeric columns,
 //! vectors of small nested tables, and fixed-size records. The values come
 //! from a port of the TypeScript comparison's seeded generator, so that the
@@ -28,7 +28,7 @@ pub const RECORD: Record<'static> = Record {
     x: 59.3293,
     y: 18.0686,
     id: -631_152_000,
-    name: Cow::Borrowed("buffy-benchmarks"),
+    name: Cow::Borrowed("tafla-benchmarks"),
 };
 
 pub const SAMPLE: Sample = Sample {

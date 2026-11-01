@@ -6,8 +6,8 @@ const config = defineProject({
         benchmark: {
             include: ['*.bench.ts']
         },
-        // Resolve @buffy/core to its source rather than its build
-        execArgv: ['--conditions=@buffy/source'],
+        // Resolve tafla to its source rather than its build
+        execArgv: ['--conditions=tafla-source'],
         experimental: {
             viteModuleRunner: false
         }
