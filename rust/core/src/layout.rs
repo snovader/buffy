@@ -1,3 +1,5 @@
+use crate::BuildError;
+
 /// The width of a table's header slots, field offsets and length prefixes,
 /// which limits how long the table can be.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -133,6 +135,50 @@ impl<const VERSIONED: bool> TableLayout<VERSIONED> {
     pub const fn header_size(self) -> usize {
         let slots = if self.sized { 1 } else { 0 } + if VERSIONED { 1 } else { 0 };
         slots * self.offset_size.bytes()
+    }
+
+    /// The byte length of the header of a table of `fields` fields: its
+    /// slots and an offset per field, which `TableBuilder` and `TableSizer`
+    /// start a table with
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::HeaderTooLong`] if the header is longer than the
+    /// layout's offsets address.
+    pub(crate) fn header_length(self, fields: usize) -> Result<u32, BuildError> {
+        // In u64, since a header longer than 4 GiB would saturate to the
+        // limit itself in a 32-bit usize
+        let slots = (fields as u64)
+            .saturating_add(u64::from(self.sized))
+            .saturating_add(u64::from(VERSIONED));
+        let header = slots.saturating_mul(self.offset_size.bytes() as u64);
+
+        u32::try_from(header)
+            .ok()
+            .filter(|&length| length <= self.offset_size.max_value())
+            .ok_or(BuildError::HeaderTooLong {
+                fields,
+                offset_size: self.offset_size,
+            })
+    }
+}
+
+impl TableLayout<true> {
+    /// Checks that `version` fits in the header's slot
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::VersionTooLarge`] if it doesn't fit in the layout's
+    /// offset size.
+    pub(crate) const fn check_version(self, version: u32) -> Result<(), BuildError> {
+        if version > self.offset_size.max_value() {
+            return Err(BuildError::VersionTooLarge {
+                version,
+                offset_size: self.offset_size,
+            });
+        }
+
+        Ok(())
     }
 }
 

@@ -80,11 +80,12 @@ pub enum Value {
         alignment: Alignment,
         items: Vec<Vec<Value>>,
     },
-    /// A nested table's fields, which the generated code writes from its
-    /// builder at its default alignment, in the default layout
+    /// A nested table's fields, which the generated code writes in place, in
+    /// the default layout, at the alignment that `TableBuilder` pads its
+    /// builder to
     Table(Vec<Value>),
-    /// The fields of a vector's tables, which the generated code writes from
-    /// their builders, in the default layout
+    /// The fields of a vector's tables, which the generated code writes in
+    /// place, in the default layout
     Vector(Vec<Vec<Value>>),
 }
 
