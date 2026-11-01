@@ -59,6 +59,17 @@ export type FieldDescription =
     | TableField
     | { type: 'vector'; items: NestedTable[] };
 
+export type ArrayField = Extract<FieldDescription, { type: ArrayType }>;
+
+export function isArrayField(field: FieldDescription): field is ArrayField {
+    return field.type.endsWith('[]');
+}
+
+/** The element type of an array type */
+export function elementTypeOf(type: ArrayType): ScalarType {
+    return type.slice(0, -2) as ScalarType;
+}
+
 export interface ValidCase {
     name: string;
     description: string;
@@ -84,6 +95,18 @@ export interface InvalidCase {
     case: string;
     corruption: Corruption;
     field: number;
+}
+
+/** Returns a copy of `bytes` with the corruption applied */
+export function corrupt(bytes: Uint8Array, corruption: Corruption): Uint8Array {
+    if (corruption.kind === 'truncate') {
+        return bytes.slice(0, corruption.length);
+    }
+
+    const corrupted = bytes.slice();
+    corrupted.set(corruption.bytes, corruption.at);
+
+    return corrupted;
 }
 
 export interface Suite {

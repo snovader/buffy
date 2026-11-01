@@ -1,4 +1,4 @@
-import type { Corruption, Suite } from './description.ts';
+import { corrupt, type Suite } from './description.ts';
 import { buildTable } from './tables.ts';
 
 /** The suite's directory, at the root of the repository */
@@ -35,17 +35,6 @@ export function writeSuite(suite: Suite): SuiteFiles {
     }
 
     return { json: `${escapeNonAscii(formatJson(suite))}\n`, tables };
-}
-
-function corrupt(bytes: Uint8Array, corruption: Corruption): Uint8Array {
-    if (corruption.kind === 'truncate') {
-        return bytes.slice(0, corruption.length);
-    }
-
-    const corrupted = bytes.slice();
-    corrupted.set(corruption.bytes, corruption.at);
-
-    return corrupted;
 }
 
 /**

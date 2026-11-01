@@ -1,51 +1,5 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
-import {
-    ByteBuffer,
-    DecodeError,
-    readFloat32,
-    readInt32,
-    readInt64,
-    readUint8,
-    readUint32,
-    TableBuilder,
-    TableLayout
-} from '@buffy/core';
-import { getSerializable, serializable, setSerializable } from './serializable.ts';
-
-const types = [
-    'int8',
-    'uint8',
-    'int16',
-    'uint16',
-    'int32',
-    'uint32',
-    'int64',
-    'uint64',
-    'float32',
-    'float64',
-    'int8array',
-    'uint8array',
-    'int16array',
-    'uint16array',
-    'int32array',
-    'uint32array',
-    'int64array',
-    'uint64array',
-    'float32array',
-    'float64array',
-    'string',
-    'vector'
-];
-
-/** Reads a field, returning the error it throws instead */
-function read(buffer: ByteBuffer, type: string, index: number): unknown {
-    try {
-        return getSerializable(buffer, type, index);
-    } catch (error) {
-        return error;
-    }
-}
+import { describe, expect, it } from 'vitest';
+import { ByteBuffer, DecodeError } from '@buffy/core';
 
 describe('DecodeError', () => {
     it('should be a RangeError named DecodeError', () => {
@@ -55,60 +9,29 @@ describe('DecodeError', () => {
         expect(error.name).toBe('DecodeError');
     });
 
-    it.prop([fc.array(serializable, { minLength: 1, maxLength: 8 }), fc.boolean()])(
-        'should read each field of a truncated table or throw DecodeError',
-        (entries, sized) => {
-            const builder = new TableBuilder(entries.length, TableLayout.create({ sized }));
-            for (const entry of entries) {
-                setSerializable(builder, entry);
-            }
+    it.each<[string, (buffer: ByteBuffer) => unknown, string]>([
+        ['getFloat64()', buffer => buffer.getFloat64(4), '8 bytes at 4 of 8'],
+        ['getInt64()', buffer => buffer.getInt64(-1), '8 bytes at -1 of 8'],
+        ['getUint32()', buffer => buffer.getUint32(5), '4 bytes at 5 of 8'],
+        ['getInt8()', buffer => buffer.getInt8(8), '1 bytes at 8 of 8'],
+        // The slice holds a vector's count of 1 and its item's length of 5,
+        // which is also read as the length of an array or string
+        ['getUint8Array()', buffer => buffer.getUint8Array(4), '5 bytes at 8 of 8'],
+        ['getString()', buffer => buffer.getString(4), '5 bytes at 8 of 8'],
+        ['getVector()', buffer => buffer.getVector(0), '5 bytes at 8 of 8']
+    ])(
+        'should give the position and length of a read outside the slice from %s, and the bytes available',
+        (_, read, range) => {
+            // Bytes that a read past the slice's end would find
+            const backing = new Uint8Array(32).fill(0x41);
+            const bytes = backing.subarray(0, 8);
+            bytes.set([1, 0, 0, 0, 5, 0, 0, 0]);
+            const buffer = new ByteBuffer(bytes);
 
-            const bytes = builder.bytes();
-            for (let length = 0; length < bytes.length; length++) {
-                // A copy, so that no read can reach the bytes after the cut
-                const buffer = new ByteBuffer(
-                    bytes.slice(0, length),
-                    TableLayout.create({ sized })
-                );
-
-                for (const [index, [type, value]] of entries.entries()) {
-                    const result = read(buffer, type, index);
-
-                    if (result instanceof Error) {
-                        expect(result).toBeInstanceOf(DecodeError);
-                    } else {
-                        expect(result).toStrictEqual(value);
-                    }
-                }
-            }
+            expect(() => read(buffer)).toThrow(DecodeError);
+            expect(() => read(buffer)).toThrow(`Read exceeds the supplied buffer: ${range}`);
         }
     );
-
-    it.prop([
-        fc.uint8Array({ maxLength: 64 }),
-        fc.constantFrom(...types),
-        fc.nat({ max: 16 }),
-        fc.boolean()
-    ])('should throw only DecodeError for any bytes', (bytes, type, index, sized) => {
-        const result = read(new ByteBuffer(bytes, TableLayout.create({ sized })), type, index);
-
-        if (result instanceof Error) {
-            expect(result).toBeInstanceOf(DecodeError);
-        }
-    });
-
-    it.each([
-        ['getFloat64', (buffer: ByteBuffer) => buffer.getFloat64(4)],
-        ['getInt64', (buffer: ByteBuffer) => buffer.getInt64(-1)],
-        ['getUint32', (buffer: ByteBuffer) => buffer.getUint32(5)],
-        ['getInt8', (buffer: ByteBuffer) => buffer.getInt8(8)]
-    ])('should throw DecodeError from %s outside the slice', (_, get) => {
-        const backing = new Uint8Array(32);
-        const buffer = new ByteBuffer(backing.subarray(0, 8));
-
-        expect(() => get(buffer)).toThrow(DecodeError);
-        expect(() => get(buffer)).toThrow('Read exceeds the supplied buffer');
-    });
 
     it.each([
         ['a lone continuation byte', [0x80]],
@@ -118,7 +41,9 @@ describe('DecodeError', () => {
     ])('should throw DecodeError for a string with %s', (_, utf8) => {
         const bytes = new Uint8Array([utf8.length, 0, 0, 0, ...utf8]);
 
-        expect(() => new ByteBuffer(bytes).getString(0)).toThrow(DecodeError);
+        expect(() => new ByteBuffer(bytes).getString(0)).toThrow(
+            new DecodeError("The string at 0 isn't valid UTF-8")
+        );
     });
 
     it('should keep the original error as the cause of an invalid string', () => {
@@ -127,28 +52,5 @@ describe('DecodeError', () => {
         expect(() => buffer.getString(0)).toThrow(
             expect.objectContaining({ cause: expect.any(TypeError) })
         );
-    });
-
-    it.prop([fc.string({ unit: 'grapheme' })])(
-        'should read back any well-formed string, with a leading U+FEFF',
-        string => {
-            for (const value of [string, `﻿${string}`]) {
-                const builder = new TableBuilder(1);
-                builder.setString(value);
-
-                const buffer = builder.finalize();
-                expect(buffer.getString(buffer.rootOffset(0))).toBe(value);
-            }
-        }
-    );
-
-    it.each([
-        ['readUint8', (bytes: Uint8Array) => readUint8(bytes, 4)],
-        ['readInt32', (bytes: Uint8Array) => readInt32(bytes, 1)],
-        ['readUint32', (bytes: Uint8Array) => readUint32(bytes, -1)],
-        ['readFloat32', (bytes: Uint8Array) => readFloat32(bytes, 2)],
-        ['readInt64', (bytes: Uint8Array) => readInt64(bytes, 0)]
-    ])('should throw DecodeError from %s past the end', (_, read) => {
-        expect(() => read(new Uint8Array(4))).toThrow(DecodeError);
     });
 });

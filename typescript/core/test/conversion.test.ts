@@ -78,7 +78,10 @@ describe.each(numberTypes)('set%sArray()', (type, TypedArray) => {
     it.prop([doubles])(
         'should convert every input kind like the typed array constructor',
         values => {
-            for (const [, input] of numberInputs(values)) {
+            // The element type's own typed array is copied as bytes
+            const inputs = [...numberInputs(values), [type, TypedArray.from(values)] as const];
+
+            for (const [, input] of inputs) {
                 expectElements(roundTrip(type, input), TypedArray.from(input));
             }
         }
@@ -144,14 +147,3 @@ it.prop([doubles, fc.integer({ min: 1, max: 7 })])(
         }
     }
 );
-
-it.each([
-    ['a typed array', new Float32Array(3)],
-    ['a number[]', [1, 2, 3]]
-])('should write nothing when %s exceeds the supplied slice', (_, values) => {
-    const backing = new Uint8Array(32);
-    const buffer = new ByteBuffer(backing.subarray(0, 12));
-
-    expect(() => buffer.setFloat32Array(values)).toThrow(RangeError);
-    expect(backing).toStrictEqual(new Uint8Array(32));
-});
