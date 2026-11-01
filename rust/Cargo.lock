@@ -71,6 +71,7 @@ version = "0.0.0"
 dependencies = [
  "buffy-core",
  "proptest",
+ "serde_json",
  "tempfile",
 ]
 

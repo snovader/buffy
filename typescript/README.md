@@ -19,7 +19,15 @@ yarn test
 
 `yarn format:write` and `yarn lint:write` fix what they can.
 `yarn conformance:generate` regenerates the conformance suite at the root of the
-repository from `core/test/conformance/cases.ts`.
+repository from `core/test/conformance/cases.ts`, and the tables of the
+generated code in its `generated` directory from
+`core/test/generated/shapesCases.ts`.
+
+`core/test/generated` holds the TypeScript and JavaScript that buffy-gen
+generates from the example schemas in `schemas/`, in a directory of each
+schema, and the tests that run them, of the JavaScript through its JSDoc
+types. They're the generator's golden files, which `rust/gen/README.md`
+describes: rewrite them with the generator rather than by hand.
 
 Tests run in Node's own module loader, which strips the types of `.ts` files.
 CI runs them in Node 24 and 26.

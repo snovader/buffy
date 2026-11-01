@@ -27,9 +27,12 @@ java = []
 rust = []
 
 [dev-dependencies]
-# Compiles the generated Rust in tests/generated_rust.rs
+# Runs the Rust generated from the example schemas in tests/generated_*.rs
 buffy-core = { path = "../core" }
 proptest = "1"
+# Parses the cases of conformance/generated in tests/shapes_cases.rs, with
+# floats exactly rather than to within an ulp
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 tempfile = "3"
 
 [lints.clippy]

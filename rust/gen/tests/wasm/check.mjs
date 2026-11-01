@@ -5,15 +5,65 @@
 //
 // node gen/tests/wasm/check.mjs <buffy_gen.wasm>
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TESTS = fileURLToPath(new URL('..', import.meta.url));
-const SCHEMAS = join(TESTS, '..', '..', '..', 'schemas');
-const GOLDEN = join(TESTS, 'golden');
+const REPOSITORY = join(TESTS, '..', '..', '..');
+const SCHEMAS = join(REPOSITORY, 'schemas');
 const DIAGNOSTICS = join(TESTS, 'diagnostics');
-const TARGETS = ['typescript', 'javascript', 'python', 'java', 'rust'];
+
+/**
+ * Where each target's golden files lie: a directory of each example schema
+ * under `root`, and `subdirectory` of it when targets share the root, as
+ * `GOLDEN_ROOTS` in tests/common/mod.rs lists them
+ *
+ * @type {Record<string, { root: string, subdirectory?: string }>}
+ */
+const GOLDEN_ROOTS = {
+    typescript: {
+        root: 'typescript/core/test/generated',
+        subdirectory: 'typescript'
+    },
+    javascript: {
+        root: 'typescript/core/test/generated',
+        subdirectory: 'javascript'
+    },
+    python: { root: 'python/core/tests/generated' },
+    java: {
+        root: 'java/core/src/test/java/io/github/snovader/buffy/test/generated'
+    },
+    rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' }
+};
+
+/** The Java test module's package of the classes of each example schema */
+const JAVA_PACKAGE = 'io.github.snovader.buffy.test.generated';
+
+/**
+ * The golden files of a schema's code for a target: their directory, the
+ * Java package that the generator takes, or empty for the default, and the
+ * directory of the generated paths that the directory stands for
+ *
+ * @param {string} schema
+ * @param {string} target
+ * @returns {{ directory: string, packageName: string, prefix: string }}
+ */
+function goldenOf(schema, target) {
+    const { root, subdirectory = '' } = GOLDEN_ROOTS[target];
+    const directory = join(REPOSITORY, root, schema, subdirectory);
+
+    if (target !== 'java') {
+        return { directory, packageName: '', prefix: '' };
+    }
+
+    const packageName = `${JAVA_PACKAGE}.${schema}`;
+    return {
+        directory,
+        packageName,
+        prefix: `${packageName.replaceAll('.', '/')}/`
+    };
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -72,12 +122,22 @@ function call(instance, strings) {
     }
 }
 
-/** @returns {Map<string, string>} every file under `directory`, by path */
+/**
+ * @returns {Map<string, string>} every file under `directory`, by path, but
+ * for Python's cache of the modules that its tests import
+ */
 function readTree(directory) {
     const files = new Map();
+    if (!existsSync(directory)) {
+        return files;
+    }
+
     const visit = current => {
         for (const name of readdirSync(current).sort()) {
             const path = join(current, name);
+            if (name === '__pycache__') {
+                continue;
+            }
             if (statSync(path).isDirectory()) {
                 visit(path);
             } else {
@@ -115,22 +175,35 @@ let compiles = 0;
 for (const schema of namesWith(SCHEMAS, '.buffy')) {
     const source = readFileSync(join(SCHEMAS, `${schema}.buffy`), 'utf8');
 
-    for (const target of TARGETS) {
+    for (const target of Object.keys(GOLDEN_ROOTS)) {
         const fileName = `schemas/${schema}.buffy`;
-        const response = call(instance, [target, fileName, source, '', '']);
+        const { directory, packageName, prefix } = goldenOf(schema, target);
+        const response = call(instance, [
+            target,
+            fileName,
+            source,
+            '',
+            packageName
+        ]);
         compiles++;
         if (response.status !== 0) {
             fail(`${fileName} for ${target}: ${response.errors}`);
             continue;
         }
 
-        const golden = readTree(join(GOLDEN, schema, target));
-        const paths = [...response.files.keys()].sort();
+        const golden = readTree(directory);
+        const files = new Map(
+            [...response.files].map(([path, contents]) => [
+                path.startsWith(prefix) ? path.slice(prefix.length) : path,
+                contents
+            ])
+        );
+        const paths = [...files.keys()].sort();
         if (JSON.stringify(paths) !== JSON.stringify([...golden.keys()])) {
             fail(`${fileName} for ${target} generates ${paths.join(', ')}`);
             continue;
         }
-        for (const [path, contents] of response.files) {
+        for (const [path, contents] of files) {
             if (contents !== golden.get(path)) {
                 fail(`${fileName} for ${target}: ${path} differs`);
             }

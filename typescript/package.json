@@ -9,7 +9,7 @@
   "scripts": {
     "bench": "vitest bench --run --reporter=verbose",
     "bench:compare": "node --conditions=@buffy/source benchmarks/comparison/main.ts",
-    "conformance:generate": "node --conditions=@buffy/source core/test/conformance/generate.ts",
+    "conformance:generate": "node --conditions=@buffy/source core/test/conformance/generate.ts && node --conditions=@buffy/source core/test/generated/generate.ts",
     "format:check": "biome format .",
     "format:write": "yarn format:check --write",
     "lint:check": "biome lint .",

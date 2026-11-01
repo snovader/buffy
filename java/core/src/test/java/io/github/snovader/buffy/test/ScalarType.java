@@ -145,7 +145,10 @@ enum ScalarType {
         }
     }
 
-    private static byte[] toBytes(long[] values) {
+    // Arrays of values as descriptions hold them, converted to and from the Java arrays that
+    // buffy's setters and getters take, with floats as their raw bits
+
+    static byte[] toBytes(long[] values) {
         var array = new byte[values.length];
         for (int i = 0; i < values.length; i++) {
             array[i] = (byte) values[i];
@@ -154,7 +157,7 @@ enum ScalarType {
         return array;
     }
 
-    private static short[] toShorts(long[] values) {
+    static short[] toShorts(long[] values) {
         var array = new short[values.length];
         for (int i = 0; i < values.length; i++) {
             array[i] = (short) values[i];
@@ -163,7 +166,7 @@ enum ScalarType {
         return array;
     }
 
-    private static int[] toInts(long[] values) {
+    static int[] toInts(long[] values) {
         var array = new int[values.length];
         for (int i = 0; i < values.length; i++) {
             array[i] = (int) values[i];
@@ -172,7 +175,7 @@ enum ScalarType {
         return array;
     }
 
-    private static float[] toFloats(long[] values) {
+    static float[] toFloats(long[] values) {
         var array = new float[values.length];
         for (int i = 0; i < values.length; i++) {
             array[i] = Float.intBitsToFloat((int) values[i]);
@@ -181,7 +184,7 @@ enum ScalarType {
         return array;
     }
 
-    private static double[] toDoubles(long[] values) {
+    static double[] toDoubles(long[] values) {
         var array = new double[values.length];
         for (int i = 0; i < values.length; i++) {
             array[i] = Double.longBitsToDouble(values[i]);
@@ -190,7 +193,7 @@ enum ScalarType {
         return array;
     }
 
-    private static long[] fromBytes(byte[] array) {
+    static long[] fromBytes(byte[] array) {
         var values = new long[array.length];
         for (int i = 0; i < array.length; i++) {
             values[i] = array[i];
@@ -199,7 +202,7 @@ enum ScalarType {
         return values;
     }
 
-    private static long[] fromShorts(short[] array) {
+    static long[] fromShorts(short[] array) {
         var values = new long[array.length];
         for (int i = 0; i < array.length; i++) {
             values[i] = array[i];
@@ -208,7 +211,7 @@ enum ScalarType {
         return values;
     }
 
-    private static long[] fromInts(int[] array) {
+    static long[] fromInts(int[] array) {
         var values = new long[array.length];
         for (int i = 0; i < array.length; i++) {
             values[i] = array[i];
@@ -217,7 +220,7 @@ enum ScalarType {
         return values;
     }
 
-    private static long[] fromFloats(float[] array) {
+    static long[] fromFloats(float[] array) {
         var values = new long[array.length];
         for (int i = 0; i < array.length; i++) {
             values[i] = Float.floatToRawIntBits(array[i]);
@@ -226,7 +229,7 @@ enum ScalarType {
         return values;
     }
 
-    private static long[] fromDoubles(double[] array) {
+    static long[] fromDoubles(double[] array) {
         var values = new long[array.length];
         for (int i = 0; i < array.length; i++) {
             values[i] = Double.doubleToRawLongBits(array[i]);

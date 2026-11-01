@@ -16,7 +16,7 @@ offset size.
 
 import struct
 import sys
-from functools import cache
+from functools import cache, partial
 from math import inf, nan
 from typing import Any, Literal
 
@@ -42,6 +42,7 @@ from tests.tables import (
     LONGEST,
     Description,
     OffsetSize,
+    from_json,
     to_json_number,
 )
 
@@ -94,6 +95,14 @@ SCALAR_VALUES: dict[str, SearchStrategy[Any]] = {
     "float64": _floats(64),
 }
 
+
+def scalar_values(kind: str) -> SearchStrategy[Any]:
+    """The values of a scalar type as buffy takes them, rather than as JSON
+    holds them: ints, and floats with -0.0, NaN and the infinities, such as
+    the fields of generated code take"""
+    return SCALAR_VALUES[kind].map(partial(from_json, kind))
+
+
 # Characters drawn more often than the default alphabet would: U+FEFF, which is
 # part of a string rather than a byte order mark, and ones outside the Basic
 # Multilingual Plane, which take 4 bytes of UTF-8
@@ -102,7 +111,7 @@ _RARE_CHARACTERS = ["\ufeff", "\U00010000", "\U0001f9ea", "\U0010ffff"]
 _CHARACTERS = one_of(characters(codec="utf-8"), sampled_from(_RARE_CHARACTERS))
 
 # Strings, some of them after a leading U+FEFF
-_STRINGS = one_of(
+STRINGS: SearchStrategy[str] = one_of(
     text(_CHARACTERS, max_size=MAX_ELEMENTS),
     text(_CHARACTERS, max_size=MAX_ELEMENTS).map(lambda string: f"\ufeff{string}"),
 )
@@ -124,7 +133,7 @@ ARRAY_FIELDS: SearchStrategy[Description] = one_of(
 )
 
 STRING_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
-    {"type": just("string"), "value": _STRINGS}
+    {"type": just("string"), "value": STRINGS}
 )
 
 

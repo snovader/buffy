@@ -7,6 +7,7 @@ import net.jqwik.api.constraints.*;
 import java.nio.charset.*;
 import java.util.*;
 
+import static io.github.snovader.buffy.test.DecodeAssertions.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Reading untrusted bytes returns values or throws {@link DecodeException}, and nothing else */
@@ -23,12 +24,12 @@ public class DecodeExceptionTest {
             // A copy, so that no read can reach the bytes after the cut
             var reader = TableReader.lenient(Arrays.copyOf(bytes, length), table.layout());
 
-            readOrDecodeException(() -> assertEquals(table.version(), reader.readHeader()));
+            assertValuesOrDecodeException(() -> assertEquals(table.version(), reader.readHeader()));
             for (int index = 0; index < fields.size(); index++) {
                 var field = fields.get(index);
                 var fieldIndex = index;
 
-                readOrDecodeException(() -> assertEquals(field, reader.readRootField(fieldIndex, field)));
+                assertValuesOrDecodeException(() -> assertEquals(field, reader.readRootField(fieldIndex, field)));
             }
         }
     }
@@ -49,10 +50,10 @@ public class DecodeExceptionTest {
         var reader = TableReader.lenient(bytes, table.layout());
         var fields = table.fields();
 
-        readOrDecodeException(reader::readHeader);
+        assertValuesOrDecodeException(reader::readHeader);
         for (int index = 0; index < fields.size(); index++) {
             var fieldIndex = index;
-            readOrDecodeException(() -> reader.readRootField(fieldIndex, fields.get(fieldIndex)));
+            assertValuesOrDecodeException(() -> reader.readRootField(fieldIndex, fields.get(fieldIndex)));
         }
     }
 
@@ -65,12 +66,12 @@ public class DecodeExceptionTest {
     ) {
         var buffer = new ByteBuffer(bytes, layout.tableLayout());
 
-        readOrDecodeException(buffer::getSize);
+        assertValuesOrDecodeException(buffer::getSize);
         if (layout.versioned()) {
-            readOrDecodeException(buffer::getVersion);
+            assertValuesOrDecodeException(buffer::getVersion);
         }
 
-        readOrDecodeException(() -> getter.read().at(buffer, position.of(buffer)));
+        assertValuesOrDecodeException(() -> getter.read().at(buffer, position.of(buffer)));
     }
 
     @Property
@@ -118,15 +119,6 @@ public class DecodeExceptionTest {
         assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).fieldOffset(0, 0));
         assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).getInt8Array(0));
         assertEquals(4294967295L, new ByteBuffer(bytes, TableLayout.builder().sized(true).build()).getSize());
-    }
-
-    /** Runs a read of bytes that may not decode, which may throw {@link DecodeException} and nothing else */
-    private static void readOrDecodeException(Runnable read) {
-        try {
-            read.run();
-        } catch (DecodeException expected) {
-            // The bytes don't hold what the read expects
-        }
     }
 
     @Provide

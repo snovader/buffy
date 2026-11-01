@@ -10,6 +10,11 @@ on:
       - "conformance/**"
       - "rust/**"
       - "schemas/**"
+      # The generator's golden files of the other targets, in their languages'
+      # test trees, and not the tests beside them
+      - "java/core/src/test/java/io/github/snovader/buffy/test/generated/*/**"
+      - "python/core/tests/generated/*/**"
+      - "typescript/core/test/generated/*/**"
 
   pull_request:
     branches:
@@ -20,6 +25,11 @@ on:
       - "conformance/**"
       - "rust/**"
       - "schemas/**"
+      # The generator's golden files of the other targets, in their languages'
+      # test trees, and not the tests beside them
+      - "java/core/src/test/java/io/github/snovader/buffy/test/generated/*/**"
+      - "python/core/tests/generated/*/**"
+      - "typescript/core/test/generated/*/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}

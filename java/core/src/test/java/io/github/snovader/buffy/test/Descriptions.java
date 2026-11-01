@@ -26,7 +26,8 @@ final class Descriptions {
     private static final int MAX_FIELDS = 6;
     private static final int MAX_ELEMENTS = 8;
     private static final int MAX_CODE_POINTS = 8;
-    private static final int MAX_ITEMS = 3;
+    /** How many tables a vector holds at most */
+    static final int MAX_ITEMS = 3;
 
     /** Every layout: with and without each header slot, and of every offset size */
     private static final List<LayoutDescription> LAYOUTS = layoutsOf(List.of(false, true), List.of(false, true));
@@ -87,7 +88,7 @@ final class Descriptions {
         return Arbitraries.frequencyOf(
             Tuple.of(4, scalars()),
             Tuple.of(4, arrays()),
-            Tuple.of(2, strings())
+            Tuple.of(2, stringFields())
         );
     }
 
@@ -225,18 +226,22 @@ final class Descriptions {
     private static Arbitrary<FieldDescription> arrays() {
         var arrays = new ArrayList<Arbitrary<FieldDescription>>();
         for (var type : ScalarType.values()) {
-            var values = values(type).array(long[].class).ofMaxSize(MAX_ELEMENTS);
-            arrays.add(values.map(array -> new ArrayField(type, array)));
+            arrays.add(arrays(type).map(array -> new ArrayField(type, array)));
         }
 
         return Arbitraries.oneOf(arrays);
+    }
+
+    /** {@return arrays of values of the type as {@link ScalarType} holds them, empty too} */
+    static Arbitrary<long[]> arrays(ScalarType type) {
+        return values(type).array(long[].class).ofMaxSize(MAX_ELEMENTS);
     }
 
     /**
      * {@return values of the type as {@link ScalarType} holds them, over its whole range and often
      * at its limits}
      */
-    private static Arbitrary<Long> values(ScalarType type) {
+    static Arbitrary<Long> values(ScalarType type) {
         return Arbitraries.frequencyOf(Tuple.of(1, Arbitraries.of(limits(type))), Tuple.of(4, range(type)));
     }
 
@@ -304,15 +309,20 @@ final class Descriptions {
         };
     }
 
-    private static Arbitrary<FieldDescription> strings() {
+    private static Arbitrary<FieldDescription> stringFields() {
+        return strings().map(StringField::new);
+    }
+
+    /** {@return strings of code points of every UTF-8 length, empty too} */
+    static Arbitrary<String> strings() {
         return codePoints().list().ofMaxSize(MAX_CODE_POINTS).map(Descriptions::stringOf);
     }
 
-    private static FieldDescription stringOf(List<Integer> codePoints) {
+    private static String stringOf(List<Integer> codePoints) {
         var string = new StringBuilder();
         codePoints.forEach(string::appendCodePoint);
 
-        return new StringField(string.toString());
+        return string.toString();
     }
 
     /**

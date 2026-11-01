@@ -20,6 +20,9 @@ Each language's CI runs its test when this directory changes.
 - `cases.json`: the description of every case, described below
 - `valid/<name>.bin`: the table of each valid case
 - `invalid/<name>.bin`: the corrupted table of each invalid case
+- `generated/`: the tables that the code generated from the example schema
+  `schemas/shapes.buffy` writes in every language, which
+  [`generated/README.md`](generated/README.md) describes
 
 The TypeScript runtime's `test/conformance` writes them:
 

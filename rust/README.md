@@ -16,8 +16,10 @@ cargo test
 ```
 
 The generator's tests compare its output with golden files, which
-`BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen` rewrites. Its WebAssembly
-module builds with the `wasm` profile, and a Node script checks it:
+`BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen` rewrites. They lie in the test
+tree of each target's language, as `gen/README.md` lists them, so a change to
+them is followed by that language's checks and tests. Its WebAssembly module
+builds with the `wasm` profile, and a Node script checks it:
 
 ```sh
 rustup target add wasm32-unknown-unknown

@@ -82,6 +82,18 @@ def to_json_number(value: float) -> float | str:
     return "-0" if value == 0 and copysign(1, value) < 0 else value
 
 
+def to_json(kind: str, value: Any) -> Any:
+    """Returns a scalar as a description holds it, from a value as buffy takes
+    it or reads it: the inverse of ``from_json()``"""
+    if kind in INT64_TYPES:
+        return str(value)
+
+    if kind in FLOAT_TYPES:
+        return to_json_number(value)
+
+    return value
+
+
 def layout_of(layout: Description) -> TableLayout:
     return TableLayout(
         sized=layout["sized"],
