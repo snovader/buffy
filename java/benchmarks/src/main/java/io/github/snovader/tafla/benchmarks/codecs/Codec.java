@@ -8,6 +8,7 @@ public record Codec(
     Workload<RecordInput> record,
     DocumentWorkload document,
     Workload<ListInput> list,
+    Workload<ListInput> structs,
     Workload<SampleInput> sample
 ) {
     /** {@return the library's name}, which names its codec in test reports */

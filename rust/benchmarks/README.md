@@ -14,6 +14,8 @@ compare. Run the commands below from `rust/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized into the types of `workloads.rs`,
@@ -51,7 +53,8 @@ does.
   typed-array extensions are msgpackr's own.
 - rkyv, which has no counterpart in the other languages, is the closest Rust
   counterpart to tafla's reads: an archive that's read in place after it's
-  validated.
+  validated. It archives a `Vec` of a struct inline, so its vector of nested
+  tables and its array of structs are the same archive.
 - flatbuffers' latest Rust release is 25.12.19, where the TypeScript
   comparison uses flatbuffers 25.9.23.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported.
@@ -75,11 +78,17 @@ comparison uses its counterpart:
   write each array in bulk into a table of its exact size. Readers check the
   document's version, and read columns as `ArrayView`s, whose `to_cow()`
   borrows them. The vector's items are nested from builders, collected first
-  as tafla-gen's code collects them, since creating a builder can fail.
+  as tafla-gen's code collects them, since creating a builder can fail. The
+  array of structs is written with `to_le_bytes()` into a `Vec`, which the
+  builder takes with `set_struct_array()`, and read from
+  `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
+  tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
-  `create_vector()`, which writes them element by element. A message is the
+  `create_vector()`, which writes them element by element, and so is the
+  vector of structs, from a `Vec` of flatc's structs, which took 16% less time
+  than `create_vector_from_iter()` from the items. A message is the
   builder's buffer from where the builder finished it, taken with
   `collapse()` without a copy, as the TypeScript comparison takes
   `asUint8Array()`'s view. Readers verify the message with
@@ -92,13 +101,18 @@ comparison uses its counterpart:
   `encode_to_vec()`, which sizes the bytes first, and reads them with
   `decode()`. Its messages own their strings and repeated fields, so building
   one from borrowed input copies its columns, as a caller that keeps its
-  values would, and the decoded columns move into the output. The messages in
+  values would, and the decoded columns move into the output. protobuf has no
+  structs, so the array of them is a repeated message of the three floats,
+  which protobuf writes as fixed32s; packed repeated floats would make a column
+  of each field, which the documents time already. The messages in
   `src/codecs/protobuf.rs` are derived with `#[derive(prost::Message)]` in the
   shape that prost-build generates, so no protoc is needed.
 - **rmp-serde** packs the workloads' own types through their serde derives,
   with `to_vec_named()`, which packs a struct as a map with its field names,
   as msgpackr packs an object, and reads them with `from_slice()`, which
-  borrows strings from the bytes.
+  borrows strings from the bytes. The array of structs packs with `to_vec()`,
+  which packs each struct, and the table that holds them, as an array of its
+  fields in order, without their names.
 - **rkyv** archives the workloads' own types through their derives, with
   `to_bytes()` into an `AlignedVec`, and reads them with `access()`, which
   validates the whole archive with bytecheck first, as untrusted bytes need.
@@ -187,10 +201,12 @@ optimizations.
 Clippy checks the crate with core's lints, all of `clippy::all`, `pedantic`
 and `nursery`, and rustfmt formats it, with the workspace's other crates.
 FlatBuffers' generated code keeps flatc's style, which flatc rather than this
-crate would change, so its module allows the four lints that it raises: its
+crate would change, so its module allows the nine lints that it raises: its
 `_tab` and `_fbb` names, type names written in full rather than `Self` or
-elided lifetimes, and tables that derive `PartialEq` without `Eq`. prost's
-messages pass as they are.
+elided lifetimes, and tables that derive `PartialEq` without `Eq`, and a
+struct's unused lifetimes, its `Default` implemented by hand, and the `as`
+casts of the raw pointers that copy its scalars. prost's messages pass as they
+are.
 
 The crate builds on Rust 1.88, the workspace's `rust-version`, so
 `cargo +1.88 test` runs its tests too. Cargo's resolver picks versions of its
@@ -215,7 +231,8 @@ they were.
 - rmp-serde's `to_vec()` packs structs as arrays without their field names,
   which is smaller than `to_vec_named()`'s maps, but needs the reader to know
   the fields' order, as a schema would, so the other languages' MessagePack
-  codecs pack maps.
+  codecs pack maps, but for the array of structs, whose fixed shape every
+  language packs as arrays.
 - Summing floats one after another into an `f64` is bound by the latency of
   each addition, about 0.86 ns here, so tafla, FlatBuffers and rkyv sum the
   large document's column in the same time. The small document's 100

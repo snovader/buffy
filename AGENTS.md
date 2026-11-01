@@ -132,7 +132,8 @@ intent, not a requirement to preserve every detail.
   MessagePack.
 - Every language runs the same workloads with the same values, so that its
   numbers compare with the other languages': a record, documents of 100 and
-  100,000 rows, a vector of 100 nested tables, and a fixed-size record.
+  100,000 rows, a vector of 100 nested tables, an array of 100 structs, and a
+  fixed-size record.
 - Before timing, every codec must read back exactly what it wrote.
 - Run variants interleaved, in alternating order, over many rounds after a
   warm-up, and report the fastest. Give each variant its own timing loop, so

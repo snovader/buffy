@@ -11,6 +11,9 @@
 //     table Item { value: float; pair: Pair; }
 //     table List { items: [Item]; }
 //
+//     struct Triple { value: float; first: float; second: float; }
+//     table Triples { items: [Triple]; }
+//
 //     table Sample { key: uint; a: float; b: float; }
 //
 // flatc writes a table's fields from the largest to the smallest, and those
@@ -18,8 +21,9 @@
 // generates for a schema's `root_type`, are `flatbuffers::root()`.
 
 use flatbuffers::{
-    Allocator, FlatBufferBuilder, Follow, ForwardsUOffset, InvalidFlatbuffer, Table,
-    TableUnfinishedWIPOffset, VOffsetT, Vector, Verifiable, Verifier, WIPOffset,
+    Allocator, EndianScalar, FlatBufferBuilder, Follow, ForwardsUOffset, InvalidFlatbuffer, Push,
+    PushAlignment, SimpleToVerifyInSlice, Table, TableUnfinishedWIPOffset, VOffsetT, Vector,
+    Verifiable, Verifier, WIPOffset, follow_cast_ref,
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -685,6 +689,240 @@ impl<'a: 'b, 'b, A: Allocator + 'a> ListBuilder<'a, 'b, A> {
     }
     #[inline]
     pub fn finish(self) -> WIPOffset<List<'a>> {
+        let o = self.fbb_.end_table(self.start_);
+        WIPOffset::new(o.value())
+    }
+}
+
+// struct Triple, aligned to 4
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq)]
+pub struct Triple(pub [u8; 12]);
+
+impl Default for Triple {
+    fn default() -> Self {
+        Self([0; 12])
+    }
+}
+
+impl SimpleToVerifyInSlice for Triple {}
+
+impl<'a> Follow<'a> for Triple {
+    type Inner = &'a Triple;
+    #[inline]
+    unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+        unsafe { <&'a Triple>::follow(buf, loc) }
+    }
+}
+
+impl<'a> Follow<'a> for &'a Triple {
+    type Inner = &'a Triple;
+    #[inline]
+    unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+        unsafe { follow_cast_ref::<Triple>(buf, loc) }
+    }
+}
+
+impl<'b> Push for Triple {
+    type Output = Triple;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        let src = unsafe {
+            ::core::slice::from_raw_parts(
+                self as *const Triple as *const u8,
+                <Self as Push>::size(),
+            )
+        };
+        dst.copy_from_slice(src);
+    }
+    #[inline]
+    fn alignment() -> PushAlignment {
+        PushAlignment::new(4)
+    }
+}
+
+impl<'a> Verifiable for Triple {
+    #[inline]
+    fn run_verifier(v: &mut Verifier, pos: usize) -> Result<(), InvalidFlatbuffer> {
+        v.in_buffer::<Self>(pos)
+    }
+}
+
+impl<'a> Triple {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(value: f32, first: f32, second: f32) -> Self {
+        let mut s = Self([0; 12]);
+        s.set_value(value);
+        s.set_first(first);
+        s.set_second(second);
+        s
+    }
+
+    pub fn value(&self) -> f32 {
+        let mut mem = core::mem::MaybeUninit::<<f32 as EndianScalar>::Scalar>::uninit();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        EndianScalar::from_little_endian(unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.0[0..].as_ptr(),
+                mem.as_mut_ptr() as *mut u8,
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+            mem.assume_init()
+        })
+    }
+
+    pub fn set_value(&mut self, x: f32) {
+        let x_le = x.to_little_endian();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                &x_le as *const _ as *const u8,
+                self.0[0..].as_mut_ptr(),
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+        }
+    }
+
+    pub fn first(&self) -> f32 {
+        let mut mem = core::mem::MaybeUninit::<<f32 as EndianScalar>::Scalar>::uninit();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        EndianScalar::from_little_endian(unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.0[4..].as_ptr(),
+                mem.as_mut_ptr() as *mut u8,
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+            mem.assume_init()
+        })
+    }
+
+    pub fn set_first(&mut self, x: f32) {
+        let x_le = x.to_little_endian();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                &x_le as *const _ as *const u8,
+                self.0[4..].as_mut_ptr(),
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+        }
+    }
+
+    pub fn second(&self) -> f32 {
+        let mut mem = core::mem::MaybeUninit::<<f32 as EndianScalar>::Scalar>::uninit();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        EndianScalar::from_little_endian(unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.0[8..].as_ptr(),
+                mem.as_mut_ptr() as *mut u8,
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+            mem.assume_init()
+        })
+    }
+
+    pub fn set_second(&mut self, x: f32) {
+        let x_le = x.to_little_endian();
+        // Safety:
+        // Created from a valid Table for this object
+        // Which contains a valid value in this slot
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                &x_le as *const _ as *const u8,
+                self.0[8..].as_mut_ptr(),
+                core::mem::size_of::<<f32 as EndianScalar>::Scalar>(),
+            );
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct Triples<'a> {
+    pub _tab: Table<'a>,
+}
+
+impl<'a> Follow<'a> for Triples<'a> {
+    type Inner = Triples<'a>;
+    #[inline]
+    unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+        Self {
+            _tab: unsafe { Table::new(buf, loc) },
+        }
+    }
+}
+
+impl<'a> Triples<'a> {
+    pub const VT_ITEMS: VOffsetT = 4;
+
+    #[allow(unused_mut)]
+    pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: Allocator + 'bldr>(
+        _fbb: &'mut_bldr mut FlatBufferBuilder<'bldr, A>,
+        args: &'args TriplesArgs<'args>,
+    ) -> WIPOffset<Triples<'bldr>> {
+        let mut builder = TriplesBuilder::new(_fbb);
+        if let Some(x) = args.items {
+            builder.add_items(x);
+        }
+        builder.finish()
+    }
+
+    #[inline]
+    pub fn items(&self) -> Option<Vector<'a, Triple>> {
+        // Safety:
+        // Created from valid Table for this object
+        // which contains a valid value in this slot
+        unsafe {
+            self._tab
+                .get::<ForwardsUOffset<Vector<'a, Triple>>>(Triples::VT_ITEMS, None)
+        }
+    }
+}
+
+impl Verifiable for Triples<'_> {
+    #[inline]
+    fn run_verifier(v: &mut Verifier, pos: usize) -> Result<(), InvalidFlatbuffer> {
+        v.visit_table(pos)?
+            .visit_field::<ForwardsUOffset<Vector<'_, Triple>>>("items", Self::VT_ITEMS, false)?
+            .finish();
+        Ok(())
+    }
+}
+
+pub struct TriplesArgs<'a> {
+    pub items: Option<WIPOffset<Vector<'a, Triple>>>,
+}
+
+pub struct TriplesBuilder<'a: 'b, 'b, A: Allocator + 'a> {
+    fbb_: &'b mut FlatBufferBuilder<'a, A>,
+    start_: WIPOffset<TableUnfinishedWIPOffset>,
+}
+
+impl<'a: 'b, 'b, A: Allocator + 'a> TriplesBuilder<'a, 'b, A> {
+    #[inline]
+    pub fn add_items(&mut self, items: WIPOffset<Vector<'b, Triple>>) {
+        self.fbb_
+            .push_slot_always::<WIPOffset<_>>(Triples::VT_ITEMS, items);
+    }
+    #[inline]
+    pub fn new(_fbb: &'b mut FlatBufferBuilder<'a, A>) -> TriplesBuilder<'a, 'b, A> {
+        let start = _fbb.start_table();
+        TriplesBuilder {
+            fbb_: _fbb,
+            start_: start,
+        }
+    }
+    #[inline]
+    pub fn finish(self) -> WIPOffset<Triples<'a>> {
         let o = self.fbb_.end_table(self.start_);
         WIPOffset::new(o.value())
     }

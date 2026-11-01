@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- The fixed-size record: a uint32 and two float32s -->
+<!-- The fixed-size record, a uint32 and two float32s, and an array of structs of three float32s -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="io.github.snovader.tafla.benchmarks.generated.sbe"
                    id="1"
@@ -12,11 +12,24 @@
             <type name="schemaId" primitiveType="uint16"/>
             <type name="version" primitiveType="uint16"/>
         </composite>
+        <composite name="groupSizeEncoding">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="numInGroup" primitiveType="uint16"/>
+        </composite>
     </types>
 
     <sbe:message name="Sample" id="1">
         <field name="key" id="1" type="uint32"/>
         <field name="a" id="2" type="float"/>
         <field name="b" id="3" type="float"/>
+    </sbe:message>
+
+    <!-- A repeating group of fixed-size entries, which is how SBE holds an array of structs -->
+    <sbe:message name="Triples" id="2">
+        <group name="items" id="1" dimensionType="groupSizeEncoding">
+            <field name="value" id="2" type="float"/>
+            <field name="first" id="3" type="float"/>
+            <field name="second" id="4" type="float"/>
+        </group>
     </sbe:message>
 </sbe:messageSchema>

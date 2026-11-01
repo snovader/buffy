@@ -30,7 +30,13 @@ def main() -> None:
 
 
 def print_sizes(documents: list[DocumentInput]) -> None:
-    columns = ["record", *(f"doc {rows}" for rows in DOCUMENT_ROWS), "vector", "fixed"]
+    columns = [
+        "record",
+        *(f"doc {rows}" for rows in DOCUMENT_ROWS),
+        "vector",
+        "structs",
+        "fixed",
+    ]
     print("Encoded size (bytes)")
     print(f"  {'':{_NAME_WIDTH}}" + "".join(f"{c:>{_COLUMN_WIDTH}}" for c in columns))
 
@@ -40,6 +46,7 @@ def print_sizes(documents: list[DocumentInput]) -> None:
             _size(codec.record.serialize(RECORD)),
             *(_size(codec.document.serialize(document)) for document in documents),
             _size(codec.list.serialize(vector)),
+            _size(codec.structs.serialize(vector)),
             _size(codec.sample.serialize(SAMPLE)),
         ]
         print(_row(codec.name, [str(size) for size in sizes]))

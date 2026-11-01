@@ -35,4 +35,7 @@ class Codec:
     record: Workload[RecordInput, RecordInput]
     document: DocumentWorkload
     list: Workload[ListInput, ListInput]
+    structs: Workload[ListInput, ListInput]
+    """The list's items as an array of structs, in the library's fixed-size
+    encoding"""
     sample: Workload[SampleInput, SampleInput]

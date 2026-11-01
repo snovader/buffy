@@ -1,6 +1,6 @@
 """Generic table shapes, sized to bracket how tafla is used: small tables of
 scalars and a string, documents whose header nests a table of numeric columns,
-vectors of small nested tables, and fixed-size records.
+vectors of small nested tables, arrays of structs, and fixed-size records.
 
 The values are the TypeScript comparison's, from a port of its seeded
 generator, so that the languages' numbers compare.
@@ -72,7 +72,8 @@ class DocumentOutput:
 
 @dataclass(slots=True)
 class ItemInput:
-    """A table of a float32 and a nested table of two float32s"""
+    """A table of a float32 and a nested table of two float32s, or a struct of
+    the three float32s"""
 
     value: float
     first: float
@@ -81,7 +82,7 @@ class ItemInput:
 
 @dataclass(slots=True)
 class ListInput:
-    """A table holding a vector of item tables"""
+    """A table holding a vector of item tables, or an array of item structs"""
 
     items: Sequence[ItemInput]
 
