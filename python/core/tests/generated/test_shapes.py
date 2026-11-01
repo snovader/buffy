@@ -198,11 +198,8 @@ class TestSample(unittest.TestCase):
         with self.assertRaises(DecodeError):
             Sample.read(data, offset)
 
-    # A generator bug: the Python target's struct readers pass the offset to
-    # Struct.unpack_from(), which counts a negative offset from the end of the
-    # data, so Sample.read(data, -12) reads its last 12 bytes. ByteBuffer and
-    # the generated Java reject a negative position with their decode error.
-    @unittest.expectedFailure
+    # Struct.unpack_from() would read a negative offset from the end of the
+    # data, so Sample.read(data, -12) once read the last sample
     @SETTINGS
     @given(samples, integers(1, 64))
     def test_raises_decode_error_at_a_negative_offset(
@@ -212,6 +209,15 @@ class TestSample(unittest.TestCase):
 
         with self.assertRaises(DecodeError):
             Sample.read(data, -distance)
+
+    def test_raises_value_error_for_a_value_that_doesnt_fit_its_field(self) -> None:
+        for sample in [
+            Sample(2**32, 0.0, 0.0),
+            Sample(-1, 0.0, 0.0),
+            Sample(0, 1e300, 0.0),
+        ]:
+            with self.subTest(sample=sample), self.assertRaises(ValueError):
+                sample.serialize()
 
 
 if __name__ == "__main__":

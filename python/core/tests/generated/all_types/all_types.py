@@ -413,8 +413,11 @@ class Packed:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Packed`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``data`` ends before it does.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
         """
+        if offset < 0:
+            raise DecodeError(f"Packed doesn't fit at {offset}")
+
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except error as cause:
@@ -423,18 +426,25 @@ class Packed:
         return cls(*values)
 
     def serialize(self) -> bytes:
-        return self._STRUCT.pack(
-            self.int8,
-            self.uint8,
-            self.int16,
-            self.uint16,
-            self.int32,
-            self.uint32,
-            self.int64,
-            self.uint64,
-            self.float32,
-            self.float64,
-        )
+        """Returns the bytes of a ``Packed``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(
+                self.int8,
+                self.uint8,
+                self.int16,
+                self.uint16,
+                self.int32,
+                self.uint32,
+                self.int64,
+                self.uint64,
+                self.float32,
+                self.float64,
+            )
+        except (error, OverflowError) as cause:
+            raise ValueError("Packed's values don't fit its fields") from cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,8 +472,11 @@ class Documented:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Documented`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``data`` ends before it does.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
         """
+        if offset < 0:
+            raise DecodeError(f"Documented doesn't fit at {offset}")
+
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except error as cause:
@@ -472,4 +485,11 @@ class Documented:
         return cls(*values)
 
     def serialize(self) -> bytes:
-        return self._STRUCT.pack(self.one, self.two, self.undocumented)
+        """Returns the bytes of a ``Documented``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(self.one, self.two, self.undocumented)
+        except (error, OverflowError) as cause:
+            raise ValueError("Documented's values don't fit its fields") from cause

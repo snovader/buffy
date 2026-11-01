@@ -274,8 +274,11 @@ class Sample:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Sample`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``data`` ends before it does.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
         """
+        if offset < 0:
+            raise DecodeError(f"Sample doesn't fit at {offset}")
+
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except error as cause:
@@ -284,4 +287,11 @@ class Sample:
         return cls(*values)
 
     def serialize(self) -> bytes:
-        return self._STRUCT.pack(self.key, self.a, self.b)
+        """Returns the bytes of a ``Sample``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(self.key, self.a, self.b)
+        except (error, OverflowError) as cause:
+            raise ValueError("Sample's values don't fit its fields") from cause
