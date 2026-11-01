@@ -39,6 +39,15 @@ tasks.withType<JavaCompile> {
     }
 }
 
+tasks.javadoc {
+    // Every check of doclint, including the one for public members, parameters and return values
+    // without a comment, and failing on any warning
+    (options as StandardJavadocDocletOptions).apply {
+        addBooleanOption("Xdoclint:all", true)
+        addBooleanOption("Werror", true)
+    }
+}
+
 tasks.named<Test>("test") {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = providers.gradleProperty("testJavaVersion")

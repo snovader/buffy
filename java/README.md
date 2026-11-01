@@ -19,6 +19,8 @@ and NullAway. Run the commands below from this directory.
 ./gradlew javadoc
 ```
 
+`./gradlew javadoc` fails on any warning of the runtime's documentation, such
+as a public member without a comment or a parameter without a tag.
 `./gradlew test -PtestJavaVersion=21` runs the tests in Java 21 rather than 25.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.

@@ -33,10 +33,22 @@ public final class ByteBuffer {
 
     private int position = 0;
 
+    /**
+     * Reads and writes {@code bytes} as a table of {@link TableLayout#DEFAULT}, without a header
+     * and with 32-bit offsets.
+     *
+     * @param bytes the bytes to read or write, which the buffer shares rather than copies
+     */
     public ByteBuffer(byte[] bytes) {
         this(bytes, TableLayout.DEFAULT);
     }
 
+    /**
+     * Reads and writes {@code bytes} as a table of {@code layout}.
+     *
+     * @param bytes the bytes to read or write, which the buffer shares rather than copies
+     * @param layout the table's header and offset width, which its writer used too
+     */
     public ByteBuffer(byte[] bytes, TableLayout layout) {
         this.bytes = bytes;
         this.view = java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
@@ -48,11 +60,16 @@ public final class ByteBuffer {
         this.headerSize = layout.headerSize();
     }
 
-    /** {@return a buffer of {@code size} zeros, to write into} */
+    /**
+     * {@return a buffer of {@code size} zeros, to write into}
+     *
+     * @param size the number of bytes
+     */
     public static ByteBuffer allocate(int size) {
         return new ByteBuffer(new byte[size]);
     }
 
+    /** {@return the bytes that the buffer reads and writes, which it shares rather than copies} */
     public byte[] bytes() {
         return bytes;
     }
@@ -70,7 +87,7 @@ public final class ByteBuffer {
     }
 
     /**
-     * Returns the version that the table's header carries after its length. It's as wide as the
+     * {@return the version that the table's header carries after its length} It's as wide as the
      * header's other slots, and read unsigned.
      *
      * @throws IllegalStateException if the buffer's layout isn't versioned
@@ -88,8 +105,9 @@ public final class ByteBuffer {
     }
 
     /**
-     * Returns the position of field {@code index} of the root table.
+     * {@return the position of field {@code index} of the root table}
      *
+     * @param index the field's index, from 0
      * @throws DecodeException if the offset isn't within the bytes, or points past the largest
      *     {@code int}. An offset to elsewhere outside them throws from the read at its position.
      */
@@ -98,11 +116,12 @@ public final class ByteBuffer {
     }
 
     /**
-     * Returns the position of field {@code index} of a nested table, which has no header and stores
-     * its field offsets from its own start.
+     * {@return the position of field {@code index} of a nested table} A nested table has no header,
+     * and stores its field offsets from its own start.
      *
      * @param tablePosition the nested table's position, which is the offset of the field that
      *     holds it
+     * @param index the field's index, from 0
      * @throws DecodeException if the offset isn't within the bytes, or points past the largest
      *     {@code int}. An offset to elsewhere outside them throws from the read at its position.
      */
@@ -111,6 +130,11 @@ public final class ByteBuffer {
         return toPosition(tablePosition + offset);
     }
 
+    /**
+     * Writes a field offset as wide as the layout's offsets, and moves past it.
+     *
+     * @param offset the field's position from the table's start
+     */
     public void setOffset(int offset) {
         setUnsigned(offset);
     }
@@ -118,6 +142,12 @@ public final class ByteBuffer {
     // The scalar getters let the JDK's buffer check the range, which is free, and rethrow its error,
     // as the TypeScript getters rethrow DataView's
 
+    /**
+     * {@return the {@code int8} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public byte getInt8(int position) {
         try {
             return view.get(position);
@@ -126,10 +156,22 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * {@return the {@code uint8} at {@code position}, widened to a {@code short}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public short getUint8(int position) {
         return (short) Byte.toUnsignedInt(getInt8(position));
     }
 
+    /**
+     * {@return the {@code int16} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public short getInt16(int position) {
         try {
             return view.getShort(position);
@@ -138,10 +180,22 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * {@return the {@code uint16} at {@code position}, widened to an {@code int}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public int getUint16(int position) {
         return Short.toUnsignedInt(getInt16(position));
     }
 
+    /**
+     * {@return the {@code int32} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public int getInt32(int position) {
         try {
             return view.getInt(position);
@@ -150,10 +204,22 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * {@return the {@code uint32} at {@code position}, widened to a {@code long}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public long getUint32(int position) {
         return Integer.toUnsignedLong(getInt32(position));
     }
 
+    /**
+     * {@return the {@code int64} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public long getInt64(int position) {
         try {
             return view.getLong(position);
@@ -162,11 +228,22 @@ public final class ByteBuffer {
         }
     }
 
-    /** {@return the {@code uint64} at {@code position}, as a {@code long} with the same bits} */
+    /**
+     * {@return the {@code uint64} at {@code position}, as a {@code long} with the same bits}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public long getUint64(int position) {
         return getInt64(position);
     }
 
+    /**
+     * {@return the {@code float32} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public float getFloat32(int position) {
         try {
             return view.getFloat(position);
@@ -175,6 +252,12 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * {@return the {@code float64} at {@code position}}
+     *
+     * @param position the value's position in the bytes
+     * @throws DecodeException if the value isn't within the bytes
+     */
     public double getFloat64(int position) {
         try {
             return view.getDouble(position);
@@ -186,6 +269,12 @@ public final class ByteBuffer {
     // The array getters check the length prefix against the bytes before allocating for it. Arrays
     // of the elements' own Java type are copied in bulk, and unsigned ones are widened one by one.
 
+    /**
+     * {@return a copy of the {@code int8} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public byte[] getInt8Array(int position) {
         var values = new byte[arrayLength(position, Byte.BYTES)];
         System.arraycopy(bytes, position + offsetSize, values, 0, values.length);
@@ -193,6 +282,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code uint8} array at {@code position}, widened to {@code short}s}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public short[] getUint8Array(int position) {
         var values = new short[arrayLength(position, Byte.BYTES)];
         for (int i = 0, j = position + offsetSize; i < values.length; i++, j++) {
@@ -202,6 +297,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code int16} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public short[] getInt16Array(int position) {
         var values = new short[arrayLength(position, Short.BYTES)];
         elementsAt(position, values.length * Short.BYTES).asShortBuffer().get(values);
@@ -209,6 +310,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code uint16} array at {@code position}, widened to {@code int}s}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public int[] getUint16Array(int position) {
         var values = new int[arrayLength(position, Short.BYTES)];
         for (int i = 0, j = position + offsetSize; i < values.length; i++, j += Short.BYTES) {
@@ -218,6 +325,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code int32} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public int[] getInt32Array(int position) {
         var values = new int[arrayLength(position, Integer.BYTES)];
         elementsAt(position, values.length * Integer.BYTES).asIntBuffer().get(values);
@@ -225,6 +338,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code uint32} array at {@code position}, widened to {@code long}s}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public long[] getUint32Array(int position) {
         var values = new long[arrayLength(position, Integer.BYTES)];
         for (int i = 0, j = position + offsetSize; i < values.length; i++, j += Integer.BYTES) {
@@ -234,6 +353,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code int64} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public long[] getInt64Array(int position) {
         var values = new long[arrayLength(position, Long.BYTES)];
         elementsAt(position, values.length * Long.BYTES).asLongBuffer().get(values);
@@ -241,11 +366,23 @@ public final class ByteBuffer {
         return values;
     }
 
-    /** {@return the {@code uint64} array at {@code position}, as {@code long}s with the same bits} */
+    /**
+     * {@return a copy of the {@code uint64} array at {@code position}, as {@code long}s with the
+     * same bits}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public long[] getUint64Array(int position) {
         return getInt64Array(position);
     }
 
+    /**
+     * {@return a copy of the {@code float32} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public float[] getFloat32Array(int position) {
         var values = new float[arrayLength(position, Float.BYTES)];
         elementsAt(position, values.length * Float.BYTES).asFloatBuffer().get(values);
@@ -253,6 +390,12 @@ public final class ByteBuffer {
         return values;
     }
 
+    /**
+     * {@return a copy of the {@code float64} array at {@code position}}
+     *
+     * @param position the array's position in the bytes, where its length is
+     * @throws DecodeException if the array isn't within the bytes
+     */
     public double[] getFloat64Array(int position) {
         var values = new double[arrayLength(position, Double.BYTES)];
         elementsAt(position, values.length * Double.BYTES).asDoubleBuffer().get(values);
@@ -284,48 +427,100 @@ public final class ByteBuffer {
         return view.slice(position + offsetSize, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
+    /**
+     * Writes an {@code int8} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setInt8(byte value) {
         view.put(position, value);
         position += Byte.BYTES;
     }
 
+    /**
+     * Writes a {@code uint8}, the low 8 bits of {@code value}, at the buffer's position, and moves
+     * past it.
+     *
+     * @param value the value to write
+     */
     public void setUint8(short value) {
         setInt8((byte) value);
     }
 
+    /**
+     * Writes an {@code int16} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setInt16(short value) {
         view.putShort(position, value);
         position += Short.BYTES;
     }
 
+    /**
+     * Writes a {@code uint16}, the low 16 bits of {@code value}, at the buffer's position, and
+     * moves past it.
+     *
+     * @param value the value to write
+     */
     public void setUint16(int value) {
         setInt16((short) value);
     }
 
+    /**
+     * Writes an {@code int32} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setInt32(int value) {
         view.putInt(position, value);
         position += Integer.BYTES;
     }
 
+    /**
+     * Writes a {@code uint32}, the low 32 bits of {@code value}, at the buffer's position, and
+     * moves past it.
+     *
+     * @param value the value to write
+     */
     public void setUint32(long value) {
         setInt32((int) value);
     }
 
+    /**
+     * Writes an {@code int64} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setInt64(long value) {
         view.putLong(position, value);
         position += Long.BYTES;
     }
 
-    /** Writes a {@code uint64} from a {@code long} with its bits */
+    /**
+     * Writes a {@code uint64} from a {@code long} with its bits.
+     *
+     * @param value the value to write
+     */
     public void setUint64(long value) {
         setInt64(value);
     }
 
+    /**
+     * Writes a {@code float32} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setFloat32(float value) {
         view.putFloat(position, value);
         position += Float.BYTES;
     }
 
+    /**
+     * Writes a {@code float64} at the buffer's position, and moves past it.
+     *
+     * @param value the value to write
+     */
     public void setFloat64(double value) {
         view.putDouble(position, value);
         position += Double.BYTES;
@@ -333,12 +528,22 @@ public final class ByteBuffer {
 
     // The array setters write the length and then the elements, after checking that both fit
 
+    /**
+     * Writes the length of {@code values} and then each as an {@code int8}.
+     *
+     * @param values the elements to write
+     */
     public void setInt8Array(byte[] values) {
         startArray(values.length, Byte.BYTES);
         System.arraycopy(values, 0, bytes, position, values.length);
         position += values.length;
     }
 
+    /**
+     * Writes the length of {@code values} and then the low 8 bits of each as a {@code uint8}.
+     *
+     * @param values the elements to write
+     */
     public void setUint8Array(short[] values) {
         startArray(values.length, Byte.BYTES);
         for (var value : values) {
@@ -346,12 +551,22 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * Writes the length of {@code values} and then each as an {@code int16}.
+     *
+     * @param values the elements to write
+     */
     public void setInt16Array(short[] values) {
         startArray(values.length, Short.BYTES);
         nextElements(values.length * Short.BYTES).asShortBuffer().put(values);
         position += values.length * Short.BYTES;
     }
 
+    /**
+     * Writes the length of {@code values} and then the low 16 bits of each as a {@code uint16}.
+     *
+     * @param values the elements to write
+     */
     public void setUint16Array(int[] values) {
         startArray(values.length, Short.BYTES);
         for (var value : values) {
@@ -360,12 +575,22 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * Writes the length of {@code values} and then each as an {@code int32}.
+     *
+     * @param values the elements to write
+     */
     public void setInt32Array(int[] values) {
         startArray(values.length, Integer.BYTES);
         nextElements(values.length * Integer.BYTES).asIntBuffer().put(values);
         position += values.length * Integer.BYTES;
     }
 
+    /**
+     * Writes the length of {@code values} and then the low 32 bits of each as a {@code uint32}.
+     *
+     * @param values the elements to write
+     */
     public void setUint32Array(long[] values) {
         startArray(values.length, Integer.BYTES);
         for (var value : values) {
@@ -374,23 +599,42 @@ public final class ByteBuffer {
         }
     }
 
+    /**
+     * Writes the length of {@code values} and then each as an {@code int64}.
+     *
+     * @param values the elements to write
+     */
     public void setInt64Array(long[] values) {
         startArray(values.length, Long.BYTES);
         nextElements(values.length * Long.BYTES).asLongBuffer().put(values);
         position += values.length * Long.BYTES;
     }
 
-    /** Writes {@code uint64}s from {@code long}s with their bits */
+    /**
+     * Writes the length of {@code values} and then each as a {@code uint64}, from its bits.
+     *
+     * @param values the elements to write
+     */
     public void setUint64Array(long[] values) {
         setInt64Array(values);
     }
 
+    /**
+     * Writes the length of {@code values} and then each as a {@code float32}.
+     *
+     * @param values the elements to write
+     */
     public void setFloat32Array(float[] values) {
         startArray(values.length, Float.BYTES);
         nextElements(values.length * Float.BYTES).asFloatBuffer().put(values);
         position += values.length * Float.BYTES;
     }
 
+    /**
+     * Writes the length of {@code values} and then each as a {@code float64}.
+     *
+     * @param values the elements to write
+     */
     public void setFloat64Array(double[] values) {
         startArray(values.length, Double.BYTES);
         nextElements(values.length * Double.BYTES).asDoubleBuffer().put(values);
@@ -411,7 +655,11 @@ public final class ByteBuffer {
         return view.slice(position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    /** Writes {@code bytes} as they are, without a length prefix */
+    /**
+     * Writes {@code bytes} as they are, without a length prefix.
+     *
+     * @param bytes the bytes to write
+     */
     public void setBytes(byte[] bytes) {
         assertWritable(bytes.length);
 
@@ -419,7 +667,11 @@ public final class ByteBuffer {
         position += bytes.length;
     }
 
-    /** Writes {@code byteLength} zeros, such as to align the field after them */
+    /**
+     * Writes {@code byteLength} zeros, such as to align the field after them.
+     *
+     * @param byteLength the number of zeros
+     */
     public void setPadding(int byteLength) {
         assertWritable(byteLength);
 
@@ -428,9 +680,10 @@ public final class ByteBuffer {
     }
 
     /**
-     * Reads the UTF-8 string at {@code position}, keeping a leading U+FEFF, which is part of the
-     * string rather than a byte order mark.
+     * {@return the UTF-8 string at {@code position}} A leading U+FEFF is kept, since it's part of
+     * the string rather than a byte order mark.
      *
+     * @param position the string's position in the bytes, where its length is
      * @throws DecodeException if the string isn't within the bytes or isn't valid UTF-8
      */
     public String getString(int position) {
@@ -443,12 +696,21 @@ public final class ByteBuffer {
         }
     }
 
-    /** Writes a string's UTF-8 bytes after their length */
+    /**
+     * Writes a string's UTF-8 bytes after their length.
+     *
+     * @param utf8 the string's UTF-8 bytes
+     */
     public void setString(byte[] utf8) {
         setInt8Array(utf8);
     }
 
-    /** {@return the position of each item of the vector at {@code position}, after its length} */
+    /**
+     * {@return the position of each item of the vector at {@code position}, after its length}
+     *
+     * @param position the vector's position in the bytes, where its item count is
+     * @throws DecodeException if the vector isn't within the bytes
+     */
     public int[] getVectorOffsets(int position) {
         // Every item needs at least its length prefix, which bounds the count
         var count = arrayLength(position, offsetSize);
@@ -463,7 +725,12 @@ public final class ByteBuffer {
         return offsets;
     }
 
-    /** {@return a copy of each item of the vector at {@code position}} */
+    /**
+     * {@return a copy of each item of the vector at {@code position}}
+     *
+     * @param position the vector's position in the bytes, where its item count is
+     * @throws DecodeException if the vector isn't within the bytes
+     */
     public byte[][] getVector(int position) {
         var offsets = getVectorOffsets(position);
 
@@ -475,7 +742,11 @@ public final class ByteBuffer {
         return vector;
     }
 
-    /** Writes the item count, and then each item's length and bytes */
+    /**
+     * Writes the item count, and then each item's length and bytes.
+     *
+     * @param vector the bytes of each item
+     */
     public void setVector(byte[][] vector) {
         long byteLength = offsetSize + (long) vector.length * offsetSize;
         assertFits(vector.length);
