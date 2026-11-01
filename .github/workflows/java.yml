@@ -1,0 +1,71 @@
+name: Java
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/java.yml"
+      - "conformance/**"
+      - "java/**"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/java.yml"
+      - "conformance/**"
+      - "java/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (Java ${{ matrix.java_version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: java
+    strategy:
+      fail-fast: false
+      matrix:
+        java_version: [21, 25]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: ${{ matrix.java_version }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Gradle build
+        run: ./gradlew build javadoc -PtestJavaVersion=${{ matrix.java_version }}
+
+  dependabot:
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'}}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          PR_HEAD_SHA: ${{github.event.pull_request.head.sha}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
