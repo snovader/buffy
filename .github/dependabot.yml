@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Each language adds its own ecosystem when its code moves here
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/.github/actions/*"
+      - "/.github/workflows"
+    schedule:
+      interval: "daily"

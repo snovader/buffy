@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+# Golden tables can look like text, and converting their line endings would
+# change their bytes
+*.bin   binary
+*.jar   binary
+*.wasm  binary
+
+# Windows scripts, such as Gradle's wrapper
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+/typescript/.yarn/**            linguist-vendored
+/typescript/.yarn/releases/*    binary
+/typescript/.yarn/plugins/**/*  binary

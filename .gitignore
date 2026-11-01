@@ -1,0 +1,28 @@
+.idea
+
+# TypeScript
+node_modules
+/typescript/.cache
+/typescript/**/dist
+/typescript/.yarn/*
+!/typescript/.yarn/patches
+!/typescript/.yarn/plugins
+!/typescript/.yarn/releases
+!/typescript/.yarn/sdks
+!/typescript/.yarn/versions
+
+# Python
+__pycache__
+.hypothesis
+.ruff_cache
+/python/.venv
+/python/**/dist
+
+# Java
+.jqwik-database
+/java/.gradle
+/java/**/bin
+/java/**/build
+
+# Rust
+/rust/**/target

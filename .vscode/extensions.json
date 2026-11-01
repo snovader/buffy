@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "astral-sh.ty",
+        "biomejs.biome",
+        "charliermarsh.ruff",
+        "rust-lang.rust-analyzer",
+        "TypeScriptTeam.native-preview",
+        "vscjava.vscode-java-pack"
+    ]
+}
