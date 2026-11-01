@@ -341,9 +341,13 @@ public final class ByteBuffer {
 
     public void setUint8Array(short[] values) {
         startArray(values.length, Byte.BYTES);
+
+        var cursor = position;
         for (var value : values) {
-            bytes[position++] = (byte) value;
+            bytes[cursor++] = (byte) value;
         }
+
+        position = cursor;
     }
 
     public void setInt16Array(short[] values) {
@@ -354,10 +358,13 @@ public final class ByteBuffer {
 
     public void setUint16Array(int[] values) {
         startArray(values.length, Short.BYTES);
-        for (var value : values) {
-            view.putShort(position, (short) value);
-            position += Short.BYTES;
+
+        var start = position;
+        for (int i = 0; i < values.length; i++) {
+            view.putShort(start + i * Short.BYTES, (short) values[i]);
         }
+
+        position = start + values.length * Short.BYTES;
     }
 
     public void setInt32Array(int[] values) {
@@ -368,10 +375,13 @@ public final class ByteBuffer {
 
     public void setUint32Array(long[] values) {
         startArray(values.length, Integer.BYTES);
-        for (var value : values) {
-            view.putInt(position, (int) value);
-            position += Integer.BYTES;
+
+        var start = position;
+        for (int i = 0; i < values.length; i++) {
+            view.putInt(start + i * Integer.BYTES, (int) values[i]);
         }
+
+        position = start + values.length * Integer.BYTES;
     }
 
     public void setInt64Array(long[] values) {

@@ -28,6 +28,38 @@ public class ByteBufferTest {
         assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout);
     }
 
+    @Property
+    void unsigned_arrays_write_low_bits_and_preserve_the_following_field(
+        @ForAll @Size(max = 65) long[] values,
+        @ForAll AddressableSpace offsetSize
+    ) {
+        var layout = TableLayout.builder().offsetSize(offsetSize).build();
+        for (var type : List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32)) {
+            var length = 1 + offsetSize.valueOf() + values.length * type.size() + Integer.BYTES;
+            var buffer = new ByteBuffer(new byte[length], layout);
+            buffer.setInt8((byte) 42);
+            type.writeArray(buffer, values);
+            buffer.setInt32(0x12345678);
+
+            var expectedBytes = java.nio.ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN);
+            expectedBytes.put((byte) 42);
+            for (int b = 0; b < offsetSize.valueOf(); b++) {
+                expectedBytes.put((byte) (values.length >>> (b * Byte.SIZE)));
+            }
+
+            var expectedValues = new long[values.length];
+            var mask = (1L << (type.size() * Byte.SIZE)) - 1;
+            for (int i = 0; i < values.length; i++) {
+                type.put(expectedBytes, values[i]);
+                expectedValues[i] = values[i] & mask;
+            }
+            expectedBytes.putInt(0x12345678);
+
+            assertArrayEquals(expectedBytes.array(), buffer.bytes());
+            assertArrayEquals(expectedValues, type.readArray(buffer, 1));
+        }
+    }
+
     private static void assertReadsBack(FieldDescription field, LayoutDescription layout) {
         var bytes = new byte[(int) Descriptions.maxLength(field, layout.width())];
         var buffer = new ByteBuffer(bytes, layout.tableLayout());
@@ -128,6 +160,8 @@ public class ByteBufferTest {
         var buffer = ByteBuffer.allocate(Integer.BYTES + 2 * Float.BYTES);
 
         assertThrows(IndexOutOfBoundsException.class, () -> buffer.setFloat32Array(new float[3]));
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint8Array(new short[9]));
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint16Array(new int[5]));
         assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint32Array(new long[3]));
         assertThrows(IndexOutOfBoundsException.class, () -> buffer.setString(new byte[9]));
         assertThrows(IndexOutOfBoundsException.class, () -> buffer.setVector(new byte[][] {new byte[5]}));
