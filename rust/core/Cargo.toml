@@ -1,0 +1,21 @@
+[package]
+name = "buffy-core"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dev-dependencies]
+rand = "0.10.1"
+# Parses the descriptions of the conformance suite, with floats exactly rather
+# than to within an ulp
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+must_use_candidate = { level = "allow", priority = 1 }
+suboptimal_flops = { level = "allow", priority = 1 }

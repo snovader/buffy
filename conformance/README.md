@@ -11,6 +11,7 @@ decode error. That makes "one format, several implementations" a checked claim.
 | TypeScript     | `typescript/core/test/conformance/conformance.test.ts`                       |
 | Python         | `python/core/tests/test_conformance.py`                                      |
 | Java           | `java/core/src/test/java/io/github/snovader/buffy/test/ConformanceTest.java` |
+| Rust           | `rust/core/tests/conformance.rs`                                             |
 
 Each language's CI runs its test when this directory changes.
 
