@@ -755,6 +755,8 @@ export class ByteBuffer {
     }
 
     setString(bytes: Uint8Array): void {
+        // Check that the length and the bytes fit before writing either
+        this.#assertWritable(this.#size + bytes.length);
         this.#setSize(bytes.length);
         this.setBytes(bytes);
     }
@@ -790,6 +792,13 @@ export class ByteBuffer {
     }
 
     setVector(vector: Uint8Array[]): void {
+        // Check that the count and every item fit before writing any of them
+        let byteLength = this.#size;
+        for (const bytes of vector) {
+            byteLength += this.#size + bytes.length;
+        }
+        this.#assertWritable(byteLength);
+
         this.#setSize(vector.length);
 
         for (const bytes of vector) {
