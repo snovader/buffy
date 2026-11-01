@@ -1,0 +1,79 @@
+{
+    "schema": "schemas/shapes.buffy",
+    "cases": [
+        {
+            "name": "point",
+            "description": "Signed zero, NaN, the smallest int64 and characters of one to four bytes of UTF-8",
+            "type": "Point",
+            "file": "shapes/point.bin",
+            "fields": { "x": "-0", "y": "NaN", "id": "-9223372036854775808", "name": "a\u00e5\u4e16\ud83e\udd80" }
+        },
+        {
+            "name": "point-limits",
+            "description": "The smallest float64, negative infinity, the largest int64 and an empty string",
+            "type": "Point",
+            "file": "shapes/point-limits.bin",
+            "fields": { "x": 5e-324, "y": "-Infinity", "id": "9223372036854775807", "name": "" }
+        },
+        {
+            "name": "document",
+            "description": "A sized and versioned table, with a string that starts with U+FEFF and a nested table of arrays of the largest uint32, signed zero, NaN, the extremes of float32 and the infinities",
+            "type": "Document",
+            "file": "shapes/document.bin",
+            "fields": {
+                "x": 1.5,
+                "y": -2.25,
+                "name": "\ufeffdocument",
+                "columns": { "base": "-1", "keys": [0, 1, 4294967295], "a": [0.5, "-0", "NaN", 3.4028234663852886e+38], "b": ["Infinity", 1.401298464324817e-45, -3.4028234663852886e+38] }
+            }
+        },
+        {
+            "name": "document-empty-arrays",
+            "description": "A nested table of empty arrays, after the largest float64 and an empty string",
+            "type": "Document",
+            "file": "shapes/document-empty-arrays.bin",
+            "fields": {
+                "x": 0,
+                "y": 1.7976931348623157e+308,
+                "name": "",
+                "columns": { "base": "9223372036854775807", "keys": [], "a": [], "b": [] }
+            }
+        },
+        {
+            "name": "item-list",
+            "description": "A vector of three tables, each with a nested table of two float32",
+            "type": "ItemList",
+            "file": "shapes/item-list.bin",
+            "fields": {
+                "items": [
+                    {
+                        "value": 1,
+                        "pair": { "first": "-0", "second": "NaN" }
+                    },
+                    {
+                        "value": -1.5,
+                        "pair": { "first": 3.4028234663852886e+38, "second": 1.401298464324817e-45 }
+                    },
+                    {
+                        "value": "Infinity",
+                        "pair": { "first": 0.25, "second": "-Infinity" }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "item-list-empty",
+            "description": "An empty vector",
+            "type": "ItemList",
+            "file": "shapes/item-list-empty.bin",
+            "fields": { "items": [] }
+        },
+        {
+            "name": "sample",
+            "description": "A struct of the largest uint32, signed zero and NaN",
+            "type": "Sample",
+            "file": "shapes/sample.bin",
+            "fields": { "key": 4294967295, "a": "-0", "b": "NaN" }
+        }
+    ]
+}

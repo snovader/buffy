@@ -8,6 +8,8 @@ on:
       - ".github/workflows/java.yml"
       - "conformance/**"
       - "java/**"
+      # The example schemas, whose generated code the tests run
+      - "schemas/**"
 
   pull_request:
     branches:
@@ -16,6 +18,8 @@ on:
       - ".github/workflows/java.yml"
       - "conformance/**"
       - "java/**"
+      # The example schemas, whose generated code the tests run
+      - "schemas/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}

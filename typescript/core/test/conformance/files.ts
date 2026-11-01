@@ -34,7 +34,15 @@ export function writeSuite(suite: Suite): SuiteFiles {
         tables.set(file, corrupt(bytes, corruption));
     }
 
-    return { json: `${escapeNonAscii(formatJson(suite))}\n`, tables };
+    return { json: formatSuiteJson(suite), tables };
+}
+
+/**
+ * Formats a suite's description as its files hold it: indented, ASCII and
+ * ending in a newline
+ */
+export function formatSuiteJson(value: unknown): string {
+    return `${escapeNonAscii(formatJson(value))}\n`;
 }
 
 /**

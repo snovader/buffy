@@ -82,6 +82,11 @@ intent, not a requirement to preserve every detail.
 - A change to the bytes of an existing case is a change to the format. Make it
   in one PR that changes `SPEC.md`, the suite, and every implementation,
   so that no commit has implementations that disagree.
+- The code that buffy-gen generates from the example schemas in `schemas/`
+  lies in each language's test tree, whose checks and tests run it, and is
+  the generator's golden output. Regenerate it rather than edit it, as
+  `rust/gen/README.md` describes; a check or test that it fails is a bug of
+  the generator.
 - Keep the domain names the same in every language: table, field, layout,
   offset size, vector, builder, and decode error. Make the syntax idiomatic for
   each language.

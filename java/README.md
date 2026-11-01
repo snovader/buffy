@@ -22,3 +22,9 @@ and NullAway. Run the commands below from this directory.
 `./gradlew test -PtestJavaVersion=21` runs the tests in Java 21 rather than 25.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
+
+The test module holds the Java that buffy-gen generates from the example
+schemas in `schemas/`, in a package of each schema,
+`io.github.snovader.buffy.test.generated.<schema>`, which its tests run.
+They're the generator's golden files, which `rust/gen/README.md` describes:
+rewrite them with the generator rather than by hand.

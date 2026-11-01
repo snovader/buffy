@@ -273,8 +273,8 @@ runs the module in Node.
 Run the commands of `rust/README.md` from `rust/`. The tests are:
 
 - `tests/golden.rs`: the code generated from each example schema in
-  `schemas/`, for each target, matches the files under
-  `tests/golden/<schema>/<target>/`.
+  `schemas/`, for each target, matches its golden files, and no golden
+  directory is left of a schema or target that's gone.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it.
 - `tests/properties.rs`: any input parses or fails with errors that render,
@@ -282,11 +282,32 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   the command writes and prints what the library generates and finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command and the library's
   options.
-- `tests/generated_rust.rs`: compiles the golden Rust, so that clippy and
-  rustfmt check it.
+- `tests/generated_<schema>.rs`: the golden Rust, compiled against
+  `buffy-core` so that clippy and rustfmt check it, reads back what it
+  writes, writes the tables that `TableBuilder` writes by hand, rejects other
+  versions, and reads corrupted bytes as values or decode errors.
+- `tests/shapes_cases.rs`: the golden Rust of `shapes.buffy` writes and reads
+  the tables of `conformance/generated`, as the code generated in every
+  language does.
+
+The golden files lie in the test tree of their target's language, whose
+checks type-check, lint and format-check them and whose tests run them with
+its runtime, in the same ways as the Rust:
+
+| Target                 | Golden files, from the root of the repository                               |
+| ---------------------- | --------------------------------------------------------------------------- |
+| TypeScript, JavaScript | `typescript/core/test/generated/<schema>/<target>/`                         |
+| Python                 | `python/core/tests/generated/<schema>/`                                     |
+| Java                   | `java/core/src/test/java/io/github/snovader/buffy/test/generated/<schema>/` |
+| Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
+
+The Java is generated with the package
+`io.github.snovader.buffy.test.generated.<schema>`, so that it's part of the
+test module. The tests of the generated code lie beside the directories of
+the schemas, and in Java in the test module's package.
 
 After a change to the generator or the schemas, rewrite the golden files and
-the expected errors, and review their diff:
+the expected errors, review their diff, and run every language's tests:
 
 ```sh
 BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen

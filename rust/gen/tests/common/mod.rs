@@ -1,6 +1,7 @@
 //! Files that the tests compare the generator's output with: the example
-//! schemas at the root of the repository, their generated code in
-//! `tests/golden` and the invalid schemas in `tests/diagnostics`.
+//! schemas at the root of the repository, their generated code in the test
+//! tree of each target's language, and the invalid schemas in
+//! `tests/diagnostics`.
 //!
 //! Setting `BUFFY_GEN_UPDATE=1` rewrites the expected files from what the
 //! generator writes, rather than comparing them.
@@ -11,15 +12,117 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use buffy_gen::{GeneratedFile, Target};
+use buffy_gen::{GeneratedFile, Options, Target};
 
 /// The root of the repository, where the generator's tests run the CLI so
 /// that it names the example schemas as `schemas/<name>.buffy`
 pub const REPOSITORY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-pub const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden");
-
 pub const DIAGNOSTICS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/diagnostics");
+
+/// Where a target's golden files lie: a directory of each example schema
+/// under `root`, relative to the repository, and `subdirectory` of it when
+/// targets share the root
+pub struct GoldenRoot {
+    pub target: &'static str,
+    pub root: &'static str,
+    pub subdirectory: Option<&'static str>,
+}
+
+/// Every target's golden files, including those of targets that a build
+/// without their features doesn't generate. They lie in the test tree of the
+/// target's language, whose tests run them against its runtime and whose
+/// checks type-check, lint and format-check them; `tests/wasm/check.mjs`
+/// keeps the same table.
+pub const GOLDEN_ROOTS: [GoldenRoot; 5] = [
+    GoldenRoot {
+        target: "typescript",
+        root: "typescript/core/test/generated",
+        subdirectory: Some("typescript"),
+    },
+    GoldenRoot {
+        target: "javascript",
+        root: "typescript/core/test/generated",
+        subdirectory: Some("javascript"),
+    },
+    GoldenRoot {
+        target: "python",
+        root: "python/core/tests/generated",
+        subdirectory: None,
+    },
+    GoldenRoot {
+        target: "java",
+        root: "java/core/src/test/java/io/github/snovader/buffy/test/generated",
+        subdirectory: None,
+    },
+    // tests/generated_<schema>.rs compile and run these
+    GoldenRoot {
+        target: "rust",
+        root: "rust/gen/tests/golden",
+        subdirectory: Some("rust"),
+    },
+];
+
+/// The package of the Java test module that holds the classes generated from
+/// each example schema, in a package of the schema's name
+const JAVA_PACKAGE: &str = "io.github.snovader.buffy.test.generated";
+
+/// The golden files of an example schema's code for a target
+pub struct Golden {
+    /// The directory that holds the files and nothing else
+    pub directory: PathBuf,
+    /// The options that generate them
+    pub options: Options,
+    /// The directory of the generated paths that `directory` stands for,
+    /// such as the directory of a Java package, or empty
+    pub prefix: String,
+}
+
+impl Golden {
+    pub fn of(schema: &str, target: &str) -> Self {
+        let root = GOLDEN_ROOTS
+            .iter()
+            .find(|root| root.target == target)
+            .unwrap_or_else(|| panic!("no golden files for {target}"));
+        let mut directory = Path::new(REPOSITORY).join(root.root).join(schema);
+        if let Some(subdirectory) = root.subdirectory {
+            directory.push(subdirectory);
+        }
+
+        if target != "java" {
+            return Self {
+                directory,
+                options: Options::default(),
+                prefix: String::new(),
+            };
+        }
+
+        let package = format!("{JAVA_PACKAGE}.{schema}");
+        Self {
+            directory,
+            prefix: format!("{}/", package.replace('.', "/")),
+            options: Options {
+                runtime: None,
+                package: Some(package),
+            },
+        }
+    }
+
+    /// The generated files, by their paths relative to `directory`
+    pub fn relative(&self, files: Vec<GeneratedFile>) -> Vec<GeneratedFile> {
+        files
+            .into_iter()
+            .map(|file| GeneratedFile {
+                path: file
+                    .path
+                    .strip_prefix(&self.prefix)
+                    .unwrap_or_else(|| panic!("{} isn't under {}", file.path, self.prefix))
+                    .to_owned(),
+                contents: file.contents,
+            })
+            .collect()
+    }
+}
 
 pub fn update() -> bool {
     std::env::var_os("BUFFY_GEN_UPDATE").is_some_and(|value| value == "1")
@@ -65,6 +168,10 @@ pub fn files_with_extension(directory: &Path, extension: &str) -> Vec<(String, P
     files
 }
 
+/// Python's cache of compiled modules, which it writes beside the generated
+/// modules that its tests import
+pub const PYTHON_CACHE: &str = "__pycache__";
+
 /// Every file under `directory`, by its path from there with `/`
 /// separators, or nothing if the directory doesn't exist
 pub fn read_tree(directory: &Path) -> BTreeMap<String, String> {
@@ -81,6 +188,9 @@ fn read_tree_into(directory: &Path, prefix: &str, files: &mut BTreeMap<String, S
         let name = path.file_name().unwrap().to_str().unwrap();
         let relative = format!("{prefix}{name}");
 
+        if name == PYTHON_CACHE {
+            continue;
+        }
         if path.is_dir() {
             read_tree_into(&path, &format!("{relative}/"), files);
         } else {

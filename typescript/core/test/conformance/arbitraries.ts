@@ -53,13 +53,22 @@ const ITEMS_PER_VECTOR = 3;
 /** How deep tables nest below the root, with setTable() or in vectors */
 const NESTING_DEPTH = 2;
 
+/** The value of a scalar type as buffy's builders take it */
+export type ScalarValue<Type extends ScalarType> = Type extends
+    | 'int64'
+    | 'uint64'
+    ? bigint
+    : number;
+
 /**
- * Values of each scalar type over its full range, as descriptions hold them.
- * fast-check reaches the extremes and the special floats only now and then,
- * so they're drawn as often as other values: a run holds a few fields of each
- * type, and a bug may show in one value only.
+ * Values of each scalar type over its full range, as buffy's builders take
+ * them. fast-check reaches the extremes and the special floats only now and
+ * then, so they're drawn as often as other values: a run holds a few fields
+ * of each type, and a bug may show in one value only.
  */
-const VALUES: Readonly<Record<ScalarType, fc.Arbitrary<JsonNumber>>> = {
+export const SCALAR_VALUES: {
+    readonly [Type in ScalarType]: fc.Arbitrary<ScalarValue<Type>>;
+} = {
     int8: integers(-0x80, 0x7f),
     uint8: integers(0, 0xff),
     int16: integers(-0x8000, 0x7fff),
@@ -72,20 +81,34 @@ const VALUES: Readonly<Record<ScalarType, fc.Arbitrary<JsonNumber>>> = {
     float64: floats(fc.double(), [Number.MAX_VALUE, Number.MIN_VALUE])
 };
 
+/** Values of each scalar type as descriptions hold them */
+const VALUES: Readonly<Record<ScalarType, fc.Arbitrary<JsonNumber>>> = {
+    int8: SCALAR_VALUES.int8,
+    uint8: SCALAR_VALUES.uint8,
+    int16: SCALAR_VALUES.int16,
+    uint16: SCALAR_VALUES.uint16,
+    int32: SCALAR_VALUES.int32,
+    uint32: SCALAR_VALUES.uint32,
+    // 64-bit integers as decimal strings, which JSON holds exactly
+    int64: SCALAR_VALUES.int64.map(String),
+    uint64: SCALAR_VALUES.uint64.map(String),
+    float32: SCALAR_VALUES.float32.map(toJsonNumber),
+    float64: SCALAR_VALUES.float64.map(toJsonNumber)
+};
+
 function integers(min: number, max: number): fc.Arbitrary<number> {
     return withEdges(fc.integer({ min, max }), [min, max, 0]);
 }
 
-/** 64-bit integers as decimal strings, which JSON holds exactly */
-function bigIntegers(min: bigint, max: bigint): fc.Arbitrary<JsonNumber> {
-    return withEdges(fc.bigInt({ min, max }), [min, max, 0n]).map(String);
+function bigIntegers(min: bigint, max: bigint): fc.Arbitrary<bigint> {
+    return withEdges(fc.bigInt({ min, max }), [min, max, 0n]);
 }
 
 /** Floats with -0, the infinities, NaN and the extremes given */
 function floats(
     values: fc.Arbitrary<number>,
     extremes: number[]
-): fc.Arbitrary<JsonNumber> {
+): fc.Arbitrary<number> {
     const special = [
         -0,
         Number.POSITIVE_INFINITY,
@@ -94,7 +117,7 @@ function floats(
         ...extremes
     ];
 
-    return withEdges(values, special).map(toJsonNumber);
+    return withEdges(values, special);
 }
 
 function withEdges<T>(values: fc.Arbitrary<T>, edges: T[]): fc.Arbitrary<T> {
@@ -108,7 +131,7 @@ const BYTE_ORDER_MARK = String.fromCharCode(0xfeff);
  * and of graphemes, also with a leading U+FEFF, which is part of the string.
  * Lone surrogates are left out, since UTF-8 can't hold them.
  */
-const STRINGS = fc.oneof(
+export const STRINGS: fc.Arbitrary<string> = fc.oneof(
     fc.string({ unit: 'binary' }),
     fc.string({ unit: 'grapheme' }),
     fc.string({ unit: 'binary' }).map(string => BYTE_ORDER_MARK + string)

@@ -73,15 +73,21 @@ final class DescriptionJson {
     }
 
     private static ArrayField readArray(ScalarType type, JsonArray json) {
+        return new ArrayField(type, readValues(type, json));
+    }
+
+    /** {@return the values of an array of the type, as {@link ScalarType} holds them} */
+    static long[] readValues(ScalarType type, JsonArray json) {
         var values = new long[json.size()];
         for (int i = 0; i < values.length; i++) {
             values[i] = readValue(type, json.get(i));
         }
 
-        return new ArrayField(type, values);
+        return values;
     }
 
-    private static long readValue(ScalarType type, JsonValue value) {
+    /** {@return a value of the type, as {@link ScalarType} holds it} */
+    static long readValue(ScalarType type, JsonValue value) {
         return switch (type) {
             case INT8 -> integer(value, Byte.MIN_VALUE, Byte.MAX_VALUE);
             case UINT8 -> integer(value, 0, 0xff);

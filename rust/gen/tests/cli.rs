@@ -6,7 +6,7 @@ mod common;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use common::{DIAGNOSTICS, GOLDEN, REPOSITORY, read_tree, targets};
+use common::{DIAGNOSTICS, Golden, REPOSITORY, read_tree, targets};
 
 fn buffy_gen(directory: &str, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_buffy-gen"))
@@ -25,21 +25,26 @@ fn writes_the_golden_files_of_an_example_schema() {
     let out = tempfile::tempdir().unwrap();
 
     for (name, _) in targets() {
+        let golden = Golden::of("shapes", name);
         let directory = out.path().join(name);
-        let output = buffy_gen(
-            REPOSITORY,
-            &[
-                name,
-                "schemas/shapes.buffy",
-                "--out",
-                directory.to_str().unwrap(),
-            ],
-        );
+        let mut arguments = vec![
+            name,
+            "schemas/shapes.buffy",
+            "--out",
+            directory.to_str().unwrap(),
+        ];
+        if let Some(package) = &golden.options.package {
+            arguments.extend(["--package", package]);
+        }
+        let output = buffy_gen(REPOSITORY, &arguments);
 
         assert!(output.status.success(), "{}", stderr(&output));
         assert!(output.stdout.is_empty() && output.stderr.is_empty());
-        let golden = Path::new(GOLDEN).join("shapes").join(name);
-        assert_eq!(read_tree(&directory), read_tree(&golden), "{name}");
+        assert_eq!(
+            read_tree(&directory.join(&golden.prefix)),
+            read_tree(&golden.directory),
+            "{name}"
+        );
     }
 }
 
@@ -83,8 +88,12 @@ fn accepts_abbreviated_targets() {
         );
 
         assert!(output.status.success(), "{}", stderr(&output));
-        let golden = Path::new(GOLDEN).join("shapes").join(name);
-        assert_eq!(read_tree(out.path()), read_tree(&golden), "{abbreviation}");
+        let golden = Golden::of("shapes", name);
+        assert_eq!(
+            read_tree(out.path()),
+            read_tree(&golden.directory),
+            "{abbreviation}"
+        );
     }
 }
 

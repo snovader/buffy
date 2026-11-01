@@ -23,6 +23,11 @@ record TableDescription(LayoutDescription layout, OptionalLong version, List<Fie
         return new TableDescription(layout, version, withField);
     }
 
+    /** {@return this table with {@code version} in its header, which its layout must have a slot for} */
+    TableDescription withVersion(long version) {
+        return new TableDescription(layout, OptionalLong.of(version), fields);
+    }
+
     @Override
     public String toString() {
         return DescriptionJson.write(this).toString();

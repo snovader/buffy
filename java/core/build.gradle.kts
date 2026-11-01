@@ -50,7 +50,8 @@ tasks.named<Test>("test") {
         includeEngines("jqwik")
     }
 
-    // The conformance suite at the root of the repository, see conformance/README.md
+    // The conformance suite at the root of the repository, with the cases of the generated code in
+    // its generated/, see conformance/README.md
     val conformance = rootProject.layout.projectDirectory.dir("../conformance")
     inputs.dir(conformance)
     systemProperty("buffy.conformance", conformance.asFile.absolutePath)
