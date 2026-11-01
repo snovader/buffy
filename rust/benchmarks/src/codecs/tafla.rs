@@ -1,17 +1,21 @@
 use std::borrow::Cow;
 
-use tafla::{BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    sum_column,
+    StructsShape, sum_column,
 };
 
 const DOCUMENT_LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const DOCUMENT_VERSION: u32 = 1;
 
 const SAMPLE_SIZE: usize = 12;
+
+/// An item as a struct: its three float32s, aligned to 4 in an array
+const ITEM_SIZE: usize = 12;
+const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 
 /// tafla's runtime, as its README shows.
 ///
@@ -21,8 +25,9 @@ const SAMPLE_SIZE: usize = 12;
 ///
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
-/// `to_le_bytes()` and read with `ByteBuffer`'s getters, as tafla-gen
-/// generates a struct's code.
+/// `to_le_bytes()` and read with `ByteBuffer`'s getters, and an array of
+/// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen generates
+/// a struct's code.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 
@@ -136,6 +141,34 @@ impl Workload<ListShape> for Tafla {
     }
 }
 
+impl Workload<StructsShape> for Tafla {
+    type Bytes = Vec<u8>;
+
+    /// Writes the structs one after another into a `Vec`, which the builder
+    /// owns, as tafla-gen's code writes an array of them
+    fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
+        let mut structs = Vec::with_capacity(input.items.len() * ITEM_SIZE);
+        for item in &input.items {
+            structs.extend_from_slice(&item_struct(item));
+        }
+
+        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+        builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
+
+        Ok(builder.to_bytes()?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        let items = structs.iter().map(read_item_struct).collect();
+
+        Ok(List { items })
+    }
+}
+
 impl Workload<SampleShape> for Tafla {
     type Bytes = [u8; SAMPLE_SIZE];
 
@@ -197,4 +230,21 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
         first: item.get_f32(item.field_offset(pair, 0)?)?,
         second: item.get_f32(item.field_offset(pair, 1)?)?,
     })
+}
+
+fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
+    let mut bytes = [0; ITEM_SIZE];
+    bytes[0..4].copy_from_slice(&item.value.to_le_bytes());
+    bytes[4..8].copy_from_slice(&item.first.to_le_bytes());
+    bytes[8..12].copy_from_slice(&item.second.to_le_bytes());
+
+    bytes
+}
+
+fn read_item_struct(bytes: &[u8; ITEM_SIZE]) -> Item {
+    Item {
+        value: f32::from_le_bytes(bytes[0..4].try_into().unwrap_or_default()),
+        first: f32::from_le_bytes(bytes[4..8].try_into().unwrap_or_default()),
+        second: f32::from_le_bytes(bytes[8..12].try_into().unwrap_or_default()),
+    }
 }

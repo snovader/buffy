@@ -4,6 +4,7 @@ import { Packr } from 'msgpackr/pack';
 import type {
     DocumentInput,
     DocumentOutput,
+    ItemInput,
     ListInput,
     RecordInput,
     SampleInput
@@ -14,10 +15,17 @@ import type { Codec } from './codec.ts';
 // than as arrays of numbers. Unpacking copies them again to align them.
 const packr = new Packr({ moreTypes: true });
 
+/** An item's fields in order, as an array of structs packs each */
+type ItemFields = [value: number, first: number, second: number];
+
 /**
  * msgpackr is schemaless: an object packs with its keys, and a `number[]`
  * packs as an array of doubles, so `number[]` columns are converted to typed
  * arrays first, as a caller who wants float32 on the wire would.
+ *
+ * Structs have a fixed shape, which MessagePack packs as arrays of their
+ * fields in order, without their keys. The table of them packs as an array
+ * too, as rmp-serde's `to_vec()` packs both.
  */
 export const msgpackr: Codec = {
     name: 'msgpackr',
@@ -60,6 +68,15 @@ export const msgpackr: Codec = {
             return packr.unpack(bytes) as ListInput;
         }
     },
+    structs: {
+        serialize({ items }) {
+            return packr.pack([items.map(toFields)]);
+        },
+        deserialize(bytes) {
+            const [items] = packr.unpack(bytes) as [ItemFields[]];
+            return { items: items.map(fromFields) };
+        }
+    },
     sample: {
         serialize(input) {
             return packr.pack(input);
@@ -75,4 +92,12 @@ function toTyped<T extends Float32Array | Uint32Array>(
     TypedArray: { new (values: ArrayLike<number>): T }
 ): T {
     return values instanceof TypedArray ? values : new TypedArray(values);
+}
+
+function toFields({ value, first, second }: ItemInput): ItemFields {
+    return [value, first, second];
+}
+
+function fromFields([value, first, second]: ItemFields): ItemInput {
+    return { value, first, second };
 }

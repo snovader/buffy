@@ -14,6 +14,8 @@ commands below from `java/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as Java
@@ -25,7 +27,8 @@ that the TypeScript generator printed.
 
 The benchmark classes are named after the TypeScript code's workloads:
 `RecordBenchmark`, `DocumentBenchmark`, `ListBenchmark` for the vector of
-nested tables and `SampleBenchmark` for the fixed-size record.
+nested tables, `StructsBenchmark` for the array of structs and
+`SampleBenchmark` for the fixed-size record.
 `./gradlew :benchmarks:encodingReport` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 
@@ -42,7 +45,8 @@ what it does with a truncated document, as the TypeScript comparison does.
   bytes is msgpackr's own, so MessagePack's columns are arrays of float32s and
   uint32s, packed and unpacked element by element.
 - SBE, which has no JavaScript runtime here, encodes only the fixed-size
-  record, the kind of message it's designed for.
+  record and the array of structs, as a repeating group: the kinds of message
+  it's designed for.
 - flatbuffers-java's latest release is 25.2.10, where the TypeScript
   comparison uses flatbuffers 25.9.23.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported.
@@ -55,37 +59,49 @@ what it does with a truncated document, as the TypeScript comparison does.
 | `com.google.flatbuffers:flatbuffers-java` 25.2.10             | Zero-copy tables with offsets and vectors, like tafla.                                                                                                         |
 | `com.google.protobuf:protobuf-java` 4.36.2                    | The most used schema-based codec, with packed repeated floats.                                                                                                 |
 | `org.msgpack:msgpack-core` 0.9.12                             | MessagePack's Java implementation: a schemaless format, whose tables are maps with their keys.                                                                 |
-| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record only: fields at fixed offsets, written and read in place through flyweights, like tafla's fixed-size record. |
+| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record and the array of structs only: fields at fixed offsets, written and read in place through flyweights, like tafla's structs. |
 
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
 - **tafla** nests tables from their builders. Arrays of the elements' own Java
   type are copied in bulk, and the uint32 keys are narrowed and widened element
-  by element.
+  by element. The array of structs is written into a `byte[]` through a
+  little-endian `VarHandle` and set with `setStructArray()`, and read from
+  `getStructArray()`'s little-endian view, as tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, and creates vectors element by element with the generated
   methods. Float columns are copied out of `aAsByteBuffer()`'s little-endian
-  view, and keys are widened through an `IntVector`. Its classes in
+  view, and keys are widened through an `IntVector`. A vector of structs is
+  started, filled with `createTriple()` from its last item to its first, and
+  ended, and its structs are read with the generated accessors. Its classes in
   `generated/flatbuffers/` are written by hand in the shape that
   `flatc --java` generates from `src/main/flatbuffers/workloads.fbs`, with only
   what the benchmarks use, since flatc isn't something Gradle can download.
 - **protobuf** builds messages with their builders and parses them with their
   parsers. Repeated fields are added and read one element at a time, which
-  keeps them unboxed, and parsed columns are copied into arrays. The protobuf
+  keeps them unboxed, and parsed columns are copied into arrays. protobuf has
+  no structs, so the array of them is a repeated message of the three floats,
+  which protobuf writes as fixed32s; packed repeated floats would make a column
+  of each field, which the documents time already. The protobuf
   Gradle plugin downloads protoc and generates the messages from
   `src/main/proto/messages.proto`.
 - **MessagePack** packs a table as a map with its keys, and the reader matches
-  the keys in whatever order they come. One packer and one unpacker serve every
+  the keys in whatever order they come. The array of structs packs each struct,
+  and the table that holds them, as an array of its fields in order, without
+  their keys, as rmp-serde's `to_vec()` packs them, and the reader checks the
+  arrays' lengths. One packer and one unpacker serve every
   message, as msgpackr reuses its buffer: the packer is cleared before each
   message and `toByteArray()` copies the message out, and the unpacker is reset
   to each message's bytes. A new unpacker allocates a 16 KiB string decoder for
   its first string, which made reading the record 6 times slower in a quick
   run.
 - **SBE** writes an 8-byte message header and the 12-byte record into a new
-  array, and the decoder checks the header's template before reading. Its
+  array, and the decoder checks the header's template before reading. The array
+  of structs is a repeating group, whose 4-byte header holds its entries'
+  length and count, followed by an entry of 12 bytes for each struct. Its
   encoder and decoder flyweights are reused, as SBE intends. `generateSbe` runs
-  sbe-tool on `src/main/sbe/sample.xml`.
+  sbe-tool on `src/main/sbe/workloads.xml`.
 
 ## Method
 

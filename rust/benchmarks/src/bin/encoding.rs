@@ -10,7 +10,7 @@ use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::for_each_codec;
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, List, ListShape, RECORD, RecordShape,
-    SAMPLE, SampleShape, Shape,
+    SAMPLE, SampleShape, Shape, StructsShape,
 };
 
 const NAME_WIDTH: usize = 16;
@@ -28,7 +28,7 @@ fn main() -> Result<(), Error> {
 fn print_sizes(documents: &[Document<'_>], list: &List) -> Result<(), Error> {
     let mut columns = vec!["record".to_string()];
     columns.extend(DOCUMENT_ROWS.map(|rows| format!("doc {rows}")));
-    columns.extend(["vector".to_string(), "fixed".to_string()]);
+    columns.extend(["vector", "structs", "fixed"].map(String::from));
 
     println!("Encoded size (bytes)");
     print_row("", &columns);
@@ -53,6 +53,7 @@ fn sizes<C: Suite>(
         sizes.push(size::<DocumentShape, C>(codec, document)?);
     }
     sizes.push(size::<ListShape, C>(codec, list)?);
+    sizes.push(size::<StructsShape, C>(codec, list)?);
     sizes.push(size::<SampleShape, C>(codec, &SAMPLE)?);
 
     Ok(sizes)

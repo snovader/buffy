@@ -83,6 +83,24 @@ def deserialize_list(data: Buffer) -> ListInput:
     return ListInput(items)
 
 
+def serialize_structs(input: ListInput) -> bytes:
+    triples = messages_pb2.Triples()
+
+    items = triples.items
+    for item in input.items:
+        items.add(value=item.value, first=item.first, second=item.second)
+
+    return triples.SerializeToString()
+
+
+def deserialize_structs(data: Buffer) -> ListInput:
+    items: list[ItemInput] = []
+    for triple in messages_pb2.Triples.FromString(data).items:
+        items.append(ItemInput(triple.value, triple.first, triple.second))
+
+    return ListInput(items)
+
+
 def serialize_sample(input: SampleInput) -> bytes:
     return messages_pb2.Sample(key=input.key, a=input.a, b=input.b).SerializeToString()
 
@@ -98,6 +116,7 @@ PROTOBUF = Codec(
     record=Workload(serialize_record, deserialize_record),
     document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
     list=Workload(serialize_list, deserialize_list),
+    structs=Workload(serialize_structs, deserialize_structs),
     sample=Workload(serialize_sample, deserialize_sample),
 )
 """protoc's generated messages, parsed with ``FromString()``, in the upb runtime
@@ -106,4 +125,7 @@ messages in place, as protobuf's tutorial builds them: passing a nested message
 to its parent's constructor copies it, which made writing the vector of nested
 tables 2.6 times slower, and the large document 13% slower. Repeated fields
 are converted element by element when a message is built, and read back as
-the message's containers."""
+the message's containers. protobuf has no structs, so an array of them is a
+repeated message of the three floats, whose fields protobuf writes as fixed32s.
+Packed repeated floats would be a column for each field, which the documents
+time already."""

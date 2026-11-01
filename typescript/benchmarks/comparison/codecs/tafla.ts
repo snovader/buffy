@@ -16,6 +16,10 @@ const DOCUMENT_VERSION = 1;
 const SAMPLE_SIZE = 3 * SIZEOF_32;
 const sampleWriter = new StructWriter(new Uint8Array(SAMPLE_SIZE));
 
+/** An item as a struct: its three float32s, aligned to 4 in an array */
+const ITEM_SIZE = 3 * SIZEOF_32;
+const ITEM_ALIGNMENT = SIZEOF_32;
+
 export const tafla: Codec = {
     name: 'tafla',
     record: {
@@ -107,6 +111,43 @@ export const tafla: Codec = {
                     value: buffer.getFloat32(buffer.fieldOffset(item, 0)),
                     first: buffer.getFloat32(buffer.fieldOffset(pair, 0)),
                     second: buffer.getFloat32(buffer.fieldOffset(pair, 1))
+                };
+            }
+
+            return { items };
+        }
+    },
+    structs: {
+        serialize({ items }) {
+            // As tafla-gen's code writes an array of structs
+            const structs = new Uint8Array(items.length * ITEM_SIZE);
+            const writer = new StructWriter(structs);
+            for (const { value, first, second } of items) {
+                writer.setFloat32(value);
+                writer.setFloat32(first);
+                writer.setFloat32(second);
+            }
+
+            const builder = new TableBuilder(1);
+            builder.setStructArray(structs, ITEM_SIZE, ITEM_ALIGNMENT);
+
+            return builder.bytes();
+        },
+        deserialize(bytes) {
+            const buffer = new ByteBuffer(bytes);
+            const structs = buffer.getStructArray(
+                buffer.rootOffset(0),
+                ITEM_SIZE
+            );
+
+            const items = new Array<ItemInput>(structs.length / ITEM_SIZE);
+            for (let i = 0; i < items.length; i++) {
+                const offset = i * ITEM_SIZE;
+
+                items[i] = {
+                    value: readFloat32(structs, offset),
+                    first: readFloat32(structs, offset + SIZEOF_32),
+                    second: readFloat32(structs, offset + 2 * SIZEOF_32)
                 };
             }
 

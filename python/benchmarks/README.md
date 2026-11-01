@@ -14,6 +14,8 @@ from `python/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as each
@@ -44,7 +46,7 @@ what it does with a truncated document, as the TypeScript comparison does.
   `struct` for such records, which is compared too.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
-  has only a call per element.
+  has only a call per element, which is all it has for a vector of structs.
 - msgpack's columns are extension types of their arrays' bytes, which this
   suite defines, as msgpackr's typed arrays are msgpackr's own.
 - flatbuffers' latest Python release is 25.12.19, where the TypeScript
@@ -69,23 +71,32 @@ comparison uses its counterpart:
 - **tafla** nests tables from their builders and reads columns as views of the
   bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
-  as tafla's documentation advises over a getter call per element.
+  as tafla's documentation advises over a getter call per element. The array
+  of structs is packed into a `bytearray` and unpacked from
+  `get_struct_array()`'s view with a precompiled `Struct("<fff")`, as
+  tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
   with the generated accessors. Columns are written with
   `CreateNumpyVector()`, from numpy arrays that view the `array`s or convert
   the lists, and read with the generated `AsNumpy()` accessors, which view the
-  bytes. The modules in `generated/flatbuffers/` are written by hand in the
-  shape that `flatc --python` generates from `generated/workloads.fbs`, with
-  only what the benchmarks use, since the FlatBuffers project doesn't publish
-  flatc on PyPI, where uv installs tools from. As in flatc's, an accessor of a
-  nested table imports the table's class on every call.
+  bytes. A vector of structs, which has no numpy accessors, is started, filled
+  with `CreateTriple()` from its last item to its first, and ended, and its
+  structs are read one at a time. The modules in `generated/flatbuffers/` are
+  written by hand in the shape that `flatc --python` generates from
+  `generated/workloads.fbs`, with only what the benchmarks use, since the
+  FlatBuffers project doesn't publish flatc on PyPI, where uv installs tools
+  from. As in flatc's, an accessor of a nested table or of a struct in a vector
+  imports its class on every call.
 - **protobuf** builds messages from keyword arguments and parses them with
   `FromString()`. Nested messages are built in place, as protobuf's tutorial
   builds them: passing a nested message to its parent's constructor copies it,
   which made writing the vector of nested tables 2.6 times slower and the
   large document 13% slower. Repeated fields are extended from the columns,
-  which converts them element by element.
+  which converts them element by element. protobuf has no structs, so the
+  array of them is a repeated message of the three floats, which protobuf
+  writes as fixed32s; packed repeated floats would make a column of each field,
+  which the documents time already.
 - **MessagePack** packs a table as a map with its keys, and a document as one
   map without a nested one for its columns, as msgpackr packs them. Floats pack
   as float64s, as msgpack packs Python's floats and msgpackr packs numbers. One
@@ -94,7 +105,9 @@ comparison uses its counterpart:
   as msgpack's documentation packs an `array`, and lists are converted to
   arrays first. The extension hook returns a memoryview of the bytes that the
   unpacker copied out, which took half the time of copying them again into an
-  `array` for 100,000 rows.
+  `array` for 100,000 rows. The array of structs packs each struct, and the
+  table that holds them, as an array of its fields in order, without their
+  keys, as rmp-serde's `to_vec()` packs them.
 - **struct** packs and unpacks the fixed-size record with one precompiled
   `Struct("<Iff")`.
 

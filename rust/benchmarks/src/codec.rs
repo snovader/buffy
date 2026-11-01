@@ -1,4 +1,4 @@
-use crate::workloads::{DocumentShape, ListShape, RecordShape, SampleShape, Shape};
+use crate::workloads::{DocumentShape, ListShape, RecordShape, SampleShape, Shape, StructsShape};
 
 /// A library's error, of either direction. Errors only describe failures,
 /// which the timed calls don't have, so boxing them costs nothing there.
@@ -45,11 +45,19 @@ pub trait DocumentWorkload: Workload<DocumentShape> {
 /// A library that encodes every workload, as all but the fixed-size record's
 /// alternatives do
 pub trait Suite:
-    Workload<RecordShape> + DocumentWorkload + Workload<ListShape> + Workload<SampleShape>
+    Workload<RecordShape>
+    + DocumentWorkload
+    + Workload<ListShape>
+    + Workload<StructsShape>
+    + Workload<SampleShape>
 {
 }
 
 impl<C> Suite for C where
-    C: Workload<RecordShape> + DocumentWorkload + Workload<ListShape> + Workload<SampleShape>
+    C: Workload<RecordShape>
+        + DocumentWorkload
+        + Workload<ListShape>
+        + Workload<StructsShape>
+        + Workload<SampleShape>
 {
 }
