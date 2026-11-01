@@ -1,0 +1,4 @@
+// Tabs are shown as four spaces, so that the caret stays under `flaot64`
+message Point {
+	x:	flaot64;
+}
