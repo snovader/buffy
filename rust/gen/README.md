@@ -119,8 +119,14 @@ error: unknown type `flaot64`
 ## Generated code
 
 Messages and tables read their fields lazily from the bytes, and are written
-from their fields in one call; tables nested from builders are written
-straight into their parent. Structs are read and written whole, and arrays of
+from their fields in one call, without the runtime's `TableBuilder`: the
+generated code adds each field to the runtime's `TableSizer`, which counts the
+table's length, and then writes them into bytes of that length with its
+`TableWriter`, with nested tables in place in their parent. Python appends
+the fields to its `TableWriter`'s bytes instead, without sizing them first,
+since a call there costs more than the bytes' growth. Each nested table has an
+`ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
+and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.

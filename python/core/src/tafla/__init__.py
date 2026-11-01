@@ -1,7 +1,9 @@
 """Binary tables of scalars, strings and typed arrays. ``TableBuilder`` writes a
 table at its exact size, copying typed arrays in bulk, and ``ByteBuffer`` reads
 fields back by offset, with arrays as views of the bytes. Every read checks
-that it stays within the bytes it was given.
+that it stays within the bytes it was given. ``TableWriter`` writes a table
+whose fields are known as it's written, as the code that tafla-gen generates
+writes its tables, without recording them first as ``TableBuilder`` does.
 
 >>> from array import array
 >>> from tafla import ByteBuffer, TableBuilder, TableLayout
