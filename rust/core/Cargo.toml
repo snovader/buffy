@@ -8,7 +8,9 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-rand = "0.10.1"
+# Without forking test cases into processes or timing them out, which the
+# tests don't use
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # Parses the descriptions of the conformance suite, with floats exactly rather
 # than to within an ulp
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }

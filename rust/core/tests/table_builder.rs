@@ -1,7 +1,199 @@
+//! Builders write any table that fits in its offset size, and reject what
+//! they can't write with a `BuildError` from the setter, leaving the
+//! builder as it was. The examples document the errors.
+
 mod common;
 
 use buffy_core::{BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
-use common::Field;
+use common::{
+    description::{Field, Layout, Nested, Source, Table},
+    read::read_table,
+    strategy,
+};
+use proptest::{
+    prelude::*,
+    sample::{Index, select},
+};
+
+proptest! {
+    #![proptest_config(common::config())]
+
+    /// After any fields, a field as long as fits is written and reads back,
+    /// and a unit longer is rejected with the length that it would make
+    /// the table
+    #[test]
+    fn test_the_longest_field_that_fits_is_written_and_a_unit_more_is_rejected(
+        table in tables_of_short_offsets(),
+        long in long_field(),
+    ) {
+        let offset_size = table.layout.offset_size;
+        let max = offset_size.max_value() as usize;
+        let unit = long.unit(offset_size.bytes());
+
+        // The fields can leave no room for even the empty field
+        let empty = with_field(&table, long.field(0));
+        let empty_bytes = empty.to_bytes();
+        prop_assume!(empty_bytes.is_ok());
+        let empty_bytes = empty_bytes.unwrap();
+
+        let units = (max - empty_bytes.len()) / unit;
+        let longest = with_field(&table, long.field(units));
+        let bytes = longest.to_bytes().unwrap();
+        prop_assert!(max - unit < bytes.len() && bytes.len() <= max, "{} bytes", bytes.len());
+
+        let read = read_table(&bytes, &longest);
+        prop_assert_eq!(read.as_ref(), Ok(&longest));
+
+        let too_long = long.field(units + 1);
+        let mut builder = empty.builder().unwrap();
+        for field in &table.fields {
+            field.set(&mut builder).unwrap();
+        }
+
+        let length = empty_bytes.len() + (units + 1) * unit;
+        let error = BuildError::TooLong {
+            index: table.fields.len(),
+            length: length as u64,
+            offset_size,
+        };
+        prop_assert_eq!(too_long.set(&mut builder), Err(error));
+
+        empty.fields.last().unwrap().set(&mut builder).unwrap();
+        prop_assert_eq!(builder.to_bytes(), Ok(empty_bytes));
+    }
+
+    /// A field longer than the offsets address on its own, set after any of
+    /// the fields, is rejected, and the builder writes the same table once
+    /// the other fields are set
+    #[test]
+    fn test_a_field_too_long_for_the_offset_size_is_rejected_and_leaves_the_builder_as_it_was(
+        table in tables_of_short_offsets(),
+        long in long_field(),
+        at in any::<Index>(),
+    ) {
+        prop_assume!(!table.fields.is_empty());
+
+        let offset_size = table.layout.offset_size;
+        let max = offset_size.max_value() as usize;
+        let too_long = long.field(max / long.unit(offset_size.bytes()) + 1);
+        let at = at.index(table.fields.len());
+
+        let mut builder = table.builder().unwrap();
+        for field in &table.fields[..at] {
+            field.set(&mut builder).unwrap();
+        }
+
+        let error = too_long.set(&mut builder).unwrap_err();
+        prop_assert!(
+            matches!(
+                error,
+                BuildError::TooLong { index, length, offset_size: size }
+                    if index == at && length > max as u64 && size == offset_size
+            ),
+            "{:?}",
+            error
+        );
+
+        for field in &table.fields[at..] {
+            field.set(&mut builder).unwrap();
+        }
+
+        prop_assert_eq!(builder.to_bytes(), table.to_bytes());
+    }
+}
+
+/// Tables of 1- and 2-byte offsets, whose limits a test can reach. Under
+/// Miri, only of 1-byte offsets: writing 64 KiB, and reading it back on a
+/// big-endian target, takes it minutes, and the examples reach the limit of
+/// 2-byte offsets.
+fn tables_of_short_offsets() -> impl Strategy<Value = Table> {
+    let offset_sizes = if cfg!(miri) {
+        vec![OffsetSize::U8]
+    } else {
+        vec![OffsetSize::U8, OffsetSize::U16]
+    };
+
+    strategy::tables(strategy::layouts(select(offset_sizes)))
+}
+
+fn with_field(table: &Table, field: Field) -> Table {
+    let mut table = table.clone();
+    table.fields.push(field);
+
+    table
+}
+
+/// A field whose byte length grows by a unit with each of its units
+#[derive(Clone, Copy, Debug)]
+enum LongField {
+    Bytes,
+    Floats,
+    String,
+    /// A vector of empty tables, each a length of its own
+    EmptyItems,
+    /// A vector of a table of bytes, from its builder
+    Item,
+    /// A table of bytes, nested from its bytes
+    NestedBytes,
+    /// A table of bytes, nested from its builder
+    NestedBuilder,
+}
+
+fn long_field() -> impl Strategy<Value = LongField> {
+    select(vec![
+        LongField::Bytes,
+        LongField::Floats,
+        LongField::String,
+        LongField::EmptyItems,
+        LongField::Item,
+        LongField::NestedBytes,
+        LongField::NestedBuilder,
+    ])
+}
+
+impl LongField {
+    fn field(self, units: usize) -> Field {
+        let bytes = || vec![Field::U8Array(vec![0; units])];
+
+        match self {
+            Self::Bytes => Field::U8Array(vec![0; units]),
+            Self::Floats => Field::F64Array(vec![0.0; units]),
+            Self::String => Field::String("a".repeat(units)),
+            Self::EmptyItems => Field::Vector(vec![nested(Source::Bytes, Vec::new()); units]),
+            Self::Item => Field::Vector(vec![nested(Source::Builder, bytes())]),
+            Self::NestedBytes => Field::Table {
+                nested: nested(Source::Bytes, bytes()),
+                alignment: None,
+            },
+            Self::NestedBuilder => Field::Table {
+                nested: nested(Source::Builder, bytes()),
+                alignment: None,
+            },
+        }
+    }
+
+    /// The bytes that each unit adds in a table of `width`-byte offsets
+    const fn unit(self, width: usize) -> usize {
+        match self {
+            Self::Floats => 8,
+            Self::EmptyItems => width,
+            _ => 1,
+        }
+    }
+}
+
+/// A table of `fields` with no header and 32-bit offsets, which fits in any
+/// parent
+const fn nested(from: Source, fields: Vec<Field>) -> Nested {
+    Nested {
+        from,
+        table: Table {
+            layout: Layout::headerless(OffsetSize::U32),
+            version: None,
+            fields,
+        },
+    }
+}
 
 #[test]
 fn test_reject_field_beyond_count() {
@@ -35,88 +227,6 @@ fn test_reject_writing_before_every_field_is_set() {
             error.to_string(),
             format!("Only {set} of the table's {} fields were set", set + 1)
         );
-    }
-}
-
-#[test]
-fn test_write_the_same_bytes_each_time() {
-    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
-    builder.set_str("once").unwrap();
-
-    assert_eq!(builder.to_bytes().unwrap(), builder.to_bytes().unwrap());
-}
-
-/// A field of `length` units, and the bytes that each unit adds for an
-/// offset size
-struct LongField {
-    name: &'static str,
-    unit: fn(usize) -> usize,
-    field: fn(usize) -> Field,
-}
-
-const LONG_FIELDS: [LongField; 5] = [
-    LongField {
-        name: "a byte array",
-        unit: |_| 1,
-        field: |length| Field::U8Array(vec![0; length]),
-    },
-    LongField {
-        name: "a float array",
-        unit: |_| 8,
-        field: |length| Field::F64Array(vec![0.0; length]),
-    },
-    LongField {
-        name: "a string",
-        unit: |_| 1,
-        field: |length| Field::String("a".repeat(length)),
-    },
-    LongField {
-        name: "a vector's count",
-        unit: |width| width,
-        field: |length| Field::Vector(vec![Vec::new(); length]),
-    },
-    LongField {
-        name: "a vector item",
-        unit: |_| 1,
-        field: |length| Field::Vector(vec![vec![0; length]]),
-    },
-];
-
-#[test]
-fn test_fit_field_up_to_offset_limit() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
-        for layout in [
-            TableLayout::DEFAULT.with_offset_size(offset_size),
-            TableLayout::DEFAULT.sized().with_offset_size(offset_size),
-        ] {
-            for LongField { name, unit, field } in &LONG_FIELDS {
-                let unit = unit(offset_size.bytes());
-
-                let empty_field = field(0);
-                let empty = common::table_of(std::slice::from_ref(&empty_field), layout);
-                let length = (max - empty.len()) / unit;
-
-                let longest_field = field(length);
-                let longest = common::table_of(std::slice::from_ref(&longest_field), layout);
-                assert!(longest.len() <= max, "{name}");
-                assert!(longest.len() > max - unit, "{name}");
-
-                let buffer = ByteBuffer::new(&longest, layout);
-                common::assert_fields(&buffer, &[longest_field]);
-
-                // The setter fails and leaves the builder as it was
-                let too_long_field = field(length + 1);
-                let mut too_long = TableBuilder::new(1, layout).unwrap();
-                let error = too_long_field.set(&mut too_long).unwrap_err();
-                assert!(
-                    matches!(error, BuildError::TooLong { index: 0, .. }),
-                    "{name}"
-                );
-
-                empty_field.set(&mut too_long).unwrap();
-                assert_eq!(too_long.to_bytes().unwrap(), empty, "{name}");
-            }
-        }
     }
 }
 
@@ -204,32 +314,6 @@ fn test_reject_table_of_32_bit_offsets_past_4_gib_before_writing() {
 }
 
 #[test]
-fn test_versioned_header_bytes() {
-    // Length, version 7, the field's offset and the field (42), as
-    // typescript/core/test/byteBuffer.test.ts writes them
-    let cases: [(OffsetSize, bool, &[u8]); 4] = [
-        (OffsetSize::U8, true, &[4, 7, 3, 42]),
-        (OffsetSize::U16, true, &[7, 0, 7, 0, 6, 0, 42]),
-        (
-            OffsetSize::U32,
-            true,
-            &[13, 0, 0, 0, 7, 0, 0, 0, 12, 0, 0, 0, 42],
-        ),
-        (OffsetSize::U32, false, &[7, 0, 0, 0, 8, 0, 0, 0, 42]),
-    ];
-
-    for (offset_size, sized, expected) in cases {
-        let layout = TableLayout::DEFAULT.with_offset_size(offset_size);
-        let layout = if sized { layout.sized() } else { layout }.versioned();
-
-        let mut builder = TableBuilder::versioned(1, layout, 7).unwrap();
-        builder.set_u8(42).unwrap();
-
-        assert_eq!(builder.to_bytes().unwrap(), expected);
-    }
-}
-
-#[test]
 fn test_reject_version_too_large_for_slot() {
     for (offset_size, version) in [(OffsetSize::U8, 0x100), (OffsetSize::U16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
@@ -291,25 +375,4 @@ fn test_reject_incomplete_nested_builder() {
         vector.iter().collect::<Vec<_>>(),
         [nested.to_bytes().unwrap()]
     );
-}
-
-#[test]
-fn test_reject_nested_builder_that_makes_parent_too_long() {
-    let bytes = vec![0; 0xff - 8];
-    let mut nested = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
-    nested.set_u8_array(&bytes).unwrap();
-
-    let layout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
-    let mut parent = TableBuilder::new(1, layout).unwrap();
-    assert!(matches!(
-        parent.set_table(&nested),
-        Err(BuildError::TooLong { .. })
-    ));
-    assert!(matches!(
-        parent.set_vector([&nested]),
-        Err(BuildError::TooLong { .. })
-    ));
-
-    parent.set_vector(Vec::<Vec<u8>>::new()).unwrap();
-    assert_eq!(parent.to_bytes().unwrap(), [1, 0]);
 }
