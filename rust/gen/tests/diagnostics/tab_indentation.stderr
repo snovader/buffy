@@ -1,0 +1,5 @@
+error: unknown type `flaot64`
+ --> tab_indentation.tafla:3:5
+  |
+3 |     x:    flaot64;
+  |           ^^^^^^^ did you mean `float64`?

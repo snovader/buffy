@@ -1,5 +1,9 @@
 use std::fmt::Write;
 
+/// Tabs are rendered as this many spaces, as rustc renders them, so that the
+/// carets line up under the text whatever a terminal's tab stops are
+const TAB: &str = "    ";
+
 /// A byte range in the schema source
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
@@ -44,21 +48,20 @@ impl Diagnostic {
     pub fn render(&self, file_name: &str, source: &str) -> String {
         let (line, column) = line_and_column(source, self.span.start);
         let text = source.lines().nth(line - 1).unwrap_or("");
-        let width = source[self.span.start..self.span.end.max(self.span.start)]
-            .chars()
-            .count()
-            .max(1);
+        let indent = columns(text.chars().take(column - 1));
+        let width =
+            columns(source[self.span.start..self.span.end.max(self.span.start)].chars()).max(1);
         let gutter = " ".repeat(line.to_string().len());
 
         let mut rendered = String::new();
         let _ = writeln!(rendered, "error: {}", self.message);
         let _ = writeln!(rendered, "{gutter}--> {file_name}:{line}:{column}");
         let _ = writeln!(rendered, "{gutter} |");
-        let _ = writeln!(rendered, "{line} | {text}");
+        let _ = writeln!(rendered, "{line} | {}", text.replace('\t', TAB));
         let _ = write!(
             rendered,
             "{gutter} | {}{}",
-            " ".repeat(column - 1),
+            " ".repeat(indent),
             "^".repeat(width)
         );
         if let Some(help) = &self.help {
@@ -68,6 +71,13 @@ impl Diagnostic {
 
         rendered
     }
+}
+
+/// How many columns characters take in the rendered line
+fn columns(characters: impl Iterator<Item = char>) -> usize {
+    characters
+        .map(|character| if character == '\t' { TAB.len() } else { 1 })
+        .sum()
 }
 
 /// The 1-based line and column, in characters, of a byte offset
