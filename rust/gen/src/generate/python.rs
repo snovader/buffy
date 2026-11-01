@@ -25,6 +25,22 @@ const KEYWORDS: [&str; 38] = [
     "try", "type", "while", "with", "yield",
 ];
 
+/// Names that a field's getter or attribute would shadow, which names get a
+/// `_` after too: the classes' own methods, the parameter of `serialize()`
+/// beside its keyword arguments, and the built-in types that getters return,
+/// which their annotations find in the class
+const MEMBERS: [&str; 9] = [
+    "builder",
+    "cls",
+    "float",
+    "int",
+    "list",
+    "memoryview",
+    "read",
+    "serialize",
+    "str",
+];
+
 pub fn generate(
     schema: &Schema,
     stem: &str,
@@ -548,7 +564,7 @@ fn layout_expression(layout: Layout) -> String {
 }
 
 fn identifier(name: &str) -> String {
-    if KEYWORDS.contains(&name) {
+    if KEYWORDS.contains(&name) || MEMBERS.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()
