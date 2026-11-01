@@ -3,10 +3,15 @@ import { fc, it } from '@fast-check/vitest';
 import {
     DecodeError,
     readFloat32,
+    readFloat64,
+    readInt8,
+    readInt16,
     readInt32,
     readInt64,
     readUint8,
+    readUint16,
     readUint32,
+    readUint64,
     StructWriter
 } from 'tafla';
 import { SLICES, sliceOf } from './conformance/arbitraries.ts';
@@ -156,11 +161,16 @@ const READS: ReadonlyArray<
         reference: (view: DataView, offset: number) => number | bigint
     ]
 > = [
+    [readInt8, 1, (view, offset) => view.getInt8(offset)],
     [readUint8, 1, (view, offset) => view.getUint8(offset)],
+    [readInt16, 2, (view, offset) => view.getInt16(offset, true)],
+    [readUint16, 2, (view, offset) => view.getUint16(offset, true)],
     [readInt32, 4, (view, offset) => view.getInt32(offset, true)],
     [readUint32, 4, (view, offset) => view.getUint32(offset, true)],
     [readInt64, 8, (view, offset) => view.getBigInt64(offset, true)],
-    [readFloat32, 4, (view, offset) => view.getFloat32(offset, true)]
+    [readUint64, 8, (view, offset) => view.getBigUint64(offset, true)],
+    [readFloat32, 4, (view, offset) => view.getFloat32(offset, true)],
+    [readFloat64, 8, (view, offset) => view.getFloat64(offset, true)]
 ];
 
 it.prop([fc.uint8Array({ maxLength: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(

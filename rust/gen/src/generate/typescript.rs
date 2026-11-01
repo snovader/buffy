@@ -93,14 +93,17 @@ impl Generator<'_> {
             )
         });
 
+        let readers = self.struct_readers();
+
         // (name, whether it's only a type here)
         let mut names = Vec::new();
-        if has_table || has_struct {
-            names.push(("ByteBuffer", !(has_message || has_struct)));
+        if has_table {
+            names.push(("ByteBuffer", !has_message));
         }
         if versioned {
             names.push(("DecodeError", false));
         }
+        names.extend(readers.iter().map(|reader| (reader.as_str(), false)));
         if has_struct {
             names.push(("StructWriter", false));
         }
@@ -146,6 +149,35 @@ impl Generator<'_> {
             }
             writer.close(format!("}} from '{runtime}';"));
         }
+    }
+
+    /// The functions that read the scalars of structs, such as `readUint32`,
+    /// in the order that the runtime exports them
+    fn struct_readers(&self) -> Vec<String> {
+        let mut scalars: Vec<Scalar> = Scalar::ALL
+            .into_iter()
+            .filter(|&scalar| {
+                self.schema
+                    .definitions
+                    .iter()
+                    .filter(|definition| definition.kind == Kind::Struct)
+                    .flat_map(|definition| &definition.fields)
+                    .any(|field| field.field_type == FieldType::Scalar(scalar))
+            })
+            .collect();
+        // `float32` before `float64`, `int8` before `int16`, and so on
+        scalars.sort_by_key(|scalar| {
+            let name = scalar.name();
+            let digits = name
+                .find(|c: char| c.is_ascii_digit())
+                .unwrap_or(name.len());
+            (&name[..digits], scalar.size())
+        });
+
+        scalars
+            .into_iter()
+            .map(|scalar| format!("read{}", scalar_method(scalar)))
+            .collect()
     }
 
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
@@ -350,7 +382,8 @@ impl Generator<'_> {
             "constructor(bytes{}) {{",
             self.annotation("Uint8Array")
         ));
-        writer.line("const buffer = new ByteBuffer(bytes);");
+        // The runtime's read functions, which check each read, skip making a
+        // ByteBuffer and its DataView, which took five times as long
         let mut offset = 0;
         for field in &definition.fields {
             let FieldType::Scalar(scalar) = field.field_type else {
@@ -360,8 +393,8 @@ impl Generator<'_> {
                 &STYLE,
                 &format!("this.#{} = ", identifier(&field.name)),
                 &call(
-                    format!("buffer.get{}", scalar_method(scalar)),
-                    vec![text(offset.to_string())],
+                    format!("read{}", scalar_method(scalar)),
+                    vec![text("bytes"), text(offset.to_string())],
                 ),
                 ";",
             );

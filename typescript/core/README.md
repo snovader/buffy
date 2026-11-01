@@ -33,9 +33,9 @@ const table = buffer.rootOffset(2);
 const read = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
 ```
 
-`StructWriter` and the `readUint8()`/`readInt32()`/`readFloat32()` helpers
-write and read records at fixed offsets, such as stream frames, without a
-header or offsets.
+`StructWriter` and the read functions, one per scalar type, such as
+`readUint32()` and `readFloat64()`, write and read records at fixed offsets,
+such as stream frames, without a header or offsets.
 
 ## Format
 
