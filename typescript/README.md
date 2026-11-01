@@ -1,7 +1,8 @@
 # buffy for TypeScript
 
 `core/` holds `@buffy/core`, the runtime. Its tests also generate the
-repository's conformance suite.
+repository's conformance suite. `benchmarks/` times it, and compares it with
+other libraries; its README describes how.
 
 ## Development
 

@@ -78,8 +78,31 @@ jobs:
       - name: Run tests
         run: yarn test
 
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Prepare dependencies
+        uses: ./.github/actions/prepare-node-dependencies
+
+      # Shared runners are too noisy for the numbers to mean much; these runs
+      # check that the benchmarks work, and that every codec in the comparison
+      # reads back what it wrote
+      - name: Run benchmarks
+        run: yarn bench
+
+      - name: Run comparison
+        run: yarn bench:compare --rounds 3 --sample-ms 0.2
+
   dependabot:
-    needs: [verify, test]
+    needs: [verify, test, benchmark]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

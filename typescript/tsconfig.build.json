@@ -5,6 +5,7 @@
     "files": [],
     "references": [
         { "path": "./tsconfig.json" },
+        { "path": "./benchmarks" },
         { "path": "./core" },
         { "path": "./core/test" },
         { "path": "./core/test/conformance" }
