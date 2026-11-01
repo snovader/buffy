@@ -2,7 +2,9 @@
 
 `core/` holds `buffy-core`, the runtime, and `gen/` holds `buffy-gen`, the
 code generator, which compiles schemas into code for every language's
-runtime and also runs as WebAssembly.
+runtime and also runs as WebAssembly. `benchmarks/` holds `buffy-benchmarks`,
+which compares the runtime with other Rust crates, such as FlatBuffers and
+rkyv, as its README describes.
 
 ## Development
 
@@ -26,6 +28,10 @@ rustup target add wasm32-unknown-unknown
 cargo build -p buffy-gen --lib --target wasm32-unknown-unknown --profile wasm
 node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
 ```
+
+`cargo test` runs the benchmarks' check that every codec reads back what it
+wrote. The benchmarks themselves run with
+`cargo bench -p buffy-benchmarks`, and take several minutes.
 
 Miri runs the runtime's tests on a big-endian target, which reads every
 array through its byte-swapping path. It takes several minutes:

@@ -91,23 +91,32 @@ repository's conformance suite, which covers the whole format.
 
 ## Performance
 
-On an Apple M2 Pro:
+`benchmarks/` compares the runtime with the flatbuffers, prost, rmp-serde
+and rkyv crates on the workloads that every language's benchmarks run, as
+its README describes. Its fastest samples, on an Apple M2 Pro:
 
-- **Arrays are copied at the speed of a memcpy.** Writing a table of 27,028
-  floats took 2.0 µs, against 3.0 µs to copy them into a zeroed allocation,
-  which the builder saves by appending to reserved capacity instead.
-  `ArrayView::to_vec()` copied them back in 1.9 µs.
-- **Read arrays whole.** Summing 27,028 `u32`s through the `ArrayView` took
-  1.0 µs, as long as through a slice, against 12 µs with `get_u32()`, which
-  checks each read and returns early from the loop on an error.
-- **Nesting builders saves copying their bytes.** A document nesting 100,000
-  rows of three columns took 19 µs to write from builders and 39 µs from
-  bytes, and a vector of 100 tables that each nest another took 8.8 µs and
-  14 µs. An owned builder moves into its parent without an allocation of
-  its own.
+- **Arrays are written in bulk.** A document of 100,000 rows of three
+  columns, 1.2 MB, took 18 µs to write, about as long as rkyv, which copies
+  arrays whole too, and 6 to 43 times faster than flatbuffers, prost and
+  rmp-serde, which write them element by element. The builder writes the
+  table at its exact size, appending to reserved capacity rather than zeroing
+  it first.
+- **Arrays are read in place.** Reading the document, with its columns as
+  slices from `ArrayView::to_cow()`, took 34 ns at 100 rows and at 100,000
+  alike. rkyv took 15 µs to copy the large document's columns out of its
+  archive, and the others 0.2 to 1.2 ms.
+- **Read arrays whole.** An `ArrayView`'s iterator reads each element
+  without a check of its own: summing the document's 100,000 floats through
+  it took 86 µs, bound by the additions, as long as through flatbuffers' and
+  rkyv's accessors. `get_f32()` at each position would check every read and
+  return early from the loop on an error.
 - **Small tables are quick to write and read.** A table of two `f64`s, an
-  `i64` and a 16-byte string took 83 ns to write, including allocating the
-  builder's record of fields and the table, and 9 ns to read.
+  `i64` and a 16-byte string took 79 ns to write, including allocating the
+  builder's record of fields and the table, and 13 ns to read.
+- **Each nested builder allocates.** A vector of 100 tables that each nest
+  another took 9.0 µs to write, 2.5 to 6.4 times as long as flatbuffers,
+  rmp-serde and prost, which took 1.4 µs: each of its 200 tables is a
+  builder, which allocates its record of fields. It took 0.30 µs to read.
 
 ## Validation and errors
 
