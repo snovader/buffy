@@ -266,11 +266,17 @@ export class TableSizer {
  * Typed arrays of a field's element type are copied as bytes; any other
  * array-like, such as a `number[]` or a typed array of another type, is
  * converted as the typed array's constructor would. Values that don't fit
- * their type are written as `DataView`'s setters write them.
+ * their type are written as `DataView`'s setters write them, and a `number`
+ * given for an `int64` throws a `TypeError`, as they do.
  */
 export class TableWriter {
+    // Scalars, offsets and lengths are written as bytes rather than through
+    // a DataView. V8 keeps a Uint8Array of up to 64 bytes on its heap until
+    // something asks for its ArrayBuffer, as a DataView does: in Node 26 that
+    // took 140 ns of the 290 ns that writing a Point of 60 bytes took, and
+    // writing it as bytes took 140 ns in all. A vector of 100 tables of
+    // scalars took 5-15% longer, which arrays of structs write faster anyway.
     readonly #bytes: Uint8Array;
-    readonly #view: DataView;
     /** The width of offsets, lengths and header slots */
     readonly #size: AddressableSpace;
     readonly #headerSize: number;
@@ -313,11 +319,6 @@ export class TableWriter {
         }
 
         this.#bytes = bytes;
-        this.#view = new DataView(
-            bytes.buffer,
-            bytes.byteOffset,
-            bytes.byteLength
-        );
         this.#size = size;
         this.#headerSize = layout.headerSize();
         this.#slots = this.#headerSize;
@@ -374,61 +375,71 @@ export class TableWriter {
 
     setInt8(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setInt8(this.#position, value);
+        SCRATCH.setInt8(0, value);
+        copy1(this.#bytes, this.#position);
         this.#position += SIZEOF_8;
     }
 
     setUint8(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setUint8(this.#position, value);
+        SCRATCH.setUint8(0, value);
+        copy1(this.#bytes, this.#position);
         this.#position += SIZEOF_8;
     }
 
     setInt16(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setInt16(this.#position, value, true);
+        SCRATCH.setInt16(0, value, true);
+        copy2(this.#bytes, this.#position);
         this.#position += SIZEOF_16;
     }
 
     setUint16(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setUint16(this.#position, value, true);
+        SCRATCH.setUint16(0, value, true);
+        copy2(this.#bytes, this.#position);
         this.#position += SIZEOF_16;
     }
 
     setInt32(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setInt32(this.#position, value, true);
+        SCRATCH.setInt32(0, value, true);
+        copy4(this.#bytes, this.#position);
         this.#position += SIZEOF_32;
     }
 
     setUint32(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setUint32(this.#position, value, true);
+        SCRATCH.setUint32(0, value, true);
+        copy4(this.#bytes, this.#position);
         this.#position += SIZEOF_32;
     }
 
     setInt64(index: number, value: bigint): void {
         this.#setOffset(index);
-        this.#view.setBigInt64(this.#position, value, true);
+        SCRATCH.setBigInt64(0, value, true);
+        copy8(this.#bytes, this.#position);
         this.#position += SIZEOF_64;
     }
 
     setUint64(index: number, value: bigint): void {
         this.#setOffset(index);
-        this.#view.setBigUint64(this.#position, value, true);
+        SCRATCH.setBigUint64(0, value, true);
+        copy8(this.#bytes, this.#position);
         this.#position += SIZEOF_64;
     }
 
     setFloat32(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setFloat32(this.#position, value, true);
+        SCRATCH.setFloat32(0, value, true);
+        copy4(this.#bytes, this.#position);
         this.#position += SIZEOF_32;
     }
 
     setFloat64(index: number, value: number): void {
         this.#setOffset(index);
-        this.#view.setFloat64(this.#position, value, true);
+        SCRATCH.setFloat64(0, value, true);
+        copy8(this.#bytes, this.#position);
         this.#position += SIZEOF_64;
     }
 
@@ -535,7 +546,7 @@ export class TableWriter {
         this.#setOffset(index);
 
         const start = this.#position + this.#size;
-        const length = encodeInto(string, this.#bytes.subarray(start));
+        const length = encodeInto(string, this.#bytes, start);
         this.#setLength(this.#position, length);
         this.#position = start + length;
     }
@@ -624,22 +635,58 @@ export class TableWriter {
         );
     }
 
-    /** Writes an offset, length, count or header slot at `position` */
+    /**
+     * Writes an offset, length, count or header slot at `position`,
+     * little-endian. A value too large for the width is wrapped, as
+     * DataView's setters wrap it; the sizer rejects a table long enough to
+     * need one.
+     */
     #setLength(position: number, value: number): void {
-        switch (this.#size) {
-            case SIZEOF_8:
-                this.#view.setUint8(position, value);
-                break;
+        const bytes = this.#bytes;
+        bytes[position] = value;
 
-            case SIZEOF_16:
-                this.#view.setUint16(position, value, true);
-                break;
+        if (this.#size !== SIZEOF_8) {
+            bytes[position + 1] = value >>> 8;
 
-            case SIZEOF_32:
-                this.#view.setUint32(position, value, true);
-                break;
+            if (this.#size === SIZEOF_32) {
+                bytes[position + 2] = value >>> 16;
+                bytes[position + 3] = value >>> 24;
+            }
         }
     }
+}
+
+// A scalar is set little-endian in the scratch, whatever the host's byte
+// order, and its bytes copied into the table. A function per width keeps
+// each small enough for V8 to inline into the setters.
+const SCRATCH = new DataView(new ArrayBuffer(SIZEOF_64));
+const SCRATCH_BYTES = new Uint8Array(SCRATCH.buffer);
+
+function copy1(bytes: Uint8Array, position: number): void {
+    bytes[position] = SCRATCH_BYTES[0];
+}
+
+function copy2(bytes: Uint8Array, position: number): void {
+    bytes[position] = SCRATCH_BYTES[0];
+    bytes[position + 1] = SCRATCH_BYTES[1];
+}
+
+function copy4(bytes: Uint8Array, position: number): void {
+    bytes[position] = SCRATCH_BYTES[0];
+    bytes[position + 1] = SCRATCH_BYTES[1];
+    bytes[position + 2] = SCRATCH_BYTES[2];
+    bytes[position + 3] = SCRATCH_BYTES[3];
+}
+
+function copy8(bytes: Uint8Array, position: number): void {
+    bytes[position] = SCRATCH_BYTES[0];
+    bytes[position + 1] = SCRATCH_BYTES[1];
+    bytes[position + 2] = SCRATCH_BYTES[2];
+    bytes[position + 3] = SCRATCH_BYTES[3];
+    bytes[position + 4] = SCRATCH_BYTES[4];
+    bytes[position + 5] = SCRATCH_BYTES[5];
+    bytes[position + 6] = SCRATCH_BYTES[6];
+    bytes[position + 7] = SCRATCH_BYTES[7];
 }
 
 /** The bytes that bring `offset` to a multiple of `alignment` */

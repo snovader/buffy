@@ -77,6 +77,30 @@ it('should write a struct array, a nested table and a vector as TableBuilder pad
     expect(readTable(bytes, table)).toStrictEqual(table);
 });
 
+describe('strings', () => {
+    // Any UTF-16 code units, lone surrogates too, around the length up to
+    // which strings are written a byte at a time when they're ASCII
+    const codeUnits = fc.integer({ min: 0, max: 0xffff }).map(unit => String.fromCharCode(unit));
+    const strings = fc.oneof(
+        fc.string({ unit: 'binary-ascii', maxLength: 80 }),
+        fc.string({ unit: codeUnits, maxLength: 80 }),
+        fc.string({ unit: 'binary', maxLength: 40 })
+    );
+
+    it.prop([strings, fc.constantFrom(...([1, 2, 4] as const))])(
+        'should write any string as TableBuilder does, with lone surrogates as U+FFFD',
+        (value, offsetSize) => {
+            const table: TableDescription = {
+                layout: { sized: false, versioned: false, offsetSize },
+                fields: [{ type: 'string', value }]
+            };
+            fc.pre(fitsItsLayout(table));
+
+            expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());
+        }
+    );
+});
+
 describe('tables longer than the offsets address', () => {
     const NARROW_OFFSET_SIZES = [1, 2] as const;
 
