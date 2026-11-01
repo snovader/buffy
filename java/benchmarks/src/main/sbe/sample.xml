@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- The fixed-size record: a uint32 and two float32s -->
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="io.github.snovader.buffy.benchmarks.generated.sbe"
+                   id="1"
+                   version="0"
+                   byteOrder="littleEndian">
+    <types>
+        <composite name="messageHeader">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+    </types>
+
+    <sbe:message name="Sample" id="1">
+        <field name="key" id="1" type="uint32"/>
+        <field name="a" id="2" type="float"/>
+        <field name="b" id="3" type="float"/>
+    </sbe:message>
+</sbe:messageSchema>

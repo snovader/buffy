@@ -1,0 +1,89 @@
+package io.github.snovader.buffy.benchmarks.test;
+
+import io.github.snovader.buffy.benchmarks.*;
+import io.github.snovader.buffy.benchmarks.codecs.*;
+import net.jqwik.api.*;
+
+import java.util.*;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Checks that every codec reads back exactly what it wrote for every workload, so that the
+ * benchmarks can't time a codec that skips or corrupts part of the work.
+ */
+public class RoundTripTest {
+    @Provide
+    Arbitrary<Codec> codecs() {
+        return Arbitraries.of(Codecs.all());
+    }
+
+    @Provide
+    Arbitrary<String> sampleCodecs() {
+        return Arbitraries.of(List.copyOf(Codecs.samples().keySet()));
+    }
+
+    @Provide
+    Arbitrary<Integer> documentRows() {
+        return Arbitraries.of(Workloads.DOCUMENT_ROWS);
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_the_record(@ForAll("codecs") Codec codec) {
+        assertReadBack(codec.record(), Workloads.RECORD);
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_documents(@ForAll("codecs") Codec codec, @ForAll("documentRows") int rows) {
+        assertReadBack(codec.document(), Workloads.documentInput(rows));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_sum_a_document_column_in_order(@ForAll("codecs") Codec codec, @ForAll("documentRows") int rows) {
+        var input = Workloads.documentInput(rows);
+
+        double expected = 0;
+        for (var value : input.a()) {
+            expected += value;
+        }
+
+        var bytes = codec.document().serialize(input);
+        assertEquals(expected, codec.document().sumA(bytes));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_the_vector_of_nested_tables(@ForAll("codecs") Codec codec) {
+        assertReadBack(codec.list(), Workloads.listInput(Workloads.LIST_ITEMS));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_the_fixed_size_record(@ForAll("sampleCodecs") String codec) {
+        assertReadBack(Codecs.sample(codec), Workloads.SAMPLE);
+    }
+
+    @Example
+    void should_fail_the_check_of_a_codec_that_loses_signed_zero() {
+        var input = new SampleInput(1, -0.0f, 1);
+        var lossy = new Workload<SampleInput>() {
+            @Override
+            public byte[] serialize(SampleInput sample) {
+                return new byte[0];
+            }
+
+            @Override
+            public SampleInput deserialize(byte[] bytes) {
+                return new SampleInput(1, 0.0f, 1);
+            }
+        };
+
+        assertThrows(IllegalStateException.class, () -> Codecs.serializeChecked(lossy, input));
+    }
+
+    private static <T> void assertReadBack(Workload<T> workload, T input) {
+        var bytes = workload.serialize(input);
+
+        assertEquals(input, workload.deserialize(bytes));
+        // The check that each benchmark runs before timing
+        assertArrayEquals(bytes, Codecs.serializeChecked(workload, input));
+    }
+}
