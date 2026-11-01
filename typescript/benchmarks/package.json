@@ -5,7 +5,7 @@
   "dependencies": {
     "@buffy/core": "workspace:^",
     "flatbuffers": "25.9.23",
-    "msgpackr": "2.1.2",
+    "msgpackr": "2.1.3",
     "protobufjs": "8.8.1"
   },
   "devDependencies": {
