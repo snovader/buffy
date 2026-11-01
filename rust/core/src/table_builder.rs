@@ -86,7 +86,9 @@ impl<'a> TableBuilder<'a> {
     /// [`BuildError::HeaderTooLong`] if the header alone is longer than the
     /// layout's offsets address.
     pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
-        Self::create(fields, layout.is_sized(), layout.offset_size(), None)
+        let header = layout.header_length(fields)?;
+
+        Ok(Self::create(fields, header, layout, None))
     }
 
     /// Starts a table of `fields` fields in `layout`, with `version` in its
@@ -103,49 +105,32 @@ impl<'a> TableBuilder<'a> {
         layout: TableLayout<true>,
         version: u32,
     ) -> Result<Self, BuildError> {
-        let offset_size = layout.offset_size();
-        if version > offset_size.max_value() {
-            return Err(BuildError::VersionTooLarge {
-                version,
-                offset_size,
-            });
-        }
+        layout.check_version(version)?;
+        let header = layout.header_length(fields)?;
 
-        Self::create(fields, layout.is_sized(), offset_size, Some(version))
+        Ok(Self::create(fields, header, layout, Some(version)))
     }
 
-    fn create(
+    /// A builder of a table of `fields` fields, whose header of `header`
+    /// bytes its layout checked
+    #[allow(clippy::cast_possible_truncation)]
+    fn create<const VERSIONED: bool>(
         fields: usize,
-        sized: bool,
-        offset_size: OffsetSize,
+        header: u32,
+        layout: TableLayout<VERSIONED>,
         version: Option<u32>,
-    ) -> Result<Self, BuildError> {
-        // In u64, since a header longer than 4 GiB would saturate to the
-        // limit itself in a 32-bit usize
-        let slots = (fields as u64)
-            .saturating_add(u64::from(sized))
-            .saturating_add(u64::from(version.is_some()));
-        let header = slots.saturating_mul(offset_size.bytes() as u64);
-
-        let too_long = BuildError::HeaderTooLong {
-            fields,
-            offset_size,
-        };
-        let length = u32::try_from(header)
-            .ok()
-            .filter(|&length| length <= offset_size.max_value())
-            .ok_or(too_long)?;
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             values: Vec::with_capacity(fields),
-            fields: u32::try_from(fields).map_err(|_| too_long)?,
-            length,
+            // The header holds an offset of at least a byte per field
+            fields: fields as u32,
+            length: header,
             version: version.unwrap_or(0),
             versioned: version.is_some(),
-            sized,
-            offset_size,
+            sized: layout.is_sized(),
+            offset_size: layout.offset_size(),
             alignment: Alignment::One,
-        })
+        }
     }
 
     /// Writes the table, at its exact size.
