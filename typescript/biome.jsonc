@@ -1,5 +1,6 @@
 {
     "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+    "root": false,
     "files": {
         "includes": [
             "**",
@@ -32,10 +33,6 @@
     ],
     "linter": {
         "rules": {
-            "correctness": {
-                // See https://github.com/biomejs/biome/issues/2475
-                "noUndeclaredDependencies": "off"
-            },
             "nursery": {
                 "noFloatingPromises": "error",
                 "noMisusedPromises": "error",

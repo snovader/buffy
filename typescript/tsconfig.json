@@ -3,6 +3,12 @@
     "compilerOptions": {
         "outDir": ".cache/typescript/configs"
     },
-    "include": ["*.ts", "*/vitest.config.ts"],
-    "exclude": [".cache/**/*", "node_modules/**/*"]
+    "include": ["*.ts", "core/vitest.config.ts"],
+    "references": [
+        { "path": "./benchmarks" },
+        { "path": "./core" },
+        { "path": "./core/test" },
+        { "path": "./core/test/conformance" },
+        { "path": "./core/test/generated" }
+    ]
 }

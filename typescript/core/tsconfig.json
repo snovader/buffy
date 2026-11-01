@@ -3,6 +3,5 @@
     "compilerOptions": {
         "outDir": "../.cache/typescript/core"
     },
-    "include": ["./source/**/*"],
-    "references": []
+    "include": ["./source/**/*"]
 }

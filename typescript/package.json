@@ -16,7 +16,7 @@
     "lint:write": "yarn lint:check --write",
     "package:check": "yarn workspace @buffy/core pack -o ../.cache/buffy-core.tgz && attw --profile esm-only .cache/buffy-core.tgz && publint core && node core/test/dist.ts",
     "test": "vitest run",
-    "typecheck": "tsc -b ./tsconfig.build.json"
+    "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
