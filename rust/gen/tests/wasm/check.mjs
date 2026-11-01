@@ -231,6 +231,20 @@ if (
     fail(`an unknown target: ${JSON.stringify(unknown)}`);
 }
 
+const invalidPackage = call(instance, [
+    'java',
+    'point.buffy',
+    'message Point { x: uint8; }',
+    '',
+    '../generated'
+]);
+if (
+    invalidPackage.status !== 1 ||
+    !invalidPackage.errors.startsWith("`../generated` isn't a Java package")
+) {
+    fail(`an invalid package: ${JSON.stringify(invalidPackage)}`);
+}
+
 // Two strings rather than five
 const malformed = call(instance, ['rust', 'point.buffy']);
 if (malformed.status !== 1 || malformed.errors !== 'malformed request\n') {

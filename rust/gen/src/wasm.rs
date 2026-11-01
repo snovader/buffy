@@ -8,12 +8,13 @@
 //! Every string is a little-endian `u32` byte length and UTF-8 bytes:
 //!
 //! - request: target, file name, source, runtime, package; an empty runtime
-//!   or package takes the target's default
+//!   or package takes the target's default, and a package that isn't a Java
+//!   package is an error
 //! - response: its `u32` length, a `u32` status, then for status 0 a `u32`
 //!   file count and each file's path and contents, and for status 1 the
 //!   rendered errors
 
-use crate::{Diagnostic, Options, Target, compile};
+use crate::{Diagnostic, JavaPackage, Options, Target, compile};
 
 /// Allocates exactly `length` bytes for a request
 #[unsafe(no_mangle)]
@@ -89,9 +90,13 @@ fn handle(reader: &mut Reader) -> Result<Vec<crate::GeneratedFile>, String> {
             targets.join(", ")
         )
     })?;
+    let package = (!package.is_empty())
+        .then(|| package.parse::<JavaPackage>())
+        .transpose()
+        .map_err(|error| format!("{error}\n"))?;
     let options = Options {
         runtime: (!runtime.is_empty()).then(|| runtime.to_owned()),
-        package: (!package.is_empty()).then(|| package.to_owned()),
+        package,
     };
 
     compile(file_name, source, target, &options)

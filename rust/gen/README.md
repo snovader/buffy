@@ -197,6 +197,13 @@ schema's files under `--out`, which is the current directory by default, and
 names the schema by its path in their header. It prints the errors of the
 schemas that have any, and then fails.
 
+A file is named after its schema up to the schema's first dot, so schemas can
+write the same file, such as `a/shapes.buffy` and `b/shapes.buffy`, or
+`shapes.v1.buffy` and `shapes.v2.buffy`. Two Java schemas can declare the same
+class, and paths that differ only in case are one file on macOS and Windows.
+The command writes neither of such schemas, and prints an error for each file
+they share.
+
 - `--runtime` names the module, package or crate that the generated code
   imports buffy's runtime from, by default:
 
@@ -209,7 +216,9 @@ schemas that have any, and then fails.
 
 - `--package` names the package of the Java classes, which is `generated` by
   default, since they belong in a package of the project that uses them,
-  which the generator can't know. Other targets ignore it.
+  which the generator can't know. It's identifiers in ASCII separated by
+  dots, such as `com.example.shapes`, which are the directories of the
+  classes' files under `--out` too. Other targets ignore it.
 
 From this repository, `cargo run -p buffy-gen --` runs the command.
 
@@ -217,7 +226,10 @@ From this repository, `cargo run -p buffy-gen --` runs the command.
 
 `compile()` generates a schema's files, and `parse()` only checks it. Both
 return the schema's errors as `Diagnostic`s, which `Diagnostic::render_all()`
-renders as the command prints them.
+renders as the command prints them. `Options` name the runtime and the Java
+package, which is a `JavaPackage` parsed from its name, as `--package` takes
+it. Every generated file's path is relative to the output directory and
+within it.
 
 ```rust
 use buffy_gen::{Diagnostic, Options, Target, compile};
@@ -266,8 +278,8 @@ bytes.
   takes the default.
 - A response is its own length as a `u32`, a `u32` status, and then, for
   status 0, a `u32` count of files and each file's path and contents, or, for
-  status 1, the errors as the command prints them. An unknown target and a
-  malformed request are errors too.
+  status 1, the errors as the command prints them. An unknown target, a
+  package that isn't a Java package and a malformed request are errors too.
 
 Allocating and compiling may grow the memory, which detaches a host's views
 of it, so a host makes its views after each call. `tests/wasm/check.mjs`

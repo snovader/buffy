@@ -20,6 +20,17 @@ fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).unwrap()
 }
 
+/// A new directory of schemas, by their paths in it
+fn write_schemas(schemas: &[(&str, &str)]) -> tempfile::TempDir {
+    let directory = tempfile::tempdir().unwrap();
+    for (path, source) in schemas {
+        let path = directory.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    directory
+}
+
 #[test]
 fn writes_the_golden_files_of_an_example_schema() {
     let out = tempfile::tempdir().unwrap();
@@ -34,7 +45,7 @@ fn writes_the_golden_files_of_an_example_schema() {
             directory.to_str().unwrap(),
         ];
         if let Some(package) = &golden.options.package {
-            arguments.extend(["--package", package]);
+            arguments.extend(["--package", package.as_str()]);
         }
         let output = buffy_gen(REPOSITORY, &arguments);
 
@@ -141,6 +152,154 @@ fn writes_the_valid_schemas_and_prints_the_errors_of_the_others() {
     );
     let files: Vec<String> = read_tree(out.path()).into_keys().collect();
     assert_eq!(files, ["shapes.rs"]);
+}
+
+#[test]
+fn writes_neither_of_two_schemas_that_write_the_same_file() {
+    let point = "message Point { x: uint8; }\n";
+    let directory = write_schemas(&[
+        ("a/point.buffy", point),
+        ("b/point.buffy", point),
+        ("point.v2.buffy", point),
+        ("pair.buffy", "message Pair { a: uint8; }\n"),
+    ]);
+    let out = tempfile::tempdir().unwrap();
+
+    let output = buffy_gen(
+        directory.path().to_str().unwrap(),
+        &[
+            "py",
+            "a/point.buffy",
+            "b/point.buffy",
+            "point.v2.buffy",
+            "pair.buffy",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        "a/point.buffy and b/point.buffy both write point.py\n\n\
+         a/point.buffy and point.v2.buffy both write point.py\n"
+    );
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["pair.py"]);
+}
+
+#[test]
+fn writes_neither_of_two_schemas_that_declare_the_same_java_class() {
+    let directory = write_schemas(&[
+        (
+            "a.buffy",
+            "message Point { x: uint8; pair: Pair; }\ntable Pair { a: uint8; }\n",
+        ),
+        ("b.buffy", "message Pair { b: uint8; }\n"),
+        ("c.buffy", "message Other { c: uint8; }\n"),
+    ]);
+    let out = tempfile::tempdir().unwrap();
+
+    let output = buffy_gen(
+        directory.path().to_str().unwrap(),
+        &[
+            "java",
+            "a.buffy",
+            "b.buffy",
+            "c.buffy",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        "a.buffy and b.buffy both write generated/Pair.java\n"
+    );
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["generated/Other.java"]);
+}
+
+#[test]
+fn writes_no_files_whose_paths_differ_only_in_case() {
+    let directory = write_schemas(&[
+        ("a/Point.buffy", "message Point { x: uint8; }\n"),
+        ("b/point.buffy", "message Point { x: uint8; }\n"),
+        (
+            "points.buffy",
+            "message Point { x: uint8; }\nmessage POINT { x: uint8; }\n",
+        ),
+    ]);
+
+    for (schemas, expected) in [
+        (
+            &["py", "a/Point.buffy", "b/point.buffy"][..],
+            "a/Point.buffy writes Point.py and b/point.buffy writes point.py, \
+             which are one file where file names ignore case\n",
+        ),
+        // Classes of one schema
+        (
+            &["java", "points.buffy"],
+            "points.buffy writes generated/Point.java and points.buffy writes \
+             generated/POINT.java, which are one file where file names ignore case\n",
+        ),
+    ] {
+        let out = tempfile::tempdir().unwrap();
+        let mut arguments = schemas.to_vec();
+        arguments.extend(["--out", out.path().to_str().unwrap()]);
+
+        let output = buffy_gen(directory.path().to_str().unwrap(), &arguments);
+
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(stderr(&output), expected);
+        assert!(read_tree(out.path()).is_empty());
+    }
+}
+
+#[test]
+fn generates_a_schema_given_twice_once() {
+    let out = tempfile::tempdir().unwrap();
+
+    let output = buffy_gen(
+        REPOSITORY,
+        &[
+            "py",
+            "schemas/shapes.buffy",
+            "schemas/shapes.buffy",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["shapes.py"]);
+}
+
+#[test]
+fn rejects_a_package_that_isnt_a_java_package() {
+    let out = tempfile::tempdir().unwrap();
+
+    let output = buffy_gen(
+        REPOSITORY,
+        &[
+            "java",
+            "schemas/shapes.buffy",
+            "--out",
+            out.path().to_str().unwrap(),
+            "--package",
+            ".generated",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        "`.generated` isn't a Java package, which is identifiers in ASCII separated by dots, \
+         such as `com.example.shapes`\n"
+    );
+    assert!(read_tree(out.path()).is_empty());
 }
 
 #[test]

@@ -10,7 +10,7 @@ mod parser;
 mod wasm;
 
 pub use diagnostic::{Diagnostic, Span};
-pub use generate::{GeneratedFile, Options, Target};
+pub use generate::{GeneratedFile, InvalidJavaPackage, JavaPackage, Options, Target};
 pub use model::Schema;
 
 /// Parses and checks a schema.
