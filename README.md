@@ -11,6 +11,8 @@ sources.
 
 buffy hasn't been released yet.
 
+[SPEC.md](SPEC.md) describes the format.
+
 ## Packages
 
 | Language   | Runtime                               | Code generator                       |
