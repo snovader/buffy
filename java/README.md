@@ -25,6 +25,10 @@ as a public member without a comment or a parameter without a tag.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
 
+`./gradlew :core:publishToMavenLocal` publishes the runtime's jar, sources,
+documentation and POM to the local Maven repository, unsigned without the
+release's signing key, which RELEASING.md describes.
+
 The test module holds the Java that buffy-gen generates from the example
 schemas in `schemas/`, in a package of each schema,
 `io.github.snovader.buffy.test.generated.<schema>`, which its tests run.

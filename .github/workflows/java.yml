@@ -74,6 +74,33 @@ jobs:
       - name: Run Gradle build
         run: ./gradlew build javadoc -PtestJavaVersion=${{ matrix.java_version }}
 
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # The jars, sources, documentation and POM that Maven Central would
+      # receive, unsigned without the release's signing key
+      - name: Publish to the local Maven repository
+        run: ./gradlew :core:publishToMavenLocal
+
   benchmark:
     name: Benchmark
     needs: changes
@@ -112,7 +139,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Java.
   checks:
     name: Java checks
-    needs: [changes, build, benchmark]
+    needs: [changes, build, package, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

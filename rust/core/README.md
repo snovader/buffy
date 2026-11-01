@@ -1,6 +1,7 @@
 # buffy-core
 
-Binary tables of scalars, strings and arrays, in buffy's format.
+Binary tables of scalars, strings and arrays, in
+[buffy](https://github.com/snovader/buffy)'s format.
 `TableBuilder` writes a table at its exact size, copying arrays in bulk,
 and `ByteBuffer` reads fields back by offset, borrowing arrays and strings
 from the bytes. Every read checks that it stays within the bytes it was
@@ -64,10 +65,13 @@ and then the fields in the order they were set:
   arrays when given its builder, and to 4 bytes by default when given bytes.
 - A vector starts with its item count, and each item with its byte length.
 
-The crate writes the same bytes as the TypeScript runtime, `@buffy/core`,
-for the same fields, and reads its tables; `tests/compatibility.rs` checks
-tables that it wrote, and `tests/conformance.rs` reads and rebuilds the
-repository's conformance suite, which covers the whole format.
+[SPEC.md](https://github.com/snovader/buffy/blob/main/SPEC.md) describes
+the format in full. The crate writes the same bytes as buffy's TypeScript,
+Python and Java runtimes for the same fields, and reads their tables: its
+tests read and rebuild the
+[conformance suite](https://github.com/snovader/buffy/tree/main/conformance)
+in buffy's repository, golden tables that cover the whole format, byte for
+byte.
 
 ## Borrowing and copying
 

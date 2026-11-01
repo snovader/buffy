@@ -1,0 +1,383 @@
+name: Release
+
+# Publishes the runtime of every language from a tag vX.Y.Z, once every
+# language's CI has passed on the tag's commit, and then creates the GitHub
+# release. Each registry's job runs in a GitHub environment of its own, which
+# can require approval. RELEASING.md describes the setup that this needs, and
+# the steps of a release.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Each job asks for the permissions that it needs
+permissions: {}
+
+# A release isn't cancelled halfway, which would leave some registries
+# without it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    # Waits for CI, whose slowest job, Rust's big-endian tests, can take 30
+    # minutes
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      # Reads the CI runs of the tag's commit
+      actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check that every package has the tag's version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          scripts/set-version --check "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The commit that sets the version changes a manifest in every
+      # language's directory, so each language's CI runs when it's pushed to
+      # main. A run can take a moment to appear after the push.
+      - name: Wait for every language's CI to pass on the tag's commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in typescript.yml python.yml java.yml rust.yml; do
+            run=""
+            for _ in $(seq 12); do
+              run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" \
+                --commit "$GITHUB_SHA" --branch main --event push --limit 1 \
+                --json databaseId --jq '.[0].databaseId // empty')
+              if [ -n "$run" ]; then
+                break
+              fi
+              sleep 10
+            done
+
+            if [ -z "$run" ]; then
+              echo "::error::$workflow hasn't run on $GITHUB_SHA in main. Tag the commit that set the version, once it's merged."
+              exit 1
+            fi
+
+            url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run"
+            echo "Waiting for $workflow: $url"
+            if ! gh run watch "$run" --repo "$GITHUB_REPOSITORY" --exit-status --interval 30 > /dev/null; then
+              echo "::error::$workflow didn't pass on $GITHUB_SHA: $url"
+              exit 1
+            fi
+          done
+
+  build-npm:
+    name: Build for npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare dependencies
+        uses: ./.github/actions/prepare-node-dependencies
+
+      # Packs @buffy/core, checks the archive, and reads a table with its build
+      - name: Pack and check the package
+        run: yarn package:check
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: typescript/.cache/buffy-core.tgz
+          if-no-files-found: error
+
+  publish-npm:
+    name: Publish to npm
+    needs: [verify, build-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@buffy/core/v/${{ needs.verify.outputs.version }}
+    permissions:
+      # Trusted publishing and provenance
+      id-token: write
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+
+      # npm 11.5.1 or later publishes with trusted publishing, which Node 26
+      # brings. Jobs that publish restore no caches, which other workflows
+      # write.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26.x"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      # npm uses trusted publishing when the package has a trusted publisher,
+      # and otherwise NODE_AUTH_TOKEN, which only the first version needs, as
+      # RELEASING.md describes
+      - name: Publish the package
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          published=$(npm view "@buffy/core@$VERSION" version 2> /dev/null || true)
+          if [ "$published" = "$VERSION" ]; then
+            echo "::notice::@buffy/core $VERSION is already on npm"
+            exit 0
+          fi
+
+          npm publish ./buffy-core.tgz --provenance --access public
+
+  build-python:
+    name: Build for PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Without a cache, which other workflows write
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+          enable-cache: false
+
+      - name: Build the package
+        run: uv build --package buffy-core
+
+      - name: Check the package's metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Run the package's example from the wheel
+        run: >-
+          uv run --isolated --no-project --with dist/*.whl
+          python -I -c "import doctest, buffy_core; result = doctest.testmod(buffy_core); assert result.attempted and not result.failed, result"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package
+          path: |
+            python/dist/*.tar.gz
+            python/dist/*.whl
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [verify, build-python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/buffy-core/${{ needs.verify.outputs.version }}/
+    permissions:
+      # Trusted publishing and attestations
+      id-token: write
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package
+          path: dist
+
+      - name: Publish the package
+        uses: pypa/gh-action-pypi-publish@v1.14.3
+        with:
+          skip-existing: true
+
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/buffy-core/${{ needs.verify.outputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      # The first version is published by hand, as RELEASING.md describes
+      - name: Check whether the version is on crates.io
+        id: published
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          status=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            --user-agent "buffy release workflow ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY)" \
+            "https://crates.io/api/v1/crates/buffy-core/$VERSION")
+          case "$status" in
+            200)
+              echo "::notice::buffy-core $VERSION is already on crates.io"
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::crates.io answered $status"
+              exit 1
+              ;;
+          esac
+
+      # Builds the crate before the job has a token, so that publishing it
+      # needn't
+      - name: Package the runtime
+        if: steps.published.outputs.exists == 'false'
+        run: cargo package -p buffy-core --locked
+
+      - name: Authenticate with crates.io
+        if: steps.published.outputs.exists == 'false'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish the runtime
+        if: steps.published.outputs.exists == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish -p buffy-core --locked --no-verify
+
+  publish-maven-central:
+    name: Publish to Maven Central
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/io.github.snovader.buffy/buffy-core/${{ needs.verify.outputs.version }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      # Without a cache, which other workflows write
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      # Maven Central lists a release some minutes after it's published, so a
+      # rerun soon after can miss it, and then fails to upload it again
+      - name: Check whether the version is on Maven Central
+        id: published
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          status=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            "https://repo1.maven.org/maven2/io/github/snovader/buffy/buffy-core/$VERSION/buffy-core-$VERSION.pom")
+          case "$status" in
+            200)
+              echo "::notice::buffy-core $VERSION is already on Maven Central"
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Maven Central answered $status"
+              exit 1
+              ;;
+          esac
+
+      # Uploads the signed jars, sources, documentation and POM to the Central
+      # Portal, waits for it to validate them, and releases them
+      - name: Publish and release the runtime
+        if: steps.published.outputs.exists == 'false'
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_CENTRAL_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_CENTRAL_SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :core:publishAndReleaseToMavenCentral
+
+  github-release:
+    name: Create the GitHub release
+    needs:
+      - verify
+      - publish-npm
+      - publish-pypi
+      - publish-crates-io
+      - publish-maven-central
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::notice::The release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+
+          notes="The runtimes of buffy $VERSION:
+
+          - TypeScript: [@buffy/core](https://www.npmjs.com/package/@buffy/core/v/$VERSION) on npm
+          - Python: [buffy-core](https://pypi.org/project/buffy-core/$VERSION/) on PyPI
+          - Java: [io.github.snovader.buffy:buffy-core](https://central.sonatype.com/artifact/io.github.snovader.buffy/buffy-core/$VERSION) on Maven Central
+          - Rust: [buffy-core](https://crates.io/crates/buffy-core/$VERSION) on crates.io"
+
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes "$notes" --generate-notes

@@ -2,7 +2,12 @@
  * Binary tables of scalars, strings and arrays. {@link io.github.snovader.buffy.TableBuilder} writes a
  * table at its exact size, copying arrays in bulk, and {@link io.github.snovader.buffy.ByteBuffer} reads
  * fields back by offset, into Java arrays. Every read checks that it stays within the bytes it was
- * given. The TypeScript and Python implementations write and read the same bytes.
+ * given.
+ *
+ * <p>buffy's implementations in Java, TypeScript, Python and Rust write the same bytes for the same
+ * fields, and read each other's tables.
+ * <a href="https://github.com/snovader/buffy/blob/main/SPEC.md">SPEC.md</a> describes the format
+ * in full.</p>
  *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
