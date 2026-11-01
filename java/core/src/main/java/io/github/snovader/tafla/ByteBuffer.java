@@ -7,7 +7,7 @@ import java.util.*;
 /**
  * Reads and writes the supplied bytes in the table layout it was created with, storing multi-byte
  * values little-endian. Array reads copy the elements into a new Java array, and array view reads
- * return a read-only view of them in place.
+ * return a read-only view of them in place, as struct reads return the bytes of structs.
  *
  * <p>Every read checks that it stays within the bytes, and throws a {@link DecodeException}
  * otherwise. Writes past the end throw an {@link IndexOutOfBoundsException}, and lengths, offsets
@@ -315,9 +315,52 @@ public final class ByteBuffer {
     /** {@return a read-only, little-endian view of the elements of the array at {@code position}} */
     private java.nio.ByteBuffer arrayView(int position, int elementSize) {
         var byteLength = arrayLength(position, elementSize) * elementSize;
+        return readOnlyView(position + offsetSize, byteLength);
+    }
 
-        // A read-only buffer is big-endian, whatever its source's order
-        return elementsAt(position, byteLength).asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
+    /**
+     * Returns a read-only, little-endian view of the {@code size} bytes of the struct at
+     * {@code position}, whose index 0 is the struct's start. Its scalars lie at fixed offsets from
+     * there, which the view's absolute getters read, such as {@code getFloat(4)}. Like an array
+     * view, it keeps the bytes alive and shows writes made to them later.
+     *
+     * @throws DecodeException if the struct isn't within the bytes
+     * @throws IllegalArgumentException if {@code size} is negative
+     */
+    public java.nio.ByteBuffer getStruct(int position, int size) {
+        if (size < 0) {
+            throw new IllegalArgumentException(String.format("A struct's size can't be negative: %d", size));
+        }
+
+        if (position < 0 || (long) position + size > bytes.length) {
+            throw DecodeException.outOfRange(position, size, bytes.length);
+        }
+
+        return readOnlyView(position, size);
+    }
+
+    /**
+     * Returns a read-only, little-endian view of the structs of the array at {@code position}, each
+     * of {@code size} bytes, one after another after the count. Struct {@code i} starts at index
+     * {@code i * size}, and their number is the view's {@code remaining() / size}.
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
+     * @throws IllegalArgumentException if {@code size} is less than 1
+     */
+    public java.nio.ByteBuffer getStructArray(int position, int size) {
+        assertStructSize(size);
+
+        var byteLength = arrayLength(position, size) * size;
+        return readOnlyView(position + offsetSize, byteLength);
+    }
+
+    /**
+     * {@return a read-only, little-endian view of the {@code byteLength} bytes from
+     * {@code position}}, which a caller has checked lie within the bytes
+     */
+    private java.nio.ByteBuffer readOnlyView(int position, int byteLength) {
+        // A slice and a read-only buffer are big-endian, whatever their source's order
+        return view.slice(position, byteLength).asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
     }
 
     /**
@@ -481,7 +524,45 @@ public final class ByteBuffer {
         return view.slice(position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    /** Writes {@code bytes} as they are, without a length prefix */
+    /**
+     * Writes the count of the {@code size}-byte structs in {@code bytes}, and then the bytes as
+     * they are. Padding that aligns the structs goes before the count.
+     *
+     * @throws IllegalArgumentException if {@code size} is less than 1, or {@code bytes} aren't a
+     *     whole number of structs
+     */
+    public void setStructArray(byte[] bytes, int size) {
+        var count = structCount(bytes.length, size);
+
+        startArray(count, size);
+        System.arraycopy(bytes, 0, this.bytes, position, bytes.length);
+        position += bytes.length;
+    }
+
+    /**
+     * {@return the number of {@code size}-byte structs in {@code byteLength} bytes}
+     *
+     * @throws IllegalArgumentException if {@code size} is less than 1, or the bytes aren't a whole
+     *     number of structs
+     */
+    static int structCount(int byteLength, int size) {
+        assertStructSize(size);
+        if (byteLength % size != 0) {
+            throw new IllegalArgumentException(
+                String.format("%d bytes aren't a whole number of %d-byte structs", byteLength, size)
+            );
+        }
+
+        return byteLength / size;
+    }
+
+    private static void assertStructSize(int size) {
+        if (size < 1) {
+            throw new IllegalArgumentException(String.format("A struct's size must be positive, not %d", size));
+        }
+    }
+
+    /** Writes {@code bytes} as they are, without a length prefix, such as a struct */
     public void setBytes(byte[] bytes) {
         assertWritable(bytes.length);
 
@@ -518,48 +599,146 @@ public final class ByteBuffer {
         setInt8Array(utf8);
     }
 
-    /** {@return the position of each item of the vector at {@code position}, after its length} */
+    // A vector is its item count, the end of each item, counted from the vector's position, and
+    // then the items. Item i starts where item i - 1 ends, and item 0 after the last end.
+
+    /**
+     * Returns the number of items of the vector at {@code position}.
+     *
+     * @throws DecodeException if the count or the ends after it aren't within the bytes
+     */
+    public int getVectorLength(int position) {
+        return arrayLength(position, offsetSize);
+    }
+
+    /**
+     * Returns the position of item {@code index} of the vector at {@code position}. It's read from
+     * the ends of that item and the one before it, without reading any other item.
+     *
+     * @throws DecodeException if the count or the ends aren't within the bytes, or the item ends
+     *     before it starts or past the bytes
+     * @throws IndexOutOfBoundsException if the vector has no item {@code index}
+     */
+    public int getVectorOffset(int position, int index) {
+        var count = getVectorLength(position);
+        if (index < 0 || index >= count) {
+            throw new IndexOutOfBoundsException(
+                String.format("Item %d is outside the vector of %d at %d", index, count, position)
+            );
+        }
+
+        var start = index == 0 ? firstItemStart(count) : itemEnd(position, index - 1);
+        return itemOffset(position, start, itemEnd(position, index));
+    }
+
+    /**
+     * Returns the position of each item of the vector at {@code position}.
+     *
+     * @throws DecodeException if the count or the ends aren't within the bytes, or an item ends
+     *     before it starts or past the bytes
+     */
     public int[] getVectorOffsets(int position) {
-        // Every item needs at least its length prefix, which bounds the count
-        var count = arrayLength(position, offsetSize);
+        // Checking the ends bounds the count before allocating for it
+        var count = getVectorLength(position);
         var offsets = new int[count];
 
-        for (int i = 0, offset = position + offsetSize; i < count; i++) {
-            var length = arrayLength(offset, Byte.BYTES);
-            offsets[i] = offset + offsetSize;
-            offset += offsetSize + length;
+        var start = firstItemStart(count);
+        for (int i = 0; i < count; i++) {
+            var end = itemEnd(position, i);
+            offsets[i] = itemOffset(position, start, end);
+            start = end;
         }
 
         return offsets;
     }
 
-    /** {@return a copy of each item of the vector at {@code position}} */
+    /**
+     * Returns a copy of each item of the vector at {@code position}.
+     *
+     * @throws DecodeException if the count or the ends aren't within the bytes, or an item ends
+     *     before it starts or past the bytes
+     */
     public byte[][] getVector(int position) {
-        var offsets = getVectorOffsets(position);
+        var count = getVectorLength(position);
+        var vector = new byte[count][];
 
-        var vector = new byte[offsets.length][];
-        for (int i = 0; i < offsets.length; i++) {
-            vector[i] = getInt8Array(offsets[i] - offsetSize);
+        // Items lie one after another, so the copies take no more bytes than the vector
+        var start = firstItemStart(count);
+        for (int i = 0; i < count; i++) {
+            var end = itemEnd(position, i);
+            var offset = itemOffset(position, start, end);
+            vector[i] = Arrays.copyOfRange(bytes, offset, offset + (int) (end - start));
+            start = end;
         }
 
         return vector;
     }
 
-    /** Writes the item count, and then each item's length and bytes */
+    /**
+     * Writes the item count, the end of each item, counted from the vector's position, and then the
+     * items
+     */
     public void setVector(byte[][] vector) {
-        long byteLength = offsetSize + (long) vector.length * offsetSize;
-        assertFits(vector.length);
+        // The last end is the vector's byte length, which every other end and the count are shorter
+        // than. Check that it fits, and that the vector does, before writing any of it.
+        long byteLength = firstItemStart(vector.length);
         for (var item : vector) {
-            assertFits(item.length);
             byteLength += item.length;
         }
+        assertFits(byteLength);
         assertWritable(byteLength);
 
         setUnsigned(vector.length);
+
+        long end = firstItemStart(vector.length);
         for (var item : vector) {
-            setUnsigned(item.length);
+            end += item.length;
+            setUnsigned(end);
+        }
+
+        for (var item : vector) {
             setBytes(item);
         }
+    }
+
+    /**
+     * {@return where item 0 of a vector of {@code count} items starts, counted from the vector's
+     * position}
+     */
+    private long firstItemStart(int count) {
+        return (count + 1L) * offsetSize;
+    }
+
+    /**
+     * Reads the end of item {@code index} of the vector at {@code position}, counted from that
+     * position
+     */
+    private long itemEnd(int position, int index) {
+        return getUnsigned(position + (index + 1L) * offsetSize);
+    }
+
+    /**
+     * Checks that a vector item, from {@code start} to {@code end} from the vector's position,
+     * starts no later than it ends and lies within the bytes.
+     *
+     * @return the item's position
+     */
+    private int itemOffset(int position, long start, long end) {
+        if (start > end) {
+            throw new DecodeException(
+                String.format(
+                    "The vector item at %d ends before it starts, at %d",
+                    position + start,
+                    position + end
+                )
+            );
+        }
+
+        if (position + end > bytes.length) {
+            throw DecodeException.outOfRange(position + start, end - start, bytes.length);
+        }
+
+        return (int) (position + start);
     }
 
     /** Writes a length or count as wide as the table's offsets */

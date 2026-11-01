@@ -16,7 +16,7 @@ const KINDS: [u8; 290] = [
     0, 0, 0, 246, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 1, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0,
     0, 3, 0, 0, 0, 0, 0, 72, 65, 0, 0, 0, 128, 0, 0, 128, 127, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 43, 192, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 195, 169, 226, 130, 172, 240, 159, 152,
-    128, 239, 187, 191, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 2, 0, 0, 0, 0,
+    128, 239, 187, 191, 0, 0, 0, 0, 2, 0, 0, 0, 14, 0, 0, 0, 14, 0, 0, 0, 1, 2,
 ];
 
 const DOCUMENT: [u8; 146] = [
@@ -24,14 +24,14 @@ const DOCUMENT: [u8; 146] = [
     82, 73, 157, 128, 38, 170, 77, 64, 16, 0, 0, 0, 69, 117, 114, 111, 112, 101, 47, 83, 116, 111,
     99, 107, 104, 111, 108, 109, 12, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 128, 98, 97, 218, 255, 255,
     255, 255, 3, 0, 0, 0, 0, 0, 0, 0, 128, 81, 1, 0, 0, 163, 2, 0, 3, 0, 0, 0, 0, 0, 174, 65, 0, 0,
-    148, 65, 0, 0, 80, 192, 251, 2, 0, 0, 0, 22, 0, 0, 0, 8, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 63, 3,
-    0, 0, 0, 7, 0, 8, 0, 9, 0, 3, 0, 0, 0, 1, 2, 3,
+    148, 65, 0, 0, 80, 192, 251, 2, 0, 0, 0, 34, 0, 0, 0, 37, 0, 0, 0, 8, 0, 0, 0, 12, 0, 0, 0, 0,
+    0, 0, 63, 3, 0, 0, 0, 7, 0, 8, 0, 9, 0, 1, 2, 3,
 ];
 
 const SMALL: [u8; 15] = [15, 4, 7, 12, 2, 104, 105, 2, 1, 0, 2, 0, 7, 7, 7];
 
 const MEDIUM: [u8; 44] = [
-    44, 0, 1, 2, 10, 0, 20, 0, 0, 0, 2, 0, 0, 0, 128, 63, 0, 0, 0, 64, 2, 0, 2, 0, 1, 42, 16, 0, 4,
+    44, 0, 1, 2, 10, 0, 20, 0, 0, 0, 2, 0, 0, 0, 128, 63, 0, 0, 0, 64, 2, 0, 8, 0, 24, 0, 1, 42, 4,
     0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 244, 63,
 ];
 
@@ -97,7 +97,10 @@ fn test_every_kind_of_field() {
     assert_eq!(buffer.get_str(at(22)), Ok(""));
 
     let vector = buffer.get_vector(at(23)).unwrap();
-    assert_eq!(vector.iter().collect::<Vec<_>>(), [&[1, 2][..], &[]]);
+    assert_eq!(
+        vector.iter().collect::<Vec<_>>(),
+        [Ok(&[1, 2][..]), Ok(&[])]
+    );
 }
 
 #[test]
@@ -147,7 +150,7 @@ fn test_versioned_document_with_nested_tables() {
     assert_eq!(buffer.get_i8(buffer.root_offset(3).unwrap()), Ok(-5));
 
     let vector = buffer.get_vector(buffer.root_offset(4).unwrap()).unwrap();
-    let [item, bytes] = vector.iter().collect::<Vec<_>>()[..] else {
+    let [item, bytes] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };
     let item = ByteBuffer::new(item, TableLayout::DEFAULT);
@@ -218,7 +221,7 @@ fn test_16_bit_offsets_with_vector_items_of_other_widths() {
     );
 
     let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
-    let [narrow, wide] = vector.iter().collect::<Vec<_>>()[..] else {
+    let [narrow, wide] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };
     let narrow = ByteBuffer::new(narrow, narrow_layout);

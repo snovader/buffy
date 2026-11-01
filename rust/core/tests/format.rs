@@ -8,7 +8,7 @@
 mod common;
 
 use common::{
-    description::{Field, Nested, Source, Table},
+    description::{Field, Nested, Source, Table, struct_alignment, struct_bytes},
     strategy,
 };
 use proptest::prelude::*;
@@ -69,26 +69,28 @@ proptest! {
     }
 
     /// From the start of the table that holds them, which is aligned in
-    /// turn when it's nested
+    /// turn when it's nested: an array of scalars at a multiple of their
+    /// size, and an array of structs of their largest scalar's
     #[test]
-    fn test_arrays_start_at_a_multiple_of_their_element_size(table in strategy::table()) {
+    fn test_arrays_start_at_a_multiple_of_their_alignment(table in strategy::table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
             let width = found.table.layout.offset_size.bytes();
 
             for field in &found.fields {
-                if let Some(Value::Array { element_size, .. }) = Value::of(field.field) {
+                if let Some(Value::Array { alignment, .. }) = Value::of(field.field) {
                     let start = field.position + width;
-                    prop_assert_eq!(start % element_size, 0, "{:?} at {}", field.field, start);
+                    prop_assert_eq!(start % alignment, 0, "{:?} at {}", field.field, start);
                 }
             }
         }
     }
 
-    /// Scalars hold their values' `to_le_bytes()`, arrays and strings their
-    /// counts' and their elements', and vectors their counts' and their
-    /// items' lengths'
+    /// Scalars hold their values' `to_le_bytes()`, structs their scalars',
+    /// arrays and strings their counts' and their elements', and vectors
+    /// their counts' and their items' ends', which count from the vector's
+    /// position, after the ends
     #[test]
     fn test_values_are_little_endian(table in strategy::table()) {
         let bytes = table.to_bytes().unwrap();
@@ -108,12 +110,13 @@ proptest! {
                     (Field::Vector(items), None) => {
                         prop_assert_eq!(&value[..width], slot_bytes(items.len(), width));
 
-                        let mut position = width;
-                        for item in items {
-                            let length = item.table.to_bytes().unwrap().len();
+                        let mut end = (items.len() + 1) * width;
+                        for (index, item) in items.iter().enumerate() {
+                            end += item.table.to_bytes().unwrap().len();
+
+                            let position = (index + 1) * width;
                             let slot = &value[position..position + width];
-                            prop_assert_eq!(slot, slot_bytes(length, width));
-                            position += width + length;
+                            prop_assert_eq!(slot, slot_bytes(end, width));
                         }
                     }
                     _ => {}
@@ -124,8 +127,8 @@ proptest! {
 
     /// Values follow the header and offsets in field order, each after the
     /// previous one, with only the zeroed padding that aligns an array's
-    /// elements to their size and a nested table to its alignment between
-    /// them, and the last one ends the table
+    /// elements and a nested table to their alignment between them, and the
+    /// last one ends the table
     #[test]
     fn test_values_follow_each_other_with_only_zeroed_padding_to_align_them(
         table in strategy::table(),
@@ -215,9 +218,9 @@ fn find_tables<'a>(
         let length = match field {
             Field::Table { nested, .. } => find_nested(bytes, position, nested, tables),
             Field::Vector(items) => {
-                let mut end = position + width;
+                // The items follow the count and the ends
+                let mut end = position + (items.len() + 1) * width;
                 for item in items {
-                    end += width;
                     end += find_nested(bytes, end, item, tables);
                 }
 
@@ -263,14 +266,15 @@ fn find_nested<'a>(
     length
 }
 
-/// The value of a scalar, array or string field
+/// The value of a scalar, array, string or struct field
 enum Value {
-    /// Its little-endian bytes
+    /// The little-endian bytes of a scalar, or of a struct's scalars
     Scalar(Vec<u8>),
-    /// The count of an array's elements, or of a string's bytes, and their
-    /// little-endian bytes
+    /// The count of an array's elements, of a string's bytes or of an
+    /// array's structs, and their little-endian bytes, which start at a
+    /// multiple of `alignment` from the table's start
     Array {
-        element_size: usize,
+        alignment: usize,
         count: usize,
         elements: Vec<u8>,
     },
@@ -301,6 +305,15 @@ impl Value {
             Field::F32Array(values) => Self::array(values, f32::to_le_bytes),
             Field::F64Array(values) => Self::array(values, f64::to_le_bytes),
             Field::String(string) => Self::array(string.as_bytes(), u8::to_le_bytes),
+            Field::Struct(scalars) => Self::Scalar(struct_bytes(scalars)),
+            Field::StructArray { types, items } => Self::Array {
+                alignment: struct_alignment(types.iter().copied()).bytes(),
+                count: items.len(),
+                elements: items
+                    .iter()
+                    .flat_map(|scalars| struct_bytes(scalars))
+                    .collect(),
+            },
             Field::Table { .. } | Field::Vector(_) => return None,
         })
     }
@@ -311,7 +324,7 @@ impl Value {
 
     fn array<T: Copy, const N: usize>(values: &[T], to_le_bytes: fn(T) -> [u8; N]) -> Self {
         Self::Array {
-            element_size: N,
+            alignment: N,
             count: values.len(),
             elements: values
                 .iter()
@@ -341,11 +354,11 @@ fn padding(field: &Field, end: usize, width: usize) -> usize {
 }
 
 /// The multiple of bytes from the start of its table that a field starts
-/// at: an array's element size, a nested table's alignment, and 1 for any
-/// other
+/// at, after its count when it's an array: an array's alignment, a nested
+/// table's alignment, and 1 for any other
 fn alignment_of(field: &Field) -> usize {
     match (field, Value::of(field)) {
-        (_, Some(Value::Array { element_size, .. })) => element_size,
+        (_, Some(Value::Array { alignment, .. })) => alignment,
         (Field::Table { nested, alignment }, _) => {
             alignment.map_or_else(|| default_alignment(nested), Alignment::bytes)
         }
@@ -354,8 +367,8 @@ fn alignment_of(field: &Field) -> usize {
 }
 
 /// The alignment of a table nested without one: a builder's is the largest
-/// alignment of its fields, which is that of its arrays and nested tables,
-/// and bytes' is 4
+/// alignment of its fields, which is that of its arrays, of scalars and of
+/// structs, and nested tables, and bytes' is 4
 fn default_alignment(nested: &Nested) -> usize {
     match nested.from {
         Source::Builder => nested

@@ -5,7 +5,7 @@
 mod common;
 
 use common::{
-    description::{Field, Layout, Nested, Source, Table},
+    description::{Field, Layout, Nested, ScalarType, Source, Table},
     read::read_table,
     strategy,
 };
@@ -13,7 +13,7 @@ use proptest::{
     prelude::*,
     sample::{Index, select},
 };
-use tafla::{BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
+use tafla::{Alignment, BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -129,7 +129,9 @@ enum LongField {
     Bytes,
     Floats,
     String,
-    /// A vector of empty tables, each a length of its own
+    /// An array of structs of a `u16` and a `u8`, of 3 bytes aligned to 2
+    Structs,
+    /// A vector of empty tables, each an end of its own
     EmptyItems,
     /// A vector of a table of bytes, from its builder
     Item,
@@ -144,6 +146,7 @@ fn long_field() -> impl Strategy<Value = LongField> {
         LongField::Bytes,
         LongField::Floats,
         LongField::String,
+        LongField::Structs,
         LongField::EmptyItems,
         LongField::Item,
         LongField::NestedBytes,
@@ -159,6 +162,10 @@ impl LongField {
             Self::Bytes => Field::U8Array(vec![0; units]),
             Self::Floats => Field::F64Array(vec![0.0; units]),
             Self::String => Field::String("a".repeat(units)),
+            Self::Structs => Field::StructArray {
+                types: vec![ScalarType::U16, ScalarType::U8],
+                items: vec![vec![Field::U16(1), Field::U8(2)]; units],
+            },
             Self::EmptyItems => Field::Vector(vec![nested(Source::Bytes, Vec::new()); units]),
             Self::Item => Field::Vector(vec![nested(Source::Builder, bytes())]),
             Self::NestedBytes => Field::Table {
@@ -176,6 +183,7 @@ impl LongField {
     const fn unit(self, width: usize) -> usize {
         match self {
             Self::Floats => 8,
+            Self::Structs => 3,
             Self::EmptyItems => width,
             _ => 1,
         }
@@ -266,6 +274,33 @@ fn test_reject_field_that_makes_table_too_long() {
                 "Field 2 makes the table {} bytes, too long for {width}-byte offsets",
                 max + 1
             )
+        );
+    }
+}
+
+#[test]
+fn test_reject_bytes_that_arent_whole_structs() {
+    let cases = [
+        (5, 2, "5 bytes aren't a whole number of 2-byte structs"),
+        (4, 0, "A struct can't be 0 bytes"),
+        (0, 0, "A struct can't be 0 bytes"),
+    ];
+
+    for (length, size, message) in cases {
+        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+        let error = builder
+            .set_struct_array(vec![0; length], size, Alignment::One)
+            .unwrap_err();
+        assert_eq!(error, BuildError::NotWholeStructs { length, size });
+        assert_eq!(error.to_string(), message);
+
+        // The builder was left as it was
+        builder
+            .set_struct_array(&[1, 2, 3, 4], 2, Alignment::Two)
+            .unwrap();
+        assert_eq!(
+            builder.to_bytes().unwrap(),
+            [4, 0, 0, 0, 2, 0, 0, 0, 1, 2, 3, 4]
         );
     }
 }
@@ -372,7 +407,7 @@ fn test_reject_incomplete_nested_builder() {
 
     let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
     assert_eq!(
-        vector.iter().collect::<Vec<_>>(),
-        [nested.to_bytes().unwrap()]
+        vector.iter().collect::<Result<Vec<_>, _>>(),
+        Ok(vec![&nested.to_bytes().unwrap()[..]])
     );
 }

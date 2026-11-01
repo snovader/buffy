@@ -146,10 +146,11 @@ export function* tablesIn(
 }
 
 /**
- * The tables in a vector's items, each from the bytes after its length. The
- * vector's count isn't checked.
+ * The tables in a vector's items, each from the end of the item before it, or
+ * of the ends, to its own. The vector's count isn't checked.
  *
- * @throws {RangeError} If an item ends past the end of `bytes`.
+ * @throws {RangeError} If an item ends before it starts or past the end of
+ * `bytes`.
  */
 function* itemsIn(
     bytes: Uint8Array,
@@ -157,18 +158,24 @@ function* itemsIn(
     offsetSize: OffsetSize,
     items: NestedTable[]
 ): Generator<TableAt> {
-    let itemPosition = position + offsetSize;
+    let start = (items.length + 1) * offsetSize;
 
-    for (const { table } of items) {
-        const length = readUnsigned(bytes, itemPosition, offsetSize);
-        const start = itemPosition + offsetSize;
-        if (start + length > bytes.length) {
+    for (const [index, { table }] of items.entries()) {
+        const end = readUnsigned(
+            bytes,
+            position + (index + 1) * offsetSize,
+            offsetSize
+        );
+        if (start > end || position + end > bytes.length) {
             throw new RangeError(
-                `A vector item of ${length} bytes at ${start} ends past ${bytes.length}`
+                `A vector item from ${position + start} to ${position + end} doesn't lie within ${bytes.length} bytes`
             );
         }
 
-        yield* tablesIn(bytes.subarray(start, start + length), table);
-        itemPosition = start + length;
+        yield* tablesIn(
+            bytes.subarray(position + start, position + end),
+            table
+        );
+        start = end;
     }
 }

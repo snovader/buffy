@@ -93,6 +93,8 @@ Each field has a `type`:
 | `float32`, `float64`                                  | `value`: a number, or `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`   | `setFloat32()`, `setFloat64()` |
 | `int8[]`, `uint8[]`, ..., `float64[]`                 | `value`: an array of values as the scalar type holds them              | `setInt8Array()`, ...          |
 | `string`                                              | `value`: a string                                                      | `setString()`                  |
+| `struct`                                              | `fields`: `{ "type", "value" }` for each scalar, as a scalar field     | `setStruct()`                  |
+| `struct[]`                                            | `fields`: the scalars' types, and `items`: each struct's values        | `setStructArray()`             |
 | `table`                                               | `from` and `table`, a nested table, and `alignment` when one is passed | `setTable()`                   |
 | `vector`                                              | `items`: `{ "from", "table" }` for each item                           | `setVector()`                  |
 
@@ -103,6 +105,12 @@ Each field has a `type`:
   `0x7ff8000000000000` as a float64.
 - A float32 is written as the float64 that equals it, such as
   `0.10000000149011612`, so that it parses and narrows to a float32 exactly.
+- A struct's scalars lie one after another, in the order of `fields`, so a
+  struct within a struct is described by its scalars. `setStruct()` takes the
+  struct's bytes, and `setStructArray()` the bytes of every struct, the size
+  of one, which is the sum of its scalars' sizes, and its alignment, which is
+  the largest of them. `getStruct()` and `getStructArray()` return the bytes
+  that hold the structs, whose scalars the test reads at their offsets.
 - `from` is `"builder"` for a nested table passed to `setTable()` or
   `setVector()` as its `TableBuilder`, and `"bytes"` for the bytes that the
   builder writes. They're written alike, except that `setTable()` aligns a
@@ -169,11 +177,14 @@ An implementation's test loads `cases.json` and:
 | The padding that aligns arrays                             | `padding`, `empty-arrays`, `integer-arrays` and the offset size cases                               |
 | Nested tables from builders and bytes, and alignments      | `nested-tables`, `nested-two-deep`                                                                  |
 | Nested builders of other offset sizes than their parent's  | `nested-narrower-offsets`, `nested-wider-offsets`                                                   |
+| Struct fields, unpadded, of every scalar type              | `structs` and the offset size cases                                                                 |
+| Arrays of structs of each alignment, empty too             | `struct-arrays` and the offset size cases                                                           |
 | Vectors of tables, empty, and of other layouts             | `vectors`, `vector-item-layouts` and the offset size cases                                          |
 | Empty, multi-byte UTF-8 and leading U+FEFF strings         | `strings`                                                                                           |
 | Tables of no fields                                        | `empty-table`, `empty-table-sized-versioned`                                                        |
-| Truncated tables                                           | `truncated-offsets`, `truncated-array`, `truncated-string`, `truncated-offset-size-1`               |
-| Offsets, lengths and counts past the end                   | `offset-past-end`, `array-length-*`, `string-length-past-end`, `vector-*`, `nested-offset-past-end` |
+| Truncated tables                                           | `truncated-*`, `struct-past-end`                                                                    |
+| Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
+| A vector item that ends before it starts                   | `vector-item-ends-before-start`                                                                     |
 | Invalid UTF-8                                              | `invalid-utf8-continuation`, `invalid-utf8-overlong`, `invalid-utf8-surrogate`                      |
 
 It doesn't cover:
@@ -184,7 +195,7 @@ It doesn't cover:
 - Strings with lone surrogates, which TypeScript and Java write as U+FFFD,
   Python rejects and Rust strings can't hold, and NaNs other than the quiet
   NaN.
-- `StructWriter` and the `read*()` helpers, which read records without tables.
+- `StructWriter`, which writes records without a table.
 
 ## Implementation notes
 
@@ -196,6 +207,9 @@ The tests follow each implementation's API where it differs:
 - Rust's `Vector` returns its items' bytes rather than their positions, so
   the Rust test reads every vector item as a table of its own. An item without
   a header has the same offsets either way.
+- Each test also finds every vector item from its ends alone, with
+  `getVectorOffset()` or Rust's `Vector::get()`, and compares it with the
+  item that reading the whole vector finds.
 - JSON parsers can round a float's last digit: the Rust test enables
   `serde_json`'s `float_roundtrip`, and Java's `JsonNumber.doubleValue()`
   converts from a `BigDecimal`, which is exact.

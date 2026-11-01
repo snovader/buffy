@@ -139,11 +139,78 @@ class TestTableBuilder(unittest.TestCase):
         self.assertEqual(root_vector(buffer, 0), [b"ab", b"c"])
 
 
+class TestStructs(unittest.TestCase):
+    def test_writes_a_struct_as_it_is_without_padding(self) -> None:
+        struct = pack("<Hd", 0xFEDC, -0.0)
+        builder = TableBuilder(2)
+        builder.set_uint8(1)
+        builder.set_struct(struct)
+
+        buffer = builder.finalize()
+
+        self.assertEqual(buffer.root_offset(1), 9)
+        self.assertEqual(bytes(buffer.get_struct(9, len(struct))), struct)
+
+    def test_rejects_struct_sizes_and_bytes_it_cant_write_and_stays_as_it_was(
+        self,
+    ) -> None:
+        cases = [
+            (bytes(5), 2, "5 bytes aren't a whole number of 2-byte structs"),
+            (bytes(4), 0, "A struct's size must be a positive integer, not 0"),
+            (bytes(4), -1, "A struct's size must be a positive integer, not -1"),
+        ]
+
+        for data, size, message in cases:
+            with self.subTest(size=size):
+                builder = TableBuilder(1)
+
+                with self.assertRaisesRegex(ValueError, message):
+                    builder.set_struct_array(data, size, 1)
+
+                builder.set_struct_array(bytes([1, 2, 3, 4]), 2, 2)
+                self.assertEqual(
+                    builder.bytes(), pack("<II", 4, 2) + b"\x01\x02\x03\x04"
+                )
+
+    def test_pads_an_array_of_structs_so_that_they_start_at_their_alignment(
+        self,
+    ) -> None:
+        builder = TableBuilder(2)
+        builder.set_uint8(7)
+        builder.set_struct_array(bytes(16), 8, 8)
+
+        # The count goes at 12, after the uint8 at 8 and 3 bytes of padding, so
+        # that the structs start at 16
+        buffer = builder.finalize()
+
+        self.assertEqual(buffer.root_offset(1), 12)
+        self.assertEqual(buffer.get_uint32(12), 2)
+        self.assertEqual(len(buffer.get_struct_array(12, 8)), 16)
+
+    def test_aligns_a_nested_builder_to_its_arrays_of_structs(self) -> None:
+        nested = TableBuilder(1)
+        nested.set_struct_array(bytes(9), 9, 8)
+
+        parent = TableBuilder(2)
+        parent.set_uint8(7)
+        parent.set_table(nested)
+
+        # After the uint8 at 8, the nested table is padded to 16, so that its
+        # structs, 8 bytes from its start, start at 24
+        self.assertEqual(parent.finalize().root_offset(1), 16)
+
+
 class TestChangedLengths(unittest.TestCase):
     def test_rejects_buffers_whose_length_changed_after_they_were_set(self) -> None:
         cases: list[tuple[str, Callable[[TableBuilder, Any], None], Any]] = [
             ("uint8 array", TableBuilder.set_uint8_array, bytearray(b"ab")),
             ("float64 array", TableBuilder.set_float64_array, array("d", [1.5, 2.5])),
+            ("struct", TableBuilder.set_struct, bytearray(b"ab")),
+            (
+                "struct array",
+                lambda b, v: b.set_struct_array(v, 1, 1),
+                bytearray(b"ab"),
+            ),
             ("table", TableBuilder.set_table, bytearray(b"abcd")),
             ("vector item", lambda b, v: b.set_vector([v]), bytearray(b"ab")),
         ]

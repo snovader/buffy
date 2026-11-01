@@ -12,8 +12,9 @@ import java.util.stream.*;
 /**
  * Arbitrary descriptions of tables in the shape of the conformance suite's, of every part of the
  * format: layouts of every offset size, with and without each header slot and with versions that
- * fit, every scalar and array type over its whole range, strings of any code points, and tables
- * nested from builders and bytes, in fields and vectors, down to a bounded depth.
+ * fit, every scalar and array type over its whole range, strings of any code points, structs and
+ * arrays of structs of any scalars, and tables nested from builders and bytes, in fields and
+ * vectors, down to a bounded depth.
  *
  * <p>Like the suite, they follow the rules that {@code SPEC.md} and {@link TableBuilder} set out:
  * every table fits its offset size, a table nested with {@code setTable()} has no header, so that
@@ -26,6 +27,9 @@ final class Descriptions {
     private static final int MAX_FIELDS = 6;
     private static final int MAX_ELEMENTS = 8;
     private static final int MAX_CODE_POINTS = 8;
+    private static final int MAX_STRUCT_SCALARS = 4;
+    /** How many structs an array of structs holds at most */
+    static final int MAX_STRUCTS = 4;
     /** How many tables a vector holds at most */
     static final int MAX_ITEMS = 3;
 
@@ -83,12 +87,17 @@ final class Descriptions {
         return Arbitraries.of(LAYOUTS);
     }
 
-    /** {@return scalars, arrays and strings: fields that hold values rather than tables} */
+    /**
+     * {@return scalars, arrays, strings, structs and arrays of structs: fields that hold values
+     * rather than tables}
+     */
     static Arbitrary<FieldDescription> values() {
         return Arbitraries.frequencyOf(
             Tuple.of(4, scalars()),
             Tuple.of(4, arrays()),
-            Tuple.of(2, stringFields())
+            Tuple.of(2, stringFields()),
+            Tuple.of(2, structs()),
+            Tuple.of(2, structArrays())
         );
     }
 
@@ -118,6 +127,9 @@ final class Descriptions {
             case ScalarField scalar -> scalar.type().size();
             case ArrayField array -> array.type().size() - 1 + width + (long) array.values().length * array.type().size();
             case StringField string -> width + (long) string.value().getBytes(StandardCharsets.UTF_8).length;
+            case StructField struct -> StructBytes.size(struct.types());
+            case StructArrayField array -> StructBytes.alignment(array.fields()) - 1 + width
+                + (long) array.items().size() * StructBytes.size(array.fields());
             case TableField table -> Long.BYTES - 1 + maxLength(table.table());
             case VectorField vector -> width + vector.items().stream()
                 .mapToLong(item -> width + maxLength(item.table()))
@@ -215,12 +227,37 @@ final class Descriptions {
     }
 
     private static Arbitrary<FieldDescription> scalars() {
-        var scalars = new ArrayList<Arbitrary<FieldDescription>>();
+        return scalarFields().map(scalar -> scalar);
+    }
+
+    private static Arbitrary<ScalarField> scalarFields() {
+        var scalars = new ArrayList<Arbitrary<ScalarField>>();
         for (var type : ScalarType.values()) {
             scalars.add(values(type).map(value -> new ScalarField(type, value)));
         }
 
         return Arbitraries.oneOf(scalars);
+    }
+
+    /** {@return structs of one to a few scalars of any types} */
+    private static Arbitrary<FieldDescription> structs() {
+        return scalarFields().list().ofMinSize(1).ofMaxSize(MAX_STRUCT_SCALARS).map(StructField::new);
+    }
+
+    /** {@return arrays of structs of one to a few scalars of any types, empty too} */
+    private static Arbitrary<FieldDescription> structArrays() {
+        var types = Arbitraries.of(ScalarType.class).list().ofMinSize(1).ofMaxSize(MAX_STRUCT_SCALARS);
+        return types.flatMap(Descriptions::structArraysOf);
+    }
+
+    /** {@return arrays of structs of scalars of the types, empty too} */
+    private static Arbitrary<FieldDescription> structArraysOf(List<ScalarType> types) {
+        return structValues(types).list().ofMaxSize(MAX_STRUCTS).map(items -> new StructArrayField(types, items));
+    }
+
+    /** {@return the values of a struct of scalars of the types} */
+    private static Arbitrary<List<Long>> structValues(List<ScalarType> types) {
+        return Combinators.combine(types.stream().map(Descriptions::values).toList()).as(values -> values);
     }
 
     private static Arbitrary<FieldDescription> arrays() {

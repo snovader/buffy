@@ -44,15 +44,22 @@ and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
-- Header slots, offsets and length prefixes are all `offsetSize` bytes wide:
-  1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
+- Header slots, offsets, counts, lengths and item ends are all `offsetSize`
+  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or
+  4 GiB.
 - Offsets count from the table's start. A table nested with `setTable()` has
   no header, and its offsets count from its own start.
+- A struct is its scalars one after another, without padding, and
+  `setStruct()` writes its bytes in place, like a scalar.
 - Arrays and strings start with their element count. Typed arrays are padded
-  so that their elements are aligned to their size from the table's start.
-  `setTable()` aligns a nested table to the largest element size of its
-  arrays when given its builder, and to 4 bytes by default when given bytes.
-- A vector starts with its item count, and each item with its byte length.
+  so that their elements are aligned to their size from the table's start,
+  and arrays of structs, which `setStructArray()` writes, to their largest
+  scalar's size. `setTable()` aligns a nested table to the largest alignment
+  of its arrays when given its builder, and to 4 bytes by default when given
+  bytes.
+- A vector starts with its item count and the end of each item, counted from
+  the vector's start, so `getVectorOffset()` finds any item from two ends,
+  without reading the items before it.
 
 The repository's `conformance` directory holds golden tables of every part of
 the format, which every implementation of tafla reads and rebuilds byte for
@@ -84,6 +91,10 @@ byte; its README describes them. This package writes them, and
   vector of 100 tables that each nest another took 12 µs to build from
   builders and 49 µs from bytes, and a table nesting 100,000 rows of three
   columns took 30 µs and 77 µs.
+- **Write records of fixed size as arrays of structs.** An array of 100
+  structs of three float32s took about 1 µs to write and 1,208 bytes, against
+  13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of
+  two of them, since it's one field of bytes rather than 200 builders.
 - **Small tables cost about the allocation of their bytes.** A table of two
   float64s, a string and an int64 took 0.33 µs in Node, of which about 0.2 µs
   was allocating its bytes and their `DataView`. A nested builder allocates

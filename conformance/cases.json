@@ -150,7 +150,7 @@
         },
         {
             "name": "offset-size-1",
-            "description": "1-byte offsets, lengths and counts after no header, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "1-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-1.bin",
             "table": {
                 "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
@@ -159,6 +159,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -198,7 +206,7 @@
         },
         {
             "name": "offset-size-1-sized",
-            "description": "1-byte offsets, lengths and counts after a size slot, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "1-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-1-sized.bin",
             "table": {
                 "layout": { "sized": true, "versioned": false, "offsetSize": 1 },
@@ -207,6 +215,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -246,7 +262,7 @@
         },
         {
             "name": "offset-size-1-versioned",
-            "description": "1-byte offsets, lengths and counts after a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "1-byte offsets, lengths, counts and item ends after a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-1-versioned.bin",
             "table": {
                 "layout": { "sized": false, "versioned": true, "offsetSize": 1 },
@@ -256,6 +272,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -295,7 +319,7 @@
         },
         {
             "name": "offset-size-1-sized-versioned",
-            "description": "1-byte offsets, lengths and counts after a size slot and a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "1-byte offsets, lengths, counts and item ends after a size slot and a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-1-sized-versioned.bin",
             "table": {
                 "layout": { "sized": true, "versioned": true, "offsetSize": 1 },
@@ -305,6 +329,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -344,7 +376,7 @@
         },
         {
             "name": "offset-size-2",
-            "description": "2-byte offsets, lengths and counts after no header, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "2-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-2.bin",
             "table": {
                 "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
@@ -353,6 +385,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -392,7 +432,7 @@
         },
         {
             "name": "offset-size-2-sized",
-            "description": "2-byte offsets, lengths and counts after a size slot, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "2-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-2-sized.bin",
             "table": {
                 "layout": { "sized": true, "versioned": false, "offsetSize": 2 },
@@ -401,6 +441,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -440,7 +488,7 @@
         },
         {
             "name": "offset-size-2-versioned",
-            "description": "2-byte offsets, lengths and counts after a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "2-byte offsets, lengths, counts and item ends after a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-2-versioned.bin",
             "table": {
                 "layout": { "sized": false, "versioned": true, "offsetSize": 2 },
@@ -450,6 +498,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -489,7 +545,7 @@
         },
         {
             "name": "offset-size-2-sized-versioned",
-            "description": "2-byte offsets, lengths and counts after a size slot and a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "2-byte offsets, lengths, counts and item ends after a size slot and a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-2-sized-versioned.bin",
             "table": {
                 "layout": { "sized": true, "versioned": true, "offsetSize": 2 },
@@ -499,6 +555,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -538,7 +602,7 @@
         },
         {
             "name": "offset-size-4",
-            "description": "4-byte offsets, lengths and counts after no header, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "4-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-4.bin",
             "table": {
                 "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
@@ -547,6 +611,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -586,7 +658,7 @@
         },
         {
             "name": "offset-size-4-sized",
-            "description": "4-byte offsets, lengths and counts after a size slot, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "4-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-4-sized.bin",
             "table": {
                 "layout": { "sized": true, "versioned": false, "offsetSize": 4 },
@@ -595,6 +667,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -634,7 +714,7 @@
         },
         {
             "name": "offset-size-4-versioned",
-            "description": "4-byte offsets, lengths and counts after a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "4-byte offsets, lengths, counts and item ends after a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-4-versioned.bin",
             "table": {
                 "layout": { "sized": false, "versioned": true, "offsetSize": 4 },
@@ -644,6 +724,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -683,7 +771,7 @@
         },
         {
             "name": "offset-size-4-sized-versioned",
-            "description": "4-byte offsets, lengths and counts after a size slot and a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets",
+            "description": "4-byte offsets, lengths, counts and item ends after a size slot and a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
             "file": "valid/offset-size-4-sized-versioned.bin",
             "table": {
                 "layout": { "sized": true, "versioned": true, "offsetSize": 4 },
@@ -693,6 +781,14 @@
                     { "type": "int16[]", "value": [-2, 3] },
                     { "type": "string", "value": "abc" },
                     { "type": "float64[]", "value": [1.5] },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint16", "value": 258 },
+                            { "type": "int8", "value": -3 }
+                        ]
+                    },
+                    { "type": "struct[]", "fields": ["int8", "uint32"], "items": [[-1, 4275878552], [2, 3]] },
                     {
                         "type": "table",
                         "from": "builder",
@@ -758,6 +854,64 @@
                     { "type": "string", "value": "\ufeff" },
                     { "type": "string", "value": "a\u0000b" },
                     { "type": "string", "value": "Z\u00fcrich, \u6771\u4eac and \ud83c\udf0d" }
+                ]
+            }
+        },
+        {
+            "name": "structs",
+            "description": "Struct fields, which are unpadded like scalars: of one uint8 after a uint8; of every scalar type, each a value of distinct bytes, so that the order of the scalars and of their bytes shows; and of a float32, a float64 and an int16 of -0, NaN and -2",
+            "file": "valid/structs.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "fields": [
+                    { "type": "uint8", "value": 1 },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "uint8", "value": 254 }
+                        ]
+                    },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "int8", "value": 18 },
+                            { "type": "uint8", "value": 254 },
+                            { "type": "int16", "value": 4660 },
+                            { "type": "uint16", "value": 65244 },
+                            { "type": "int32", "value": 305419896 },
+                            { "type": "uint32", "value": 4275878552 },
+                            { "type": "int64", "value": "1311768467463790320" },
+                            { "type": "uint64", "value": "18364758544493064720" }
+                        ]
+                    },
+                    {
+                        "type": "struct",
+                        "fields": [
+                            { "type": "float32", "value": "-0" },
+                            { "type": "float64", "value": "NaN" },
+                            { "type": "int16", "value": -2 }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "name": "struct-arrays",
+            "description": "Arrays of structs, each padded so that its structs start at a multiple of their largest scalar's size: an empty array of structs of a uint8 and a float64, padded to 8; after a uint8 each, arrays of structs of two uint8s, aligned to 1; of a uint16 and a uint8, of 3 bytes aligned to 2; of three float32s, aligned to 4, with -0 and NaN; and of a uint8 and a float64, of 9 bytes aligned to 8, whose float64s aren't aligned in the structs after the first; then an array of a struct of every integer type",
+            "file": "valid/struct-arrays.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "fields": [
+                    { "type": "struct[]", "fields": ["uint8", "float64"], "items": [] },
+                    { "type": "uint8", "value": 1 },
+                    { "type": "struct[]", "fields": ["uint8", "uint8"], "items": [[1, 2], [3, 4]] },
+                    { "type": "uint8", "value": 2 },
+                    { "type": "struct[]", "fields": ["uint16", "uint8"], "items": [[65244, 1], [2, 255]] },
+                    { "type": "uint8", "value": 3 },
+                    { "type": "struct[]", "fields": ["float32", "float32", "float32"], "items": [[1.5, "-0", "NaN"], [0.10000000149011612, 2, "-Infinity"]] },
+                    { "type": "uint8", "value": 4 },
+                    { "type": "struct[]", "fields": ["uint8", "float64"], "items": [[1, 1.5], [2, -0.25], [3, 1e+300]] },
+                    { "type": "struct[]", "fields": ["int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64"], "items": [[-128, 0, -32768, 0, -2147483648, 0, "-9223372036854775808", "0"], [127, 255, 32767, 65535, 2147483647, 4294967295, "9223372036854775807", "18446744073709551615"], [18, 254, 4660, 65244, 305419896, 4275878552, "1311768467463790320", "18364758544493064720"]] }
                 ]
             }
         },
@@ -976,7 +1130,7 @@
         },
         {
             "name": "vectors",
-            "description": "Vectors of rows from their builders and of the same rows from their bytes, whose float64[]s are aligned within each row, but mostly not in the table, since items aren't padded; an empty vector; and a vector of an empty table from its builder and from its bytes",
+            "description": "Vectors of rows from their builders and of the same rows from their bytes, after the end of each row, whose float64[]s are aligned within each row, but mostly not in the table, since items aren't padded; an empty vector, which is its count alone; and a vector of an empty table from its builder and from its bytes, whose ends are equal",
             "file": "valid/vectors.bin",
             "table": {
                 "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
@@ -1262,11 +1416,43 @@
         },
         {
             "name": "vector-item-past-end",
-            "description": "The length of the last item of the vector counts one byte more than the table holds",
+            "description": "The end of the last item of the vector is one byte past the end of the table",
             "file": "invalid/vector-item-past-end.bin",
             "case": "vector-item-layouts",
-            "corruption": { "kind": "overwrite", "at": 48, "bytes": [5, 0, 0, 0] },
+            "corruption": { "kind": "overwrite", "at": 20, "bytes": [53, 0, 0, 0] },
             "field": 0
+        },
+        {
+            "name": "vector-item-ends-before-start",
+            "description": "The end of the first item of the vector is one byte before its start, which is right after the four ends",
+            "file": "invalid/vector-item-ends-before-start.bin",
+            "case": "vector-item-layouts",
+            "corruption": { "kind": "overwrite", "at": 8, "bytes": [19, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "struct-past-end",
+            "description": "Cut inside the last scalar of the last struct",
+            "file": "invalid/struct-past-end.bin",
+            "case": "structs",
+            "corruption": { "kind": "truncate", "length": 61 },
+            "field": 3
+        },
+        {
+            "name": "struct-array-count-past-end",
+            "description": "The count of the last array of structs counts one struct more than the table holds",
+            "file": "invalid/struct-array-count-past-end.bin",
+            "case": "struct-arrays",
+            "corruption": { "kind": "overwrite", "at": 140, "bytes": [4, 0, 0, 0] },
+            "field": 9
+        },
+        {
+            "name": "struct-array-count-max",
+            "description": "The count of the array of structs of three float32s is 2^32 - 1, which a reader must not allocate for",
+            "file": "invalid/struct-array-count-max.bin",
+            "case": "struct-arrays",
+            "corruption": { "kind": "overwrite", "at": 72, "bytes": [255, 255, 255, 255] },
+            "field": 6
         },
         {
             "name": "nested-offset-past-end",

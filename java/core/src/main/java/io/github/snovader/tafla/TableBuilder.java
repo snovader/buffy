@@ -8,9 +8,10 @@ import java.util.function.*;
 /**
  * Builds a table: a header with one offset per field, after the table's total length and version
  * when its layout has them, followed by the fields in the order they're set. Arrays, strings and
- * vectors are length-prefixed, and typed arrays are padded so their elements are aligned from the
- * start of the table. Fields are read back by index with {@link ByteBuffer#rootOffset}, or
- * {@link ByteBuffer#fieldOffset} for a table nested in another.
+ * vectors start with their count, and a vector then holds the end of each item. Arrays of scalars
+ * and of structs are padded so that their elements are aligned from the start of the table. Fields
+ * are read back by index with {@link ByteBuffer#rootOffset}, or {@link ByteBuffer#fieldOffset} for
+ * a table nested in another.
  *
  * <p>Setting a field records it and its position. {@link #bytes()} then allocates the table at its
  * exact size and writes every field in one pass, so array elements must not change in between.
@@ -230,8 +231,31 @@ public final class TableBuilder {
     }
 
     /**
-     * Embeds a table from its builder, padded to the largest element size of its arrays and the
-     * alignment of its nested tables, or not at all if it has neither.
+     * Sets a struct field from its bytes: its scalars, little-endian, one after another, which are
+     * written as they are, without padding. {@link ByteBuffer#getStruct} reads them back.
+     */
+    public void setStruct(byte[] bytes) {
+        addField(bytes.length, 0, buffer -> buffer.setBytes(bytes));
+    }
+
+    /**
+     * Sets an array of structs of {@code size} bytes each, from their bytes one after another,
+     * after their count. It's padded so that the structs start at a multiple of {@code alignment}
+     * from the start of the table, which is the size of the structs' largest scalar.
+     * {@link ByteBuffer#getStructArray} reads them back.
+     *
+     * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
+     * @throws IllegalArgumentException if {@code size} is less than 1, {@code bytes} aren't a whole
+     *     number of structs, or the alignment isn't 1, 2, 4 or 8
+     */
+    public void setStructArray(byte[] bytes, int size, int alignment) {
+        ByteBuffer.structCount(bytes.length, size);
+        addElements(bytes.length, alignment, buffer -> buffer.setStructArray(bytes, size));
+    }
+
+    /**
+     * Embeds a table from its builder, padded to the largest alignment of its arrays, arrays of
+     * structs and nested tables, or not at all if it has none of them.
      *
      * @throws IllegalArgumentException if the builder has fields left to set
      * @see #setTable(TableBuilder, int)
@@ -286,10 +310,11 @@ public final class TableBuilder {
     }
 
     /**
-     * Writes a vector of tables from their builders, each with a length prefix. Builders must have
-     * all their fields set, and are written straight into this table as
-     * {@link #setTable(TableBuilder)} writes them, except for those whose layout has another
-     * offset size, which are written to their own bytes and copied. Items aren't padded.
+     * Writes a vector of tables from their builders, after the end of each, which lets readers find
+     * any item without reading the others. Builders must have all their fields set, and are written
+     * straight into this table as {@link #setTable(TableBuilder)} writes them, except for those
+     * whose layout has another offset size, which are written to their own bytes and copied. Items
+     * aren't padded.
      *
      * @throws IllegalArgumentException if a builder has fields left to set
      */
@@ -305,7 +330,7 @@ public final class TableBuilder {
         addField(byteLength, 0, buffer -> writeVector(buffer, items));
     }
 
-    /** Writes a vector of tables from their bytes, each with a length prefix */
+    /** Writes a vector of tables from their bytes, after the end of each */
     public void setVector(byte[][] tables) {
         var items = tables.clone();
 
@@ -322,11 +347,21 @@ public final class TableBuilder {
         return (Consumer<ByteBuffer>[]) new Consumer<?>[fields];
     }
 
-    /** Pads the array so that its elements, after the length, are aligned */
+    /** Pads the array so that its elements, after the count, are aligned to their size */
     private void addArray(int length, int elementSize, Consumer<ByteBuffer> writer) {
-        var padding = paddingTo(offset + size.valueOf(), elementSize);
-        addField(size.valueOf() + (long) length * elementSize, padding, writer);
-        alignTo(elementSize);
+        addElements((long) length * elementSize, elementSize, writer);
+    }
+
+    /**
+     * Records a count and then {@code byteLength} bytes of elements, padded so that the elements
+     * start at a multiple of {@code alignment}
+     *
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     */
+    private void addElements(long byteLength, int alignment, Consumer<ByteBuffer> writer) {
+        var padding = paddingTo(offset + size.valueOf(), alignment);
+        addField(size.valueOf() + byteLength, padding, writer);
+        alignTo(alignment);
     }
 
     private void alignTo(int alignment) {
@@ -434,8 +469,14 @@ public final class TableBuilder {
     private void writeVector(ByteBuffer buffer, List<TableBuilder> vector) {
         buffer.setLength(vector.size());
 
+        // Each end counts from the vector's position, which is its count's
+        var end = (vector.size() + 1) * size.valueOf();
         for (var table : vector) {
-            buffer.setLength(table.offset);
+            end += table.offset;
+            buffer.setLength(end);
+        }
+
+        for (var table : vector) {
             writeTable(buffer, table);
         }
     }

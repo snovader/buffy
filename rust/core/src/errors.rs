@@ -2,8 +2,8 @@ use std::{error::Error, fmt, str::Utf8Error};
 
 use crate::OffsetSize;
 
-/// Returned when bytes can't be read as the table, array, string or value
-/// that a read expects.
+/// Returned when bytes can't be read as the table, array, string, struct,
+/// vector or value that a read expects.
 ///
 /// Every read checks its range against the supplied bytes before it returns,
 /// so a truncated or corrupted buffer returns this rather than values from
@@ -24,6 +24,9 @@ pub enum DecodeError {
     },
     /// The string at `position` isn't valid UTF-8
     InvalidUtf8 { position: usize, source: Utf8Error },
+    /// The vector item at `start` ends before it starts, at `end`. An item
+    /// starts where the item before it ends, and the first after the ends.
+    ItemEndsBeforeStart { start: usize, end: usize },
     /// The header carries format `version`, which the reader can't read,
     /// since it reads version `supported`. `ByteBuffer` doesn't compare
     /// versions: a reader returns this when [`ByteBuffer::version()`] isn't
@@ -57,6 +60,12 @@ impl fmt::Display for DecodeError {
             Self::InvalidUtf8 { position, .. } => {
                 write!(f, "The string at {position} isn't valid UTF-8")
             }
+            Self::ItemEndsBeforeStart { start, end } => {
+                write!(
+                    f,
+                    "The vector item at {start} ends before it starts, at {end}"
+                )
+            }
             Self::UnsupportedVersion { version, supported } => write!(
                 f,
                 "Unsupported format version {version}; the reader reads version {supported}"
@@ -68,7 +77,9 @@ impl fmt::Display for DecodeError {
 impl Error for DecodeError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::OutOfRange { .. } | Self::UnsupportedVersion { .. } => None,
+            Self::OutOfRange { .. }
+            | Self::ItemEndsBeforeStart { .. }
+            | Self::UnsupportedVersion { .. } => None,
             Self::InvalidUtf8 { source, .. } => Some(source),
         }
     }
@@ -102,6 +113,9 @@ pub enum BuildError {
     /// The table was written, or nested, with `set` of its `fields` fields
     /// set
     Incomplete { set: usize, fields: usize },
+    /// The `length` bytes of an array of structs aren't a whole number of
+    /// `size`-byte structs, or `size` is 0
+    NotWholeStructs { length: usize, size: usize },
 }
 
 impl fmt::Display for BuildError {
@@ -138,6 +152,13 @@ impl fmt::Display for BuildError {
             ),
             Self::Incomplete { set, fields } => {
                 write!(f, "Only {set} of the table's {fields} fields were set")
+            }
+            Self::NotWholeStructs { size: 0, .. } => write!(f, "A struct can't be 0 bytes"),
+            Self::NotWholeStructs { length, size } => {
+                write!(
+                    f,
+                    "{length} bytes aren't a whole number of {size}-byte structs"
+                )
             }
         }
     }

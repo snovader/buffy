@@ -32,8 +32,23 @@ True
 >>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
 [21.75, 18.5]
 
+Structs are bytes that the standard library's ``struct`` packs and unpacks
+little-endian, without padding:
+
+>>> from struct import Struct
+>>> POINT = Struct("<hf")  # an int16 and a float32, so aligned to 4
+>>> shape = TableBuilder(2)
+>>> shape.set_struct(POINT.pack(0, 1.5))
+>>> shape.set_struct_array(POINT.pack(1, 2.5) + POINT.pack(2, -0.5), POINT.size, 4)
+>>> buffer = shape.finalize()
+>>> POINT.unpack(buffer.get_struct(buffer.root_offset(0), POINT.size))
+(0, 1.5)
+>>> points = buffer.get_struct_array(buffer.root_offset(1), POINT.size)
+>>> list(POINT.iter_unpack(points))
+[(1, 2.5), (2, -0.5)]
+
 Records at fixed offsets without a header or offsets, such as stream frames,
-are better written and read with the standard library's ``struct``.
+are better written and read with ``struct`` alone.
 
 Format
 ------
@@ -43,15 +58,20 @@ then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is ``sized``, and
   then its version when it's ``versioned``.
-- Header slots, offsets and length prefixes are all ``offset_size`` bytes wide:
-  1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
+- Header slots, offsets, counts and vector item ends are all ``offset_size``
+  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
 - Offsets count from the table's start. A table nested with ``set_table()`` has
   no header, and its offsets count from its own start.
 - Arrays and strings start with their element count. Typed arrays are padded so
   that their elements are aligned to their size from the table's start.
-  ``set_table()`` aligns a nested table to the largest element size of its
-  arrays when given its builder, and to 4 bytes by default when given bytes.
-- A vector starts with its item count, and each item with its byte length.
+- A struct is its scalars, one after another without padding, and isn't
+  aligned. An array of structs starts with their count, and is padded so that
+  the structs are aligned to the size of their largest scalar.
+- ``set_table()`` aligns a nested table to the largest alignment of its arrays
+  when given its builder, and to 4 bytes by default when given bytes.
+- A vector starts with its item count, then the end of each item, counted from
+  the vector's start, and then the items. An item starts where the one before
+  it ends, so ``get_vector_offset()`` finds any item from two ends.
 
 Performance
 -----------
@@ -89,7 +109,7 @@ Validation is always on:
 
 - Every read checks its range against the bytes the ``ByteBuffer`` was given
   and raises ``DecodeError`` if it would leave them. Strings must be valid
-  UTF-8. A truncated or corrupted buffer therefore raises rather than returning
+  UTF-8, and vector items must start no later than they end. A truncated or corrupted buffer therefore raises rather than returning
   values from outside it.
 - ``DecodeError`` is a ``ValueError``. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
@@ -114,6 +134,11 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``UnicodeEncodeError`` from ``set_string()``. A version missing from or
   given for a layout, or a field set after ``finalize()``, raises
   ``TypeError``.
+- A struct size less than 1 raises ``ValueError`` from
+  ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
+  aren't a whole number of structs from ``set_struct_array()``.
+- ``get_vector_offset()`` raises ``IndexError`` for an item outside the
+  vector.
 - ``get_version()`` raises ``TypeError`` when the layout isn't versioned.
 """
 

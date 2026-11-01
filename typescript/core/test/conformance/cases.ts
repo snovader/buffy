@@ -194,6 +194,68 @@ const VALID_CASES: ValidCase[] = [
         table(STRINGS.map(string))
     ),
     validCase(
+        'structs',
+        'Struct fields, which are unpadded like scalars: of one uint8 after a uint8; of every scalar type, each a value of distinct bytes, so that the order of the scalars and of their bytes shows; and of a float32, a float64 and an int16 of -0, NaN and -2',
+        table([
+            scalar('uint8', 1),
+            struct([['uint8', 0xfe]]),
+            struct(INTEGERS.map(({ type, pattern }) => [type, pattern])),
+            struct([
+                ['float32', -0],
+                ['float64', Number.NaN],
+                ['int16', -2]
+            ])
+        ])
+    ),
+    validCase(
+        'struct-arrays',
+        "Arrays of structs, each padded so that its structs start at a multiple of their largest scalar's size: an empty array of structs of a uint8 and a float64, padded to 8; after a uint8 each, arrays of structs of two uint8s, aligned to 1; of a uint16 and a uint8, of 3 bytes aligned to 2; of three float32s, aligned to 4, with -0 and NaN; and of a uint8 and a float64, of 9 bytes aligned to 8, whose float64s aren't aligned in the structs after the first; then an array of a struct of every integer type",
+        table([
+            structArray(['uint8', 'float64'], []),
+            scalar('uint8', 1),
+            structArray(
+                ['uint8', 'uint8'],
+                [
+                    [1, 2],
+                    [3, 4]
+                ]
+            ),
+            scalar('uint8', 2),
+            structArray(
+                ['uint16', 'uint8'],
+                [
+                    [0xfedc, 1],
+                    [2, 0xff]
+                ]
+            ),
+            scalar('uint8', 3),
+            structArray(
+                ['float32', 'float32', 'float32'],
+                [
+                    [1.5, -0, Number.NaN],
+                    [0.1, 2, Number.NEGATIVE_INFINITY]
+                ]
+            ),
+            scalar('uint8', 4),
+            structArray(
+                ['uint8', 'float64'],
+                [
+                    [1, 1.5],
+                    [2, -0.25],
+                    [3, 1e300]
+                ]
+            ),
+            structArray(
+                INTEGERS.map(({ type }) => type),
+                [
+                    INTEGERS.map(({ min }) => min),
+                    INTEGERS.map(({ max }) => max),
+                    INTEGERS.map(({ pattern }) => pattern)
+                ]
+            )
+        ])
+    ),
+    validCase(
         'nested-tables',
         'The same table nested from its builder, padded to 8 for its float64[]; from its bytes, padded to the default of 4 and then to 8; and from its builder with an alignment of 1, unpadded. Then an empty table from its builder, unpadded, and from its bytes, padded to 4.',
         table([
@@ -269,7 +331,7 @@ const VALID_CASES: ValidCase[] = [
     ),
     validCase(
         'vectors',
-        "Vectors of rows from their builders and of the same rows from their bytes, whose float64[]s are aligned within each row, but mostly not in the table, since items aren't padded; an empty vector; and a vector of an empty table from its builder and from its bytes",
+        "Vectors of rows from their builders and of the same rows from their bytes, after the end of each row, whose float64[]s are aligned within each row, but mostly not in the table, since items aren't padded; an empty vector, which is its count alone; and a vector of an empty table from its builder and from its bytes, whose ends are equal",
         table([
             scalar('uint8', 1),
             vector(ROWS.map(fromBuilder)),
@@ -334,10 +396,12 @@ function invalidCases(): InvalidCase[] {
     const nestedTables = inspect('nested-tables');
     const vectors = inspect('vectors');
     const itemLayouts = inspect('vector-item-layouts');
+    const structs = inspect('structs');
+    const structArrays = inspect('struct-arrays');
 
-    const lastItem = itemLayouts.buffer
-        .getVectorOffsets(itemLayouts.buffer.rootOffset(0))
-        .at(-1)!;
+    // The vector of vector-item-layouts holds four items
+    const itemsVector = itemLayouts.buffer.rootOffset(0);
+    const lastEnd = itemsVector + 4 * 4;
 
     return [
         invalidCase(
@@ -442,10 +506,41 @@ function invalidCases(): InvalidCase[] {
         ),
         invalidCase(
             'vector-item-past-end',
-            'The length of the last item of the vector counts one byte more than the table holds',
+            'The end of the last item of the vector is one byte past the end of the table',
             itemLayouts,
-            lengthenByOne(itemLayouts, lastItem - 4),
+            lengthenByOne(itemLayouts, lastEnd),
             0
+        ),
+        invalidCase(
+            'vector-item-ends-before-start',
+            'The end of the first item of the vector is one byte before its start, which is right after the four ends',
+            itemLayouts,
+            overwrite(itemsVector + 4, littleEndian(5 * 4 - 1, 4)),
+            0
+        ),
+        invalidCase(
+            'struct-past-end',
+            'Cut inside the last scalar of the last struct',
+            structs,
+            truncate(structs.bytes.length - 1),
+            3
+        ),
+        invalidCase(
+            'struct-array-count-past-end',
+            'The count of the last array of structs counts one struct more than the table holds',
+            structArrays,
+            lengthenByOne(structArrays, structArrays.buffer.rootOffset(9)),
+            9
+        ),
+        invalidCase(
+            'struct-array-count-max',
+            'The count of the array of structs of three float32s is 2^32 - 1, which a reader must not allocate for',
+            structArrays,
+            overwrite(
+                structArrays.buffer.rootOffset(6),
+                littleEndian(0xffff_ffff, 4)
+            ),
+            6
         ),
         invalidCase(
             'nested-offset-past-end',
@@ -562,7 +657,7 @@ function describeLayout(
     ];
     const header = slots.length > 0 ? slots.join(' and ') : 'no header';
 
-    return `${offsetSize}-byte offsets, lengths and counts after ${header}, with a field of each kind: a scalar, arrays, a string, and a nested table and a vector of tables of the same offsets`;
+    return `${offsetSize}-byte offsets, lengths, counts and item ends after ${header}, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets`;
 }
 
 function layoutFields(offsetSize: OffsetSize): FieldDescription[] {
@@ -573,6 +668,17 @@ function layoutFields(offsetSize: OffsetSize): FieldDescription[] {
         array('int16', [-2, 3]),
         string('abc'),
         array('float64', [1.5]),
+        struct([
+            ['uint16', 0x0102],
+            ['int8', -3]
+        ]),
+        structArray(
+            ['int8', 'uint32'],
+            [
+                [-1, 0xfedc_ba98],
+                [2, 3]
+            ]
+        ),
         nested(
             fromBuilder(
                 table(
@@ -671,6 +777,33 @@ function toJson(type: ScalarType, value: number | bigint): JsonNumber {
         default:
             return toJsonNumber(Number(value));
     }
+}
+
+/** A struct of scalars of these types and values */
+function struct(
+    scalars: ReadonlyArray<readonly [ScalarType, number | bigint]>
+): FieldDescription {
+    return {
+        type: 'struct',
+        fields: scalars.map(([type, value]) => ({
+            type,
+            value: toJson(type, value)
+        }))
+    };
+}
+
+/** An array of structs of scalars of these types, with each struct's values */
+function structArray(
+    types: ScalarType[],
+    items: ReadonlyArray<ReadonlyArray<number | bigint>>
+): FieldDescription {
+    return {
+        type: 'struct[]',
+        fields: types,
+        items: items.map(values =>
+            values.map((value, index) => toJson(types[index], value))
+        )
+    };
 }
 
 function string(value: string): FieldDescription {

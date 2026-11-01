@@ -1,8 +1,9 @@
 /**
- * Binary tables of scalars, strings and arrays. {@link io.github.snovader.tafla.TableBuilder} writes a
- * table at its exact size, copying arrays in bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads
- * fields back by offset, into Java arrays. Every read checks that it stays within the bytes it was
- * given. The TypeScript and Python implementations write and read the same bytes.
+ * Binary tables of scalars, structs, strings and arrays.
+ * {@link io.github.snovader.tafla.TableBuilder} writes a table at its exact size, copying arrays in
+ * bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads fields back by offset, into Java
+ * arrays. Every read checks that it stays within the bytes it was given. The TypeScript and Python
+ * implementations write and read the same bytes.
  *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
@@ -41,16 +42,22 @@
  * <ul>
  *   <li>The header holds the table's byte length when the layout is sized, and then its version
  *     when it's versioned.</li>
- *   <li>Header slots, offsets and length prefixes are all as wide as the layout's offset size: 1, 2
- *     or 4 bytes, which limits the table to 255 bytes, 64 KiB or 4 GiB. A Java array holds about
- *     2 GiB, so that's as long as a table that Java writes or reads can be.</li>
+ *   <li>Header slots, offsets, counts and vector item ends are all as wide as the layout's offset
+ *     size: 1, 2 or 4 bytes, which limits the table to 255 bytes, 64 KiB or 4 GiB. A Java array
+ *     holds about 2 GiB, so that's as long as a table that Java writes or reads can be.</li>
  *   <li>Offsets count from the table's start. A table nested with {@code setTable()} has no
  *     header, and its offsets count from its own start.</li>
  *   <li>Arrays and strings start with their element count. Arrays are padded so that their
  *     elements are aligned to their size from the table's start. {@code setTable()} aligns a nested
- *     table to the largest element size of its arrays when given its builder, and to 4 bytes by
- *     default when given bytes.</li>
- *   <li>A vector starts with its item count, and each item with its byte length.</li>
+ *     table to the largest alignment of its arrays, arrays of structs and nested tables when given
+ *     its builder, and to 4 bytes by default when given bytes.</li>
+ *   <li>A struct is its scalars one after another, without padding, so that they lie at fixed
+ *     offsets from its start. An array of structs starts with its count, and is padded so that its
+ *     structs are aligned to the size of their largest scalar. {@code getStruct()} and
+ *     {@code getStructArray()} return read-only views of their bytes.</li>
+ *   <li>A vector starts with its item count, then the end of each item, counted from the vector's
+ *     position, and then the items, one after another. {@code getVectorOffset()} finds any item
+ *     from two ends, without reading the items before it.</li>
  * </ul>
  *
  * <p>Java has no unsigned types, so unsigned values are read into the next wider type, such as a
@@ -91,8 +98,8 @@
  * <ul>
  *   <li>Every read checks its range against the bytes the {@code ByteBuffer} was given, and throws
  *     a {@link io.github.snovader.tafla.DecodeException} if it would leave them. Strings must be valid
- *     UTF-8. A truncated or corrupted buffer therefore throws rather than returning values from
- *     outside it.</li>
+ *     UTF-8, and a vector item must start no later than it ends. A truncated or corrupted buffer
+ *     therefore throws rather than returning values from outside it.</li>
  *   <li>{@code DecodeException} is unchecked. Its message gives the read's position and length and
  *     the bytes available, and an invalid string's exception has the
  *     {@link java.nio.charset.CharacterCodingException} as its cause.</li>
@@ -106,13 +113,17 @@
  * <ul>
  *   <li>Writes past the end of a {@code ByteBuffer} throw an {@link IndexOutOfBoundsException},
  *     and lengths, offsets and versions too large for its offsets an
- *     {@link IllegalArgumentException}. Either writes nothing.</li>
+ *     {@link IllegalArgumentException}. Either writes nothing. A struct size below 1, or below 0
+ *     for {@code getStruct()}, throws an {@code IllegalArgumentException}, and
+ *     {@code getVectorOffset()} an {@code IndexOutOfBoundsException} for an item outside the
+ *     vector.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
  *     it was created with, for writing before every field is set, and for a field set after
  *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given
- *     for a layout, a version that doesn't fit, a nested builder with fields left to set, and an
- *     alignment other than 1, 2, 4 or 8. A field that would make the table too long for its offsets
- *     throws an {@code IllegalArgumentException} from its setter and isn't added.</li>
+ *     for a layout, a version that doesn't fit, a nested builder with fields left to set, an
+ *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
+ *     number of structs. A field that would make the table too long for its offsets throws an
+ *     {@code IllegalArgumentException} from its setter and isn't added.</li>
  *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
  *     </li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't

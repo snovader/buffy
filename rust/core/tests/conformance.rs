@@ -7,7 +7,7 @@ mod common;
 use std::{fmt::Debug, fs, path::Path, str::FromStr};
 
 use common::{
-    description::{Field, Layout, Nested, Source, Table},
+    description::{Field, Layout, Nested, ScalarType, Source, Table},
     read::{ReadError, read_root_field, read_table},
 };
 use serde_json::Value;
@@ -124,18 +124,13 @@ fn table_of(value: &Value) -> Table {
 /// the floats that JSON has no number for by name
 fn field_of(field: &Value) -> Field {
     let value = &field["value"];
+    let type_name = field["type"].as_str().unwrap();
 
-    match field["type"].as_str().unwrap() {
-        "int8" => Field::I8(integer(value)),
-        "uint8" => Field::U8(integer(value)),
-        "int16" => Field::I16(integer(value)),
-        "uint16" => Field::U16(integer(value)),
-        "int32" => Field::I32(integer(value)),
-        "uint32" => Field::U32(integer(value)),
-        "int64" => Field::I64(parse(value)),
-        "uint64" => Field::U64(parse(value)),
-        "float32" => Field::F32(float32(value)),
-        "float64" => Field::F64(float64(value)),
+    if let Some(scalar) = scalar_type_of(type_name) {
+        return scalar_of(scalar, value);
+    }
+
+    match type_name {
         "int8[]" => Field::I8Array(elements(value, integer)),
         "uint8[]" => Field::U8Array(elements(value, integer)),
         "int16[]" => Field::I16Array(elements(value, integer)),
@@ -147,6 +142,16 @@ fn field_of(field: &Value) -> Field {
         "float32[]" => Field::F32Array(elements(value, float32)),
         "float64[]" => Field::F64Array(elements(value, float64)),
         "string" => Field::String(value.as_str().unwrap().to_owned()),
+        "struct" => Field::Struct(elements(&field["fields"], field_of)),
+        "struct[]" => {
+            let types = elements(&field["fields"], |name| {
+                let name = name.as_str().unwrap();
+                scalar_type_of(name).unwrap_or_else(|| panic!("{name} isn't a scalar type"))
+            });
+            let items = elements(&field["items"], |values| struct_of(&types, values));
+
+            Field::StructArray { types, items }
+        }
         "table" => Field::Table {
             nested: nested_of(field),
             alignment: field["alignment"].as_u64().map(alignment_of),
@@ -161,6 +166,55 @@ fn field_of(field: &Value) -> Field {
         ),
         other => panic!("Unknown type {other}"),
     }
+}
+
+/// Returns the scalar type that a description names, or `None` for any
+/// other type
+fn scalar_type_of(name: &str) -> Option<ScalarType> {
+    Some(match name {
+        "int8" => ScalarType::I8,
+        "uint8" => ScalarType::U8,
+        "int16" => ScalarType::I16,
+        "uint16" => ScalarType::U16,
+        "int32" => ScalarType::I32,
+        "uint32" => ScalarType::U32,
+        "int64" => ScalarType::I64,
+        "uint64" => ScalarType::U64,
+        "float32" => ScalarType::F32,
+        "float64" => ScalarType::F64,
+        _ => return None,
+    })
+}
+
+fn scalar_of(scalar: ScalarType, value: &Value) -> Field {
+    match scalar {
+        ScalarType::I8 => Field::I8(integer(value)),
+        ScalarType::U8 => Field::U8(integer(value)),
+        ScalarType::I16 => Field::I16(integer(value)),
+        ScalarType::U16 => Field::U16(integer(value)),
+        ScalarType::I32 => Field::I32(integer(value)),
+        ScalarType::U32 => Field::U32(integer(value)),
+        ScalarType::I64 => Field::I64(parse(value)),
+        ScalarType::U64 => Field::U64(parse(value)),
+        ScalarType::F32 => Field::F32(float32(value)),
+        ScalarType::F64 => Field::F64(float64(value)),
+    }
+}
+
+/// Returns the scalars of a struct of `types` from the values of an item of
+/// an array of structs
+fn struct_of(types: &[ScalarType], values: &Value) -> Vec<Field> {
+    let values = values.as_array().unwrap();
+    assert_eq!(
+        values.len(),
+        types.len(),
+        "A struct of {types:?}: {values:?}"
+    );
+
+    let scalars = types.iter().zip(values);
+    scalars
+        .map(|(&scalar, value)| scalar_of(scalar, value))
+        .collect()
 }
 
 fn nested_of(value: &Value) -> Nested {
@@ -186,7 +240,7 @@ fn alignment_of(alignment: u64) -> Alignment {
     }
 }
 
-fn elements<T>(value: &Value, element: fn(&Value) -> T) -> Vec<T> {
+fn elements<T>(value: &Value, element: impl Fn(&Value) -> T) -> Vec<T> {
     value.as_array().unwrap().iter().map(element).collect()
 }
 

@@ -1,6 +1,8 @@
 import sys
 import unittest
 from array import array
+from collections.abc import Callable
+from struct import iter_unpack, pack, unpack
 from unittest.mock import patch
 
 from hypothesis import given
@@ -51,6 +53,7 @@ class TestByteBuffer(unittest.TestCase):
             lambda: buffer.set_float32_array(array("f", [1, 2, 3])),
             lambda: buffer.set_float32_array([1, 2, 3]),
             lambda: buffer.set_string(bytes(9)),
+            lambda: buffer.set_struct_array(bytes(9), 3),
             lambda: buffer.set_vector([bytes(4), bytes(1)]),
             lambda: buffer.set_bytes(bytes(13)),
             lambda: buffer.set_padding(13),
@@ -91,7 +94,7 @@ class TestByteBuffer(unittest.TestCase):
                 self.assertEqual(backing[0], 1)
                 self.assertEqual(backing[size:], b"\xaa" * (12 - size))
 
-    def test_rejects_a_count_or_length_too_large_for_its_slot_and_writes_nothing(
+    def test_rejects_a_count_length_or_item_end_too_large_for_its_slot_and_writes_nothing(
         self,
     ) -> None:
         backing = bytearray(b"\xaa" * 600)
@@ -101,7 +104,9 @@ class TestByteBuffer(unittest.TestCase):
             lambda: buffer.set_uint8_array(bytes(256)),
             lambda: buffer.set_int16_array(array("h", range(256))),
             lambda: buffer.set_string(bytes(256)),
-            lambda: buffer.set_vector([bytes(1), bytes(256)]),
+            lambda: buffer.set_struct_array(bytes(256), 1),
+            # The last item ends 256 bytes from the vector's count
+            lambda: buffer.set_vector([bytes(1), bytes(252)]),
             lambda: buffer.set_vector([b""] * 256),
         ]
 
@@ -111,8 +116,90 @@ class TestByteBuffer(unittest.TestCase):
                     write()
                 self.assertEqual(backing, b"\xaa" * 600)
 
-        buffer.set_vector([bytes(1), bytes(255)])
-        self.assertEqual(backing[:4], b"\x02\x01\x00\xff")
+        # The count, then the ends of the items, which start at 3
+        buffer.set_vector([bytes(1), bytes(251)])
+        self.assertEqual(backing[:3], b"\x02\x04\xff")
+
+    def test_rejects_struct_sizes_less_than_1_and_bytes_that_arent_whole_structs(
+        self,
+    ) -> None:
+        backing = bytearray(b"\xaa" * 16)
+        buffer = ByteBuffer(backing)
+
+        cases: list[tuple[str, Callable[[], object]]] = [
+            (
+                "5 bytes aren't a whole number of 2-byte structs",
+                lambda: buffer.set_struct_array(bytes(5), 2),
+            ),
+            (
+                "must be a positive integer, not 0",
+                lambda: buffer.set_struct_array(b"", 0),
+            ),
+            (
+                "must be a positive integer, not -1",
+                lambda: buffer.get_struct_array(0, -1),
+            ),
+            (
+                "must be a positive integer, not 0",
+                lambda: buffer.get_struct_array(0, 0),
+            ),
+        ]
+
+        for message, call in cases:
+            with self.subTest(message), self.assertRaisesRegex(ValueError, message):
+                call()
+
+        self.assertEqual(backing, b"\xaa" * 16)
+
+    @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
+    def test_reads_structs_as_views_of_the_bytes_at_any_alignment(self) -> None:
+        builder = TableBuilder(2)
+        builder.set_struct(pack("<hf", -2, 1.5))
+        builder.set_struct_array(pack("<hfhf", 3, 0.5, 4, -0.5), 6, 4)
+
+        backing = bytearray(1) + builder.bytes()
+        buffer = ByteBuffer(memoryview(backing)[1:])
+        struct_bytes = buffer.get_struct(buffer.root_offset(0), 6)
+        array_bytes = buffer.get_struct_array(buffer.root_offset(1), 6)
+
+        self.assertEqual(unpack("<hf", struct_bytes), (-2, 1.5))
+        self.assertEqual(list(iter_unpack("<hf", array_bytes)), [(3, 0.5), (4, -0.5)])
+        self.assertIs(struct_bytes.obj, backing)
+        self.assertIs(array_bytes.obj, backing)
+
+    def test_finds_each_vector_item_from_its_ends_as_reading_every_item_finds_it(
+        self,
+    ) -> None:
+        builder = TableBuilder(1)
+        builder.set_vector([b"\x01", b"", b"\x02\x03"])
+        buffer = builder.finalize()
+        vector = buffer.root_offset(0)
+
+        # The count and the three ends, at 4, then the items from 20
+        self.assertEqual(buffer.get_vector_offsets(vector).tolist(), [20, 21, 21])
+        self.assertEqual(
+            [buffer.get_vector_offset(vector, index) for index in range(3)],
+            [20, 21, 21],
+        )
+        self.assertEqual(buffer.get_vector_length(vector), 3)
+        self.assertEqual(
+            [bytes(item) for item in buffer.get_vector(vector)],
+            [b"\x01", b"", b"\x02\x03"],
+        )
+
+    def test_rejects_an_index_outside_a_vector_with_index_error(self) -> None:
+        builder = TableBuilder(1)
+        builder.set_vector([b"\x01", b"\x02\x03"])
+        buffer = builder.finalize()
+
+        for index in [-1, 2]:
+            with (
+                self.subTest(index=index),
+                self.assertRaisesRegex(
+                    IndexError, f"Item {index} is outside the vector of 2 at 4"
+                ),
+            ):
+                buffer.get_vector_offset(buffer.root_offset(0), index)
 
     def test_writes_padding_as_zeros(self) -> None:
         backing = bytearray(b"\xff" * 4)

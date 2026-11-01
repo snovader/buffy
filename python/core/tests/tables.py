@@ -13,10 +13,10 @@ ints and floats, and ``comparable_table()`` compares the two forms exactly.
 """
 
 import struct
-from collections.abc import Buffer, Callable
+from collections.abc import Buffer, Callable, Iterable
 from dataclasses import dataclass
 from math import copysign, isinf, isnan
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from tafla import ByteBuffer, TableBuilder, TableLayout
 
@@ -102,6 +102,18 @@ def layout_of(layout: Description) -> TableLayout:
     )
 
 
+def struct_of(types: Iterable[str]) -> struct.Struct:
+    """The ``struct`` of a struct of scalars of these types, little-endian
+    and without padding, whose ``size`` is the struct's"""
+    return struct.Struct("<" + "".join(FORMATS[kind] for kind in types))
+
+
+def struct_alignment(types: Iterable[str]) -> Alignment:
+    """The alignment of an array of structs of scalars of these types: the
+    size of the largest"""
+    return cast(Alignment, max(ELEMENT_SIZES[kind] for kind in types))
+
+
 def create_builder(table: Description) -> TableBuilder:
     """Returns the builder of a table's description, with none of its fields
     set"""
@@ -135,6 +147,17 @@ def set_field(builder: TableBuilder, field: Description) -> None:
         builder.set_table(_build_nested(field), field.get("alignment"))
     elif kind == "vector":
         builder.set_vector([_build_nested(item) for item in field["items"]])
+    elif kind == "struct":
+        scalars = field["fields"]
+        packing = struct_of(scalar["type"] for scalar in scalars)
+        builder.set_struct(packing.pack(*_struct_values(scalars)))
+    elif kind == "struct[]":
+        types = field["fields"]
+        packing = struct_of(types)
+        data = b"".join(
+            packing.pack(*_item_values(types, item)) for item in field["items"]
+        )
+        builder.set_struct_array(data, packing.size, struct_alignment(types))
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(builder, f"set_{element}_array")(_array_values(element, field))
@@ -145,6 +168,16 @@ def set_field(builder: TableBuilder, field: Description) -> None:
 def _build_nested(nested: Description) -> TableBuilder | memoryview[int]:
     builder = build_table(nested["table"])
     return builder if nested["from"] == "builder" else builder.bytes()
+
+
+def _struct_values(scalars: list[Description]) -> list[Any]:
+    """The values of a struct's scalars, as tafla takes them"""
+    return [from_json(scalar["type"], scalar["value"]) for scalar in scalars]
+
+
+def _item_values(types: list[str], item: list[Any]) -> list[Any]:
+    """The values of a struct in an array of structs, as tafla takes them"""
+    return [from_json(kind, value) for kind, value in zip(types, item, strict=True)]
 
 
 def _array_values(element: str, field: Description) -> list[Any]:
@@ -158,8 +191,8 @@ def _array_values(element: str, field: Description) -> list[Any]:
 def alignment_of(field: Description) -> int:
     """The alignment that ``set_table()`` pads a nested table's field to: the
     one passed, or by default 4 for bytes, and for a builder the largest
-    element size of its arrays and alignment of its nested tables, or 1 if it
-    has neither"""
+    alignment of its arrays, of scalars and of structs, and of its nested
+    tables, or 1 if it has neither"""
     if "alignment" in field:
         return field["alignment"]
 
@@ -171,6 +204,8 @@ def alignment_of(field: Description) -> int:
         kind = nested["type"]
         if kind == "table":
             alignments.append(alignment_of(nested))
+        elif kind == "struct[]":
+            alignments.append(struct_alignment(nested["fields"]))
         elif kind.endswith("[]"):
             alignments.append(ELEMENT_SIZES[kind.removesuffix("[]")])
 
@@ -200,6 +235,17 @@ def comparable_field(field: Description) -> Description:
         ]
         return {**field, "items": items}
 
+    if kind == "struct":
+        return {
+            **field,
+            "fields": [comparable_field(scalar) for scalar in field["fields"]],
+        }
+
+    if kind == "struct[]":
+        types = field["fields"]
+        items = [_comparable_values(types, item) for item in field["items"]]
+        return {**field, "items": items}
+
     if kind.endswith("[]"):
         element = kind.removesuffix("[]")
         convert = _COMPARABLE.get(element)
@@ -210,6 +256,15 @@ def comparable_field(field: Description) -> Description:
 
     convert = _COMPARABLE.get(kind)
     return field if convert is None else {**field, "value": convert(field["value"])}
+
+
+def _comparable_values(types: list[str], values: list[Any]) -> list[Any]:
+    """Returns the values of a struct in an array of structs as
+    ``comparable_field()`` returns a scalar's"""
+    return [
+        comparable_field({"type": kind, "value": value})["value"]
+        for kind, value in zip(types, values, strict=True)
+    ]
 
 
 def _float_bits(value: Any) -> str:
@@ -324,6 +379,15 @@ class TableReader:
         if kind == "vector":
             return {**field, "items": self.__read_vector(position, field["items"])}
 
+        if kind == "struct":
+            return {**field, "fields": self.__read_struct(position, field["fields"])}
+
+        if kind == "struct[]":
+            return {
+                **field,
+                "items": self.__read_struct_array(position, field["fields"]),
+            }
+
         if kind.endswith("[]"):
             element = kind.removesuffix("[]")
             values = getattr(self.__buffer, f"get_{element}_array")(position)
@@ -341,6 +405,15 @@ class TableReader:
         offsets = buffer.get_vector_offsets(position)
         vector = buffer.get_vector(position)
 
+        # Finding each item from its ends alone finds the same item
+        for index, offset in enumerate(offsets):
+            found = buffer.get_vector_offset(position, index)
+            if found != offset:
+                raise MismatchError(
+                    f"Item {index} of the vector is at {found} from its ends, "
+                    f"but at {offset} among every item"
+                )
+
         read = [
             {**item, "table": self.__read_item(offset, item_bytes, item["table"])}
             for item, offset, item_bytes in zip(items, offsets, vector, strict=False)
@@ -352,6 +425,26 @@ class TableReader:
             )
 
         return read
+
+    def __read_struct(
+        self, position: int, scalars: list[Description]
+    ) -> list[Description]:
+        """Reads the scalars of a struct at their offsets in its bytes"""
+        packing = struct_of(scalar["type"] for scalar in scalars)
+        values = packing.unpack(self.__buffer.get_struct(position, packing.size))
+
+        return [
+            {**scalar, "value": value}
+            for scalar, value in zip(scalars, values, strict=True)
+        ]
+
+    def __read_struct_array(self, position: int, types: list[str]) -> list[list[Any]]:
+        """Reads the scalars of every struct of an array at their offsets in
+        the structs' bytes"""
+        packing = struct_of(types)
+        data = self.__buffer.get_struct_array(position, packing.size)
+
+        return [list(values) for values in packing.iter_unpack(data)]
 
     def __read_item(
         self, position: int, item_bytes: memoryview[int], table: Description

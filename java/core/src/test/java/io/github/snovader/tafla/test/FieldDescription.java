@@ -43,6 +43,47 @@ sealed interface FieldDescription {
     }
 
     /**
+     * A struct, whose scalars lie one after another in the order of {@code fields}, so a struct
+     * within a struct is described by its scalars
+     */
+    record StructField(List<ScalarField> fields) implements FieldDescription {
+        public StructField {
+            fields = List.copyOf(fields);
+        }
+
+        /** {@return the types of the struct's scalars, in order} */
+        List<ScalarType> types() {
+            return fields.stream().map(ScalarField::type).toList();
+        }
+
+        /** {@return the values of the struct's scalars, in order} */
+        List<Long> values() {
+            return fields.stream().map(ScalarField::value).toList();
+        }
+
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
+    /**
+     * An array of structs of scalars of the types in {@code fields}, with the values of each
+     * struct's scalars in that order, held as {@link ScalarType} describes
+     */
+    record StructArrayField(List<ScalarType> fields, List<List<Long>> items) implements FieldDescription {
+        public StructArrayField {
+            fields = List.copyOf(fields);
+            items = items.stream().map(List::copyOf).toList();
+        }
+
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
+    /**
      * A table nested with {@code setTable()}
      *
      * @param alignment the alignment passed to {@code setTable()}, absent for its default

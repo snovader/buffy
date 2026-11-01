@@ -269,8 +269,12 @@ impl<'a> ItemList<'a> {
     pub fn items(&self) -> Result<Vec<Item<'a>>, DecodeError> {
         let position = self.buffer.root_offset(0)?;
         let vector = self.buffer.get_vector(position)?;
+        let mut items = Vec::with_capacity(vector.len());
+        for item in vector {
+            items.push(Item::new(item?, 0));
+        }
 
-        Ok(vector.iter().map(|item| Item::new(item, 0)).collect())
+        Ok(items)
     }
 }
 

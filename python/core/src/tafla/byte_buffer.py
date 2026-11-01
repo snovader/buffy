@@ -28,6 +28,12 @@ _SIZES: dict[AddressableSpace, Struct] = {
     SIZEOF_16: uint16,
     SIZEOF_32: uint32,
 }
+# Their array type codes, which the ends of a vector's items are read as
+_SIZE_CODES: dict[AddressableSpace, IntTypeCode] = {
+    SIZEOF_8: "B",
+    SIZEOF_16: "H",
+    SIZEOF_32: "I",
+}
 
 
 class ByteBuffer:
@@ -38,11 +44,12 @@ class ByteBuffer:
 
     Every read checks that it stays within the bytes and raises ``DecodeError``
     otherwise. A write that doesn't fit in the bytes raises ``ValueError`` and
-    writes nothing. So does an array, string or vector whose count or lengths
-    are too large for the layout's ``offset_size``, which ``TableBuilder``
-    rejects before it writes a table. A scalar, offset or version that doesn't
-    fit its slot raises ``ValueError`` and leaves the position where it was,
-    but CPython's struct zeroes the slot before it checks the value.
+    writes nothing. So does an array, string or vector whose count, length or
+    item ends are too large for the layout's ``offset_size``, which
+    ``TableBuilder`` rejects before it writes a table. A scalar, offset or
+    version that doesn't fit its slot raises ``ValueError`` and leaves the
+    position where it was, but CPython's struct zeroes the slot before it
+    checks the value.
     """
 
     __slots__ = [
@@ -71,7 +78,7 @@ class ByteBuffer:
         # The width of offsets, lengths and header slots
         self.__size = layout.offset_size()
         self.__size_struct = _SIZES[self.__size]
-        # The largest count or length that a slot holds
+        # The largest count, length or item end that a slot holds
         self.__max_size = (1 << 8 * self.__size) - 1
         # The byte length of the header slots before the root's field offsets
         self.__header_size = layout.header_size()
@@ -271,6 +278,29 @@ class ByteBuffer:
 
         return from_little_endian(type_code, self.__view[start : start + byte_length])
 
+    def get_struct(self, position: int, size: int) -> memoryview[int]:
+        """Returns a view of the ``size`` bytes of the struct at ``position``,
+        whose scalars lie at fixed offsets from its start."""
+        end = position + size
+        if position < 0 or size < 0 or end > self.__length:
+            raise out_of_range(position, size, self.__length)
+
+        return self.__view[position:end]
+
+    def get_struct_array(self, position: int, size: int) -> memoryview[int]:
+        """Returns a view of the structs of the array at ``position``, each of
+        ``size`` bytes, one after another after the count. Their number is the
+        view's length over ``size``.
+
+        Raises ``ValueError`` if ``size`` is less than 1.
+        """
+        _check_struct_size(size)
+
+        byte_length = self.__get_size(position) * size
+        start = self.__check_range(position + self.__size, byte_length)
+
+        return self.__view[start : start + byte_length]
+
     def set_int8(self, value: int) -> None:
         self.__pack(int8, value)
         self.__position += SIZEOF_8
@@ -395,8 +425,24 @@ class ByteBuffer:
         self.__set_size(count)
         self.__write(source)
 
+    def set_struct_array(self, data: Buffer, size: int) -> None:
+        """Writes the count of the ``size``-byte structs in ``data``, and then
+        the bytes. Padding that aligns the structs goes before the count.
+
+        Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
+        whole number of structs.
+        """
+        source = _byte_view(data)
+        count = struct_count(len(source), size)
+        self.__check_writable(self.__size + len(source))
+        self.__check_size(count)
+
+        self.__set_size(count)
+        self.__write(source)
+
     def set_bytes(self, bytes: Buffer) -> None:
-        """Writes ``bytes`` as they are, without a length prefix."""
+        """Writes ``bytes`` as they are, without a length prefix, such as a
+        struct."""
         # Checked and written inline, since TableBuilder writes every table
         # nested as bytes with it
         source = _byte_view(bytes)
@@ -432,46 +478,131 @@ class ByteBuffer:
         self.__set_size(len(source))
         self.__write(source)
 
-    def get_vector_offsets(self, position: int) -> array[int]:
+    def get_vector_length(self, position: int) -> int:
+        """Returns the number of items of the vector at ``position``."""
+        return self.__get_size(position)
+
+    def get_vector_offset(self, position: int, index: int) -> int:
+        """Returns the position of item ``index`` of the vector at
+        ``position``. It's read from the ends of that item and the one before
+        it, without reading any other item.
+
+        Raises ``IndexError`` if the vector has no item ``index``.
+        """
         size = self.__size
         count = self.__get_size(position)
-        # Every vector item needs at least its size prefix. Validate before
-        # allocating the offset array from an untrusted count.
-        self.__check_range(position + size, count * size)
-        offsets = array("I", bytes(count * SIZEOF_32))
+        if not 0 <= index < count:
+            raise IndexError(
+                f"Item {index} is outside the vector of {count} at {position}"
+            )
 
-        offset = position + size
-        for i in range(count):
-            length = self.__get_size(offset)
-            self.__check_range(offset + size, length)
-            offsets[i] = offset + size
-            offset += size + length
+        if index == 0:
+            start = (count + 1) * size
+        else:
+            start = self.__get_size(position + index * size)
+        end = self.__get_size(position + (index + 1) * size)
+
+        return self.__item_offset(position, start, end)
+
+    # get_vector_offsets() and get_vector() read the ends at once and check
+    # each item inline, which took a third of the time that a read and a call
+    # for each item took: 6 µs against 16 µs for 100 items.
+
+    def get_vector_offsets(self, position: int) -> array[int]:
+        """Returns the position of every item of the vector at ``position``."""
+        ends = self.__get_item_ends(position)
+        offsets = array("I", bytes(len(ends) * SIZEOF_32))
+        length = self.__length
+
+        start = (len(ends) + 1) * self.__size
+        for i, end in enumerate(ends):
+            if start > end or position + end > length:
+                raise self.__item_error(position, start, end)
+
+            offsets[i] = position + start
+            start = end
 
         return offsets
 
     def get_vector(self, position: int) -> list[memoryview[int]]:
-        offsets = self.get_vector_offsets(position)
-        return [self.get_uint8_array(offset - self.__size) for offset in offsets]
+        """Returns the bytes of every item of the vector at ``position``, as
+        views of the buffer."""
+        ends = self.__get_item_ends(position)
+        view, length = self.__view, self.__length
+
+        vector: list[memoryview[int]] = []
+        start = (len(ends) + 1) * self.__size
+        for end in ends:
+            if start > end or position + end > length:
+                raise self.__item_error(position, start, end)
+
+            vector.append(view[position + start : position + end])
+            start = end
+
+        return vector
 
     def set_vector(self, vector: Sequence[Buffer]) -> None:
-        """Writes the number of items and then each item after its length."""
+        """Writes the number of items, the end of each, counted from the
+        vector's position, and then the items."""
         sources = [_byte_view(item) for item in vector]
-        lengths = [len(source) for source in sources]
+        # Item 0 starts after the count and the ends, and the last item ends
+        # at the vector's end, which is the largest end
+        first = self.__size * (1 + len(sources))
+        byte_length = first + sum(len(source) for source in sources)
 
-        # Check that the count and every item fit before writing any of them
-        self.__check_writable(self.__size * (1 + len(sources)) + sum(lengths))
+        # Check that the count, the ends and every item fit before writing
+        # any of them
+        self.__check_writable(byte_length)
         self.__check_size(len(sources))
-        self.__check_size(max(lengths, default=0))
+        self.__check_size(byte_length)
 
         self.__set_size(len(sources))
+
+        end = first
         for source in sources:
-            self.__set_size(len(source))
+            end += len(source)
+            self.__set_size(end)
+
+        for source in sources:
             self.__write(source)
 
     def __write(self, source: memoryview) -> None:
         end = self.__position + len(source)
         self.__view[self.__position : end] = source
         self.__position = end
+
+    def __get_item_ends(self, position: int) -> memoryview[int]:
+        """Returns the item ends of the vector at ``position``, once they're
+        checked to lie within the buffer, before anything is allocated for
+        the vector's untrusted count"""
+        size = self.__size
+        byte_length = self.__get_size(position) * size
+        start = self.__check_range(position + size, byte_length)
+
+        return from_little_endian(
+            _SIZE_CODES[size], self.__view[start : start + byte_length]
+        )
+
+    def __item_offset(self, position: int, start: int, end: int) -> int:
+        """Returns the position of a vector item, from ``start`` to ``end``
+        counted from the vector's ``position``, which lies within the buffer.
+        Raises ``DecodeError`` if the item starts after it ends, or ends past
+        the buffer."""
+        if start > end or position + end > self.__length:
+            raise self.__item_error(position, start, end)
+
+        return position + start
+
+    def __item_error(self, position: int, start: int, end: int) -> DecodeError:
+        """The error for a vector item that starts after it ends, or ends past
+        the buffer"""
+        if start > end:
+            return DecodeError(
+                f"The vector item at {position + start} ends before it starts, "
+                f"at {position + end}"
+            )
+
+        return out_of_range(position + start, end - start, self.__length)
 
     def __check_range(self, position: int, byte_length: int) -> int:
         """Returns ``position`` if ``byte_length`` bytes from it lie within the
@@ -486,12 +617,12 @@ class ByteBuffer:
             raise self.__overflow(byte_length)
 
     def __check_size(self, count: int) -> None:
-        """Raises ``ValueError`` if a count or length doesn't fit in a slot,
-        before anything is written."""
+        """Raises ``ValueError`` if a count, length or vector item end doesn't
+        fit in a slot, before anything is written."""
         if count > self.__max_size:
             raise ValueError(
                 f"Can't write {count} at {self.__position}: a {self.__size}-byte "
-                f"count or length holds at most {self.__max_size}"
+                f"count, length or item end holds at most {self.__max_size}"
             )
 
     def __overflow(self, byte_length: int) -> ValueError:
@@ -511,6 +642,24 @@ class ByteBuffer:
     def __set_size(self, value: int) -> None:
         self.__pack(self.__size_struct, value)
         self.__position += self.__size
+
+
+def struct_count(byte_length: int, size: int) -> int:
+    """Returns the number of structs of ``size`` bytes in ``byte_length``
+    bytes. Raises ``ValueError`` if ``size`` is less than 1, or the bytes
+    aren't a whole number of structs."""
+    _check_struct_size(size)
+    if byte_length % size != 0:
+        raise ValueError(
+            f"{byte_length} bytes aren't a whole number of {size}-byte structs"
+        )
+
+    return byte_length // size
+
+
+def _check_struct_size(size: int) -> None:
+    if size < 1:
+        raise ValueError(f"A struct's size must be a positive integer, not {size}")
 
 
 def _byte_view(buffer: Buffer) -> memoryview:
