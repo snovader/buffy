@@ -49,6 +49,9 @@ jobs:
       - name: Run type check
         run: yarn typecheck
 
+      - name: Check the package
+        run: yarn package:check
+
       - name: Vulnerability audit
         run: yarn npm audit -RA
 

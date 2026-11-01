@@ -6,17 +6,20 @@
     "core"
   ],
   "scripts": {
-    "conformance:generate": "node core/test/conformance/generate.ts",
+    "conformance:generate": "node --conditions=@buffy/source core/test/conformance/generate.ts",
     "format:check": "biome format .",
     "format:write": "yarn format:check --write",
     "lint:check": "biome lint .",
     "lint:write": "yarn lint:check --write",
+    "package:check": "yarn workspace @buffy/core pack -o ../.cache/buffy-core.tgz && attw --profile esm-only .cache/buffy-core.tgz && publint core && node core/test/dist.ts",
     "test": "vitest run",
     "typecheck": "tsc -b ./tsconfig.build.json"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@biomejs/biome": "^2.6.4",
     "@types/node": "^26.6.6",
+    "publint": "^0.3.25",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
