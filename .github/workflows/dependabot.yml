@@ -1,0 +1,33 @@
+name: Dependabot
+
+# Approves Dependabot's pull requests and turns on auto-merge, so that GitHub
+# merges each one once the checks that the main branch's ruleset requires pass
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    name: Auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          PR_HEAD_SHA: ${{github.event.pull_request.head.sha}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
