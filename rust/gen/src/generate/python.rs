@@ -336,22 +336,23 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         &[
             format!("Reads {} at `offset` in `data`.", article(name)),
             String::new(),
-            "Raises `DecodeError` if `data` ends before it does.".to_owned(),
+            "Raises `DecodeError` if `offset` is negative or `data` ends before it.".to_owned(),
         ],
     );
+    let does_not_fit = call(
+        "DecodeError",
+        vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
+    );
+    // unpack_from() counts a negative offset from the end of the data
+    writer.open("if offset < 0:");
+    writer.statement(&STYLE, "raise ", &does_not_fit, "");
+    writer.dedent();
+    writer.blank();
     writer.open("try:");
     writer.line("values = cls._STRUCT.unpack_from(data, offset)");
     writer.dedent();
     writer.open("except error as cause:");
-    writer.statement(
-        &STYLE,
-        "raise ",
-        &call(
-            "DecodeError",
-            vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
-        ),
-        " from cause",
-    );
+    writer.statement(&STYLE, "raise ", &does_not_fit, " from cause");
     writer.dedent();
     writer.blank();
     writer.line("return cls(*values)");
@@ -359,12 +360,35 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.blank();
 
     writer.open("def serialize(self) -> bytes:");
+    docstring(
+        writer,
+        &[
+            format!("Returns the bytes of {}.", article(name)),
+            String::new(),
+            "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
+        ],
+    );
     let fields = definition
         .fields
         .iter()
         .map(|field| text(format!("self.{}", identifier(&field.name))))
         .collect();
+    // struct raises its error for an integer out of range and OverflowError
+    // for a float too large, neither of which is the runtime's ValueError
+    writer.open("try:");
     writer.statement(&STYLE, "return ", &call("self._STRUCT.pack", fields), "");
+    writer.dedent();
+    writer.open("except (error, OverflowError) as cause:");
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call(
+            "ValueError",
+            vec![text(format!("\"{name}'s values don't fit its fields\""))],
+        ),
+        " from cause",
+    );
+    writer.dedent();
     writer.dedent();
     writer.dedent();
 }
