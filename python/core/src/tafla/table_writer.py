@@ -146,35 +146,102 @@ class TableWriter:
         # Only the root starts at 0, and only its offsets follow a header
         self.__slots = self.__header_size if parent == 0 else parent
 
+    # The scalar setters are written out, with the offset's write, since a
+    # shared helper's call made writing a Point a fifth slower. struct raises
+    # struct.error, which isn't a ValueError, or OverflowError for a float too
+    # large for a float32, which __scalar_error() turns into ValueError, as
+    # ByteBuffer does. It's the offset that doesn't fit when the table is
+    # longer than its offset size addresses.
+
     def set_int8(self, index: int, value: int) -> None:
-        self.__set_scalar(index, int8, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += int8.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_uint8(self, index: int, value: int) -> None:
-        self.__set_scalar(index, uint8, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += uint8.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_int16(self, index: int, value: int) -> None:
-        self.__set_scalar(index, int16, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += int16.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_uint16(self, index: int, value: int) -> None:
-        self.__set_scalar(index, uint16, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += uint16.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_int32(self, index: int, value: int) -> None:
-        self.__set_scalar(index, int32, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += int32.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_uint32(self, index: int, value: int) -> None:
-        self.__set_scalar(index, uint32, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += uint32.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_int64(self, index: int, value: int) -> None:
-        self.__set_scalar(index, int64, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += int64.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_uint64(self, index: int, value: int) -> None:
-        self.__set_scalar(index, uint64, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += uint64.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_float32(self, index: int, value: float) -> None:
-        self.__set_scalar(index, float32, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += float32.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     def set_float64(self, index: int, value: float) -> None:
-        self.__set_scalar(index, float64, value)
+        data = self.__data
+        offset = len(data) - self.__table
+        try:
+            self.__length.pack_into(data, self.__slots + index * self.__size, offset)
+            data += float64.pack(value)
+        except (StructError, OverflowError) as error:
+            raise self.__scalar_error(value, offset, error) from error
 
     # Each array is converted as TableBuilder converts it: a contiguous buffer
     # of the field's element type is copied as bytes, and anything else, such
@@ -274,19 +341,6 @@ class TableWriter:
         except StructError as error:
             raise self.__too_long() from error
 
-    def __set_scalar(self, index: int, struct: Struct, value: float) -> None:
-        """Writes a scalar after its offset. struct raises struct.error, which
-        isn't a ValueError, or OverflowError for a float too large for a
-        float32, as ``ByteBuffer`` reports them."""
-        self.__set_offset(index)
-
-        try:
-            self.__data += struct.pack(value)
-        except (StructError, OverflowError) as error:
-            raise ValueError(
-                f"Can't write {value!r} at {len(self.__data)}: {error}"
-            ) from error
-
     def __set_array(
         self,
         index: int,
@@ -329,6 +383,12 @@ class TableWriter:
             self.__data += self.__length.pack(count)
         except StructError as error:
             raise self.__too_long() from error
+
+    def __scalar_error(self, value: float, offset: int, error: Exception) -> ValueError:
+        if offset > self.__max_length:
+            return self.__too_long()
+
+        return ValueError(f"Can't write {value!r} at {len(self.__data)}: {error}")
 
     def __too_long(self) -> ValueError:
         """The error of an offset, count or item end that doesn't fit in the
