@@ -133,6 +133,38 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-isolation
         run: cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
 
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-workspaces: rust -> target
+          cache-key: benchmark
+
+      # Shared runners are too noisy for the numbers to mean much; these runs
+      # check that every codec in the comparison reads back what it wrote, and
+      # that the benchmarks work
+      - name: Run round-trip test
+        run: cargo test -p buffy-benchmarks --test round_trip
+
+      - name: Run benchmarks briefly
+        run: cargo bench -p buffy-benchmarks -- --warm-up-time 0.05 --measurement-time 0.05 --sample-size 10 --nresamples 1000
+
+      - name: Print the fastest samples
+        run: cargo run -p buffy-benchmarks --bin report
+
+      - name: Print encoded sizes
+        run: cargo run -p buffy-benchmarks --bin encoding
+
   wasm:
     name: WebAssembly
     runs-on: ubuntu-latest
@@ -167,7 +199,7 @@ jobs:
         run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
 
   dependabot:
-    needs: [formatting, lint, test, big-endian, wasm]
+    needs: [formatting, lint, test, big-endian, benchmark, wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
