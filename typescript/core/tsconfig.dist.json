@@ -1,0 +1,14 @@
+{
+    "extends": "../tsconfig.isomorphic.json",
+    "compilerOptions": {
+        "composite": false,
+        "declaration": true,
+        "emitDeclarationOnly": false,
+        "incremental": false,
+        "outDir": "./dist",
+        "rewriteRelativeImportExtensions": true,
+        "rootDir": "./source",
+        "target": "ES2022"
+    },
+    "include": ["./source/**/*"]
+}

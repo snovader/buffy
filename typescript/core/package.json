@@ -1,14 +1,55 @@
 {
   "name": "@buffy/core",
   "version": "0.0.0",
-  "private": true,
+  "description": "Binary tables of scalars, strings and typed arrays, read with bounds checks and zero-copy views",
+  "keywords": [
+    "binary",
+    "buffer",
+    "serialization",
+    "table",
+    "typed array",
+    "zero-copy"
+  ],
+  "license": "MIT",
+  "author": "snovader",
+  "homepage": "https://github.com/snovader/buffy/tree/main/typescript/core#readme",
+  "bugs": {
+    "url": "https://github.com/snovader/buffy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snovader/buffy.git",
+    "directory": "typescript/core"
+  },
   "type": "module",
-  "exports": "./source/index.ts",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "@buffy/source": "./source/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "imports": {
-    "#*": "./source/*.ts"
+    "#*": {
+      "@buffy/source": "./source/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p ./tsconfig.dist.json",
+    "prepack": "yarn build"
   },
   "devDependencies": {
     "@fast-check/vitest": "^0.5.0",
+    "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
