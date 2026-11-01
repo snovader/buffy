@@ -180,6 +180,47 @@ impl Schema {
             .max()
             .unwrap_or(1)
     }
+
+    /// The alignment that a parent pads a nested table to, so that its
+    /// arrays are aligned from the parent's start too: the largest alignment
+    /// of its arrays, of scalars and of structs, and of the tables nested in
+    /// it, or 1 if it has none. A vector's items aren't padded, so they don't
+    /// count.
+    pub fn table_alignment(&self, definition: &Definition) -> u8 {
+        let mut alignments = vec![None; self.definitions.len()];
+        self.alignment_within(definition, &mut alignments)
+    }
+
+    /// A table's alignment, with those of the tables nested in it by index
+    /// in `alignments` once they're known, since a table may nest another in
+    /// many fields, and that one the next, and so on
+    fn alignment_within(&self, definition: &Definition, alignments: &mut [Option<u8>]) -> u8 {
+        let mut largest = 1;
+        for field in &definition.fields {
+            let alignment = match field.field_type {
+                FieldType::Array(scalar) => scalar.size(),
+                FieldType::StructArray(index) => self.struct_alignment(self.definition(index)),
+                // Tables nest in place only acyclically, which the checker
+                // ensures, so this ends
+                FieldType::Table(index) => {
+                    if let Some(alignment) = alignments[index] {
+                        alignment
+                    } else {
+                        let alignment = self.alignment_within(self.definition(index), alignments);
+                        alignments[index] = Some(alignment);
+                        alignment
+                    }
+                }
+                FieldType::Scalar(_)
+                | FieldType::String
+                | FieldType::Struct(_)
+                | FieldType::Vector(_) => 1,
+            };
+            largest = largest.max(alignment);
+        }
+
+        largest
+    }
 }
 
 impl Definition {

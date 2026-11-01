@@ -1,0 +1,649 @@
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
+import { structCount } from './byteBuffer.ts';
+import {
+    setFloat32Elements,
+    setFloat64Elements,
+    setInt8Elements,
+    setInt16Elements,
+    setInt32Elements,
+    setInt64Elements,
+    setUint8Elements,
+    setUint16Elements,
+    setUint32Elements,
+    setUint64Elements
+} from './elements.ts';
+import { encodeInto, utf8Length } from './encoding.ts';
+import { headerLength, maxLength, TableLayout } from './layout.ts';
+import type { AddressableSpace, ElementSize } from './types.ts';
+
+/**
+ * Counts the bytes of a table, so that a {@link TableWriter} can write it
+ * into bytes of exactly that length. It's for code that knows a table's
+ * fields before it writes them, such as the code that tafla-gen generates,
+ * which writes tables without recording their fields as `TableBuilder` does.
+ *
+ * The fields are added in order, each with its type's method, which takes
+ * what decides its length: nothing for a scalar, the count of an array, the
+ * string itself. A nested table is added with `addTable()`, and a vector
+ * with `addVector()`, and the fields of each such table then follow between
+ * `startTable()` and `endTable()`. The sizer pads arrays and nested tables
+ * as `TableBuilder` does, so a writer that takes the same fields in the same
+ * order writes each where the sizer counted it.
+ */
+export class TableSizer {
+    readonly #layout: TableLayout;
+    readonly #version: number | undefined;
+    readonly #fields: number;
+    /** The width of offsets, lengths and header slots */
+    readonly #size: AddressableSpace;
+    /** The table's length so far, which is where the next field goes */
+    #position: number;
+    /** The start of the table being sized, which arrays are aligned from */
+    #table = 0;
+
+    /**
+     * @param fields - The number of fields that the table holds.
+     * @param layout - The table's header and offset width, which its readers
+     * must use too.
+     * @param version - The version that the writer writes to the header,
+     * required when the layout is versioned.
+     * @throws {TypeError} If `version` is given for a layout without a version
+     * slot, or missing for one with it.
+     * @throws {RangeError} If `version` isn't an integer that fits in the
+     * layout's offset size, or the header alone is longer than the layout
+     * addresses.
+     */
+    constructor(fields: number, layout?: TableLayout<false>);
+    constructor(fields: number, layout: TableLayout<true>, version: number);
+    constructor(
+        fields: number,
+        layout: TableLayout = TableLayout.DEFAULT,
+        version?: number
+    ) {
+        this.#layout = layout;
+        this.#version = version;
+        this.#fields = fields;
+        this.#size = layout.offsetSize();
+        this.#position = headerLength(fields, layout, version);
+    }
+
+    /**
+     * The byte length of the table, with every field added
+     *
+     * @throws {RangeError} If the table is longer than its layout's offsets
+     * address: 255 bytes, 64 KiB or 4 GiB.
+     */
+    byteLength(): number {
+        const length = this.#position;
+        if (!(length <= maxLength(this.#size))) {
+            throw new RangeError(
+                `The table's fields make it ${length} bytes, too long for ${this.#size}-byte offsets`
+            );
+        }
+
+        return length;
+    }
+
+    /**
+     * Returns a writer of the table, into new bytes of its length, which
+     * takes its fields in the order that they were added
+     *
+     * @throws {RangeError} If the table is longer than its layout's offsets
+     * address.
+     */
+    writer(): TableWriter {
+        const bytes = new Uint8Array(this.byteLength());
+
+        return this.#version === undefined
+            ? new TableWriter(
+                  bytes,
+                  this.#fields,
+                  this.#layout as TableLayout<false>
+              )
+            : new TableWriter(
+                  bytes,
+                  this.#fields,
+                  this.#layout as TableLayout<true>,
+                  this.#version
+              );
+    }
+
+    /**
+     * Starts the fields of a nested table or vector item of `fields` fields,
+     * after its parent's `addTable()` or `addVector()`.
+     *
+     * @returns The parent's start, which `endTable()` takes back.
+     */
+    startTable(fields: number): number {
+        const parent = this.#table;
+        this.#table = this.#position;
+        this.#position += fields * this.#size;
+
+        return parent;
+    }
+
+    /** Ends the fields of the table that `startTable()` started */
+    endTable(parent: number): void {
+        this.#table = parent;
+    }
+
+    addInt8(): void {
+        this.#position += SIZEOF_8;
+    }
+
+    addUint8(): void {
+        this.#position += SIZEOF_8;
+    }
+
+    addInt16(): void {
+        this.#position += SIZEOF_16;
+    }
+
+    addUint16(): void {
+        this.#position += SIZEOF_16;
+    }
+
+    addInt32(): void {
+        this.#position += SIZEOF_32;
+    }
+
+    addUint32(): void {
+        this.#position += SIZEOF_32;
+    }
+
+    addInt64(): void {
+        this.#position += SIZEOF_64;
+    }
+
+    addUint64(): void {
+        this.#position += SIZEOF_64;
+    }
+
+    addFloat32(): void {
+        this.#position += SIZEOF_32;
+    }
+
+    addFloat64(): void {
+        this.#position += SIZEOF_64;
+    }
+
+    addInt8Array(count: number): void {
+        this.#addArray(count * SIZEOF_8, SIZEOF_8);
+    }
+
+    addUint8Array(count: number): void {
+        this.#addArray(count * SIZEOF_8, SIZEOF_8);
+    }
+
+    addInt16Array(count: number): void {
+        this.#addArray(count * SIZEOF_16, SIZEOF_16);
+    }
+
+    addUint16Array(count: number): void {
+        this.#addArray(count * SIZEOF_16, SIZEOF_16);
+    }
+
+    addInt32Array(count: number): void {
+        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+    }
+
+    addUint32Array(count: number): void {
+        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+    }
+
+    addInt64Array(count: number): void {
+        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+    }
+
+    addUint64Array(count: number): void {
+        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+    }
+
+    addFloat32Array(count: number): void {
+        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+    }
+
+    addFloat64Array(count: number): void {
+        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+    }
+
+    /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
+    addString(string: string): void {
+        this.#position += this.#size + utf8Length(string);
+    }
+
+    /** Adds a struct of `size` bytes */
+    addStruct(size: number): void {
+        this.#position += size;
+    }
+
+    /**
+     * Adds `count` structs of `size` bytes, padded so that they start at a
+     * multiple of `alignment` from the start of the table
+     */
+    addStructArray(count: number, size: number, alignment: ElementSize): void {
+        this.#addArray(count * size, alignment);
+    }
+
+    /**
+     * Adds a nested table, padded to start at a multiple of `alignment`,
+     * whose fields then follow between `startTable()` and `endTable()`
+     */
+    addTable(alignment: ElementSize): void {
+        this.#position += padding(this.#position - this.#table, alignment);
+    }
+
+    /**
+     * Adds a vector of `count` tables, whose fields then follow, each
+     * between `startTable()` and `endTable()`
+     */
+    addVector(count: number): void {
+        this.#position += (count + 1) * this.#size;
+    }
+
+    /** Pads the array so that its elements, after the count, are aligned */
+    #addArray(byteLength: number, alignment: ElementSize): void {
+        const start = this.#position + this.#size;
+        this.#position =
+            start + padding(start - this.#table, alignment) + byteLength;
+    }
+}
+
+/**
+ * Writes a table forward into bytes of exactly its length, which a
+ * {@link TableSizer} counted, without recording its fields first as
+ * `TableBuilder` does. Its writer comes from `TableSizer.writer()`, and takes
+ * the fields that the sizer added, in the same order, each with its index in
+ * its table.
+ *
+ * Each field's offset is written as the writer reaches the field. A nested
+ * table follows its parent's `setTable()`, between `startTable()` and
+ * `endTable()`; the items of a vector follow its `setVector()` the same way,
+ * each followed by `setItemEnd()`, which writes where it ends. Arrays and
+ * nested tables are padded as `TableBuilder` pads them, so the two write the
+ * same bytes for the same fields.
+ *
+ * Typed arrays of a field's element type are copied as bytes; any other
+ * array-like, such as a `number[]` or a typed array of another type, is
+ * converted as the typed array's constructor would. Values that don't fit
+ * their type are written as `DataView`'s setters write them.
+ */
+export class TableWriter {
+    readonly #bytes: Uint8Array;
+    readonly #view: DataView;
+    /** The width of offsets, lengths and header slots */
+    readonly #size: AddressableSpace;
+    readonly #headerSize: number;
+    /** Where the next field goes */
+    #position: number;
+    /** The start of the table being written, which its offsets count from */
+    #table = 0;
+    /** The position of that table's first offset, after the root's header */
+    #slots: number;
+
+    /**
+     * Writes the header of a table of `fields` fields into `bytes`, which
+     * must be new, and as long as the table, as `TableSizer.writer()` makes
+     * them.
+     *
+     * @throws {TypeError} If `version` is given for a layout without a version
+     * slot, or missing for one with it.
+     * @throws {RangeError} If `version` doesn't fit in the layout's offset
+     * size, or `bytes` are longer than the layout addresses.
+     */
+    constructor(bytes: Uint8Array, fields: number, layout?: TableLayout<false>);
+    constructor(
+        bytes: Uint8Array,
+        fields: number,
+        layout: TableLayout<true>,
+        version: number
+    );
+    constructor(
+        bytes: Uint8Array,
+        fields: number,
+        layout: TableLayout = TableLayout.DEFAULT,
+        version?: number
+    ) {
+        const size = layout.offsetSize();
+        const header = headerLength(fields, layout, version);
+        if (!(bytes.length <= maxLength(size))) {
+            throw new RangeError(
+                `A table of ${bytes.length} bytes is too long for ${size}-byte offsets`
+            );
+        }
+
+        this.#bytes = bytes;
+        this.#view = new DataView(
+            bytes.buffer,
+            bytes.byteOffset,
+            bytes.byteLength
+        );
+        this.#size = size;
+        this.#headerSize = layout.headerSize();
+        this.#slots = this.#headerSize;
+        this.#position = header;
+
+        let slot = 0;
+        if (layout.sized()) {
+            this.#setLength(slot, bytes.length);
+            slot += size;
+        }
+
+        if (version !== undefined) {
+            this.#setLength(slot, version);
+        }
+    }
+
+    /**
+     * Returns the table's bytes.
+     *
+     * @throws {RangeError} If the fields didn't fill the bytes, as when they
+     * differ from those that the sizer counted.
+     */
+    bytes(): Uint8Array {
+        if (this.#position !== this.#bytes.length) {
+            throw new RangeError(
+                `The fields wrote ${this.#position} of the table's ${this.#bytes.length} bytes`
+            );
+        }
+
+        return this.#bytes;
+    }
+
+    /**
+     * Starts the fields of a nested table or vector item of `fields` fields,
+     * after its parent's `setTable()` or `setVector()`.
+     *
+     * @returns The parent's start, which `endTable()` takes back.
+     */
+    startTable(fields: number): number {
+        const parent = this.#table;
+        this.#table = this.#position;
+        this.#slots = this.#position;
+        this.#position += fields * this.#size;
+
+        return parent;
+    }
+
+    /** Ends the fields of the table that `startTable()` started */
+    endTable(parent: number): void {
+        this.#table = parent;
+        // Only the root starts at 0, and only its offsets follow a header
+        this.#slots = parent === 0 ? this.#headerSize : parent;
+    }
+
+    setInt8(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setInt8(this.#position, value);
+        this.#position += SIZEOF_8;
+    }
+
+    setUint8(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setUint8(this.#position, value);
+        this.#position += SIZEOF_8;
+    }
+
+    setInt16(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setInt16(this.#position, value, true);
+        this.#position += SIZEOF_16;
+    }
+
+    setUint16(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setUint16(this.#position, value, true);
+        this.#position += SIZEOF_16;
+    }
+
+    setInt32(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setInt32(this.#position, value, true);
+        this.#position += SIZEOF_32;
+    }
+
+    setUint32(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setUint32(this.#position, value, true);
+        this.#position += SIZEOF_32;
+    }
+
+    setInt64(index: number, value: bigint): void {
+        this.#setOffset(index);
+        this.#view.setBigInt64(this.#position, value, true);
+        this.#position += SIZEOF_64;
+    }
+
+    setUint64(index: number, value: bigint): void {
+        this.#setOffset(index);
+        this.#view.setBigUint64(this.#position, value, true);
+        this.#position += SIZEOF_64;
+    }
+
+    setFloat32(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setFloat32(this.#position, value, true);
+        this.#position += SIZEOF_32;
+    }
+
+    setFloat64(index: number, value: number): void {
+        this.#setOffset(index);
+        this.#view.setFloat64(this.#position, value, true);
+        this.#position += SIZEOF_64;
+    }
+
+    setInt8Array(index: number, values: ArrayLike<number> | Int8Array): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_8);
+
+        setInt8Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_8;
+    }
+
+    setUint8Array(index: number, values: ArrayLike<number> | Uint8Array): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_8);
+
+        setUint8Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_8;
+    }
+
+    setInt16Array(index: number, values: ArrayLike<number> | Int16Array): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_16);
+
+        setInt16Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_16;
+    }
+
+    setUint16Array(
+        index: number,
+        values: ArrayLike<number> | Uint16Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_16);
+
+        setUint16Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_16;
+    }
+
+    setInt32Array(index: number, values: ArrayLike<number> | Int32Array): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_32);
+
+        setInt32Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_32;
+    }
+
+    setUint32Array(
+        index: number,
+        values: ArrayLike<number> | Uint32Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_32);
+
+        setUint32Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_32;
+    }
+
+    setInt64Array(
+        index: number,
+        values: ArrayLike<bigint> | BigInt64Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_64);
+
+        setInt64Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_64;
+    }
+
+    setUint64Array(
+        index: number,
+        values: ArrayLike<bigint> | BigUint64Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_64);
+
+        setUint64Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_64;
+    }
+
+    setFloat32Array(
+        index: number,
+        values: ArrayLike<number> | Float32Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_32);
+
+        setFloat32Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_32;
+    }
+
+    setFloat64Array(
+        index: number,
+        values: ArrayLike<number> | Float64Array
+    ): void {
+        const count = values.length;
+        this.#startArray(index, count, SIZEOF_64);
+
+        setFloat64Elements(this.#bytes, this.#position, values);
+        this.#position += count * SIZEOF_64;
+    }
+
+    /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
+    setString(index: number, string: string): void {
+        this.#setOffset(index);
+
+        const start = this.#position + this.#size;
+        const length = encodeInto(string, this.#bytes.subarray(start));
+        this.#setLength(this.#position, length);
+        this.#position = start + length;
+    }
+
+    /**
+     * Writes a struct field from its bytes: its scalars, little-endian, one
+     * after another, without padding
+     */
+    setStruct(index: number, bytes: Uint8Array): void {
+        this.#setOffset(index);
+
+        this.#bytes.set(bytes, this.#position);
+        this.#position += bytes.length;
+    }
+
+    /**
+     * Writes an array of structs of `size` bytes each, from their bytes one
+     * after another, padded so that they start at a multiple of `alignment`
+     * from the start of the table
+     *
+     * @throws {RangeError} If `size` isn't a positive integer, or `bytes`
+     * aren't a whole number of structs.
+     */
+    setStructArray(
+        index: number,
+        bytes: Uint8Array,
+        size: number,
+        alignment: ElementSize
+    ): void {
+        this.#startArray(index, structCount(bytes.length, size), alignment);
+
+        this.#bytes.set(bytes, this.#position);
+        this.#position += bytes.length;
+    }
+
+    /**
+     * Writes the offset of a nested table, padded to start at a multiple of
+     * `alignment`, whose fields then follow between `startTable()` and
+     * `endTable()`
+     */
+    setTable(index: number, alignment: ElementSize): void {
+        this.#position += padding(this.#position - this.#table, alignment);
+        this.#setOffset(index);
+    }
+
+    /**
+     * Writes the offset and count of a vector of `count` tables, whose items
+     * then follow, each between `startTable()` and `endTable()` and then
+     * `setItemEnd()`.
+     *
+     * @returns The vector's position, which `setItemEnd()` takes.
+     */
+    setVector(index: number, count: number): number {
+        this.#setOffset(index);
+
+        const vector = this.#position;
+        this.#setLength(vector, count);
+        this.#position += (count + 1) * this.#size;
+
+        return vector;
+    }
+
+    /** Writes the end of item `item` of the vector, which was just written */
+    setItemEnd(vector: number, item: number): void {
+        this.#setLength(
+            vector + (item + 1) * this.#size,
+            this.#position - vector
+        );
+    }
+
+    /** Pads the array so that its elements, after the count, are aligned */
+    #startArray(index: number, count: number, alignment: ElementSize): void {
+        this.#position += padding(
+            this.#position + this.#size - this.#table,
+            alignment
+        );
+        this.#setOffset(index);
+        this.#setLength(this.#position, count);
+        this.#position += this.#size;
+    }
+
+    #setOffset(index: number): void {
+        this.#setLength(
+            this.#slots + index * this.#size,
+            this.#position - this.#table
+        );
+    }
+
+    /** Writes an offset, length, count or header slot at `position` */
+    #setLength(position: number, value: number): void {
+        switch (this.#size) {
+            case SIZEOF_8:
+                this.#view.setUint8(position, value);
+                break;
+
+            case SIZEOF_16:
+                this.#view.setUint16(position, value, true);
+                break;
+
+            case SIZEOF_32:
+                this.#view.setUint32(position, value, true);
+                break;
+        }
+    }
+}
+
+/** The bytes that bring `offset` to a multiple of `alignment` */
+function padding(offset: number, alignment: ElementSize): number {
+    const remainder = offset % alignment;
+    return remainder === 0 ? 0 : alignment - remainder;
+}

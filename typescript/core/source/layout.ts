@@ -1,4 +1,4 @@
-import { SIZEOF_32 } from './constants.ts';
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
 import type { AddressableSpace } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
@@ -75,4 +75,67 @@ export class TableLayout<Versioned extends boolean = boolean> {
             this.#offsetSize
         );
     }
+}
+
+/**
+ * The byte length of the header of a table of `fields` fields in `layout`,
+ * whose writer puts `version` in the header
+ *
+ * @throws {TypeError} If `version` is given for a layout without a version
+ * slot, or missing for one with it.
+ * @throws {RangeError} If `version` isn't an integer that fits in the
+ * layout's offset size, or the header alone is longer than the layout
+ * addresses.
+ */
+export function headerLength(
+    fields: number,
+    layout: TableLayout,
+    version: number | undefined
+): number {
+    const size = layout.offsetSize();
+
+    if (layout.versioned() !== (version !== undefined)) {
+        throw new TypeError(
+            layout.versioned()
+                ? 'A versioned layout needs a version'
+                : 'The layout has no version slot'
+        );
+    }
+
+    if (version !== undefined && !fitsIn(version, size)) {
+        throw new RangeError(
+            `Version ${version} doesn't fit in a ${size}-byte slot`
+        );
+    }
+
+    const length = layout.headerSize() + fields * size;
+    if (!(length <= maxLength(size))) {
+        throw new RangeError(
+            `A header of ${fields} fields doesn't fit in ${size}-byte offsets`
+        );
+    }
+
+    return length;
+}
+
+/**
+ * The longest table that offsets of `size` bytes address, which is also the
+ * largest number that they hold unsigned, without a power
+ */
+export function maxLength(size: AddressableSpace): number {
+    switch (size) {
+        case SIZEOF_8:
+            return 0xff;
+
+        case SIZEOF_16:
+            return 0xffff;
+
+        case SIZEOF_32:
+            return 0xffff_ffff;
+    }
+}
+
+/** Whether `value` is a whole number that `size` bytes hold unsigned */
+function fitsIn(value: number, size: AddressableSpace): boolean {
+    return Number.isInteger(value) && value >= 0 && value <= maxLength(size);
 }
