@@ -6,9 +6,10 @@
 use std::fmt::Write;
 
 use super::java_package::KEYWORDS;
-use super::writer::{CodeWriter, Style, call, camel_case, doc_comment, text};
+use super::writer::{CodeWriter, Style, call, doc_comment, text};
 use super::{GeneratedFile, JavaPackage, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "io.github.snovader.buffy";
