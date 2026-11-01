@@ -6,10 +6,11 @@ table's description in `cases.json`, and rebuilds it with its own
 `TableBuilder`, byte for byte. Corrupted and truncated tables must fail with a
 decode error. That makes "one format, several implementations" a checked claim.
 
-| Implementation | Test                                                   |
-| -------------- | ------------------------------------------------------ |
-| TypeScript     | `typescript/core/test/conformance/conformance.test.ts` |
-| Python         | `python/core/tests/test_conformance.py`                |
+| Implementation | Test                                                                         |
+| -------------- | ---------------------------------------------------------------------------- |
+| TypeScript     | `typescript/core/test/conformance/conformance.test.ts`                       |
+| Python         | `python/core/tests/test_conformance.py`                                      |
+| Java           | `java/core/src/test/java/io/github/snovader/buffy/test/ConformanceTest.java` |
 
 Each language's CI runs its test when this directory changes.
 
