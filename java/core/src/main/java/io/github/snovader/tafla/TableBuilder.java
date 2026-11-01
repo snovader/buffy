@@ -27,7 +27,7 @@ public final class TableBuilder {
      */
     private static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
 
-    private static final List<Consumer<ByteBuffer>> NO_WRITERS = List.of();
+    private static final Consumer<ByteBuffer>[] NO_WRITERS = newWriters(0);
 
     private @Nullable ByteBuffer buffer;
 
@@ -35,7 +35,7 @@ public final class TableBuilder {
     private final long version;
     /** The width of offsets, lengths and header slots */
     private final AddressableSpace size;
-    private final int fields;
+    private int fieldsSet;
     /** The longest table that the layout's offsets and lengths address */
     private final long maxLength;
     /** The table's length so far, which is where the next field goes */
@@ -50,7 +50,7 @@ public final class TableBuilder {
     // value. A writer captures a scalar without boxing it.
     private final int[] positions;
     private final int[] paddings;
-    private List<Consumer<ByteBuffer>> writers;
+    private Consumer<ByteBuffer>[] writers;
 
     /** Builds a table of {@link TableLayout#DEFAULT}, such as one to nest in another */
     public TableBuilder(int fields) {
@@ -99,7 +99,6 @@ public final class TableBuilder {
         this.layout = layout;
         this.version = version;
         this.size = size;
-        this.fields = fields;
         this.maxLength = Math.min(size.maxValue(), MAX_ARRAY_LENGTH);
 
         var headerLength = layout.headerSize() + (long) fields * size.valueOf();
@@ -112,7 +111,7 @@ public final class TableBuilder {
         this.offset = (int) headerLength;
         this.positions = new int[fields];
         this.paddings = new int[fields];
-        this.writers = new ArrayList<>(fields);
+        this.writers = newWriters(fields);
     }
 
     /**
@@ -126,9 +125,9 @@ public final class TableBuilder {
             return buffer.bytes();
         }
 
-        if (writers.size() != fields) {
+        if (fieldsSet != positions.length) {
             throw new IllegalStateException(
-                String.format("Only %d of the table's %d fields were set", writers.size(), fields)
+                String.format("Only %d of the table's %d fields were set", fieldsSet, positions.length)
             );
         }
 
@@ -318,6 +317,11 @@ public final class TableBuilder {
         addField(byteLength, 0, buffer -> buffer.setVector(items));
     }
 
+    @SuppressWarnings("unchecked")
+    private static Consumer<ByteBuffer>[] newWriters(int fields) {
+        return (Consumer<ByteBuffer>[]) new Consumer<?>[fields];
+    }
+
     /** Pads the array so that its elements, after the length, are aligned */
     private void addArray(int length, int elementSize, Consumer<ByteBuffer> writer) {
         var padding = paddingTo(offset + size.valueOf(), elementSize);
@@ -336,12 +340,12 @@ public final class TableBuilder {
      */
     private static int lengthOf(TableBuilder table) {
         // A finalized builder had all its fields set, and released its writers
-        if (table.buffer == null && table.writers.size() != table.fields) {
+        if (table.buffer == null && table.fieldsSet != table.positions.length) {
             throw new IllegalArgumentException(
                 String.format(
                     "Only %d of the nested table's %d fields were set",
-                    table.writers.size(),
-                    table.fields
+                    table.fieldsSet,
+                    table.positions.length
                 )
             );
         }
@@ -364,10 +368,10 @@ public final class TableBuilder {
             throw new IllegalStateException("The table was already written");
         }
 
-        var index = writers.size();
-        if (index == fields) {
+        var index = fieldsSet;
+        if (index == positions.length) {
             throw new IllegalStateException(
-                String.format("Can't add field %d to a table of %d", fields + 1, fields)
+                String.format("Can't add field %d to a table of %d", positions.length + 1, positions.length)
             );
         }
 
@@ -378,7 +382,8 @@ public final class TableBuilder {
 
         positions[index] = offset + padding;
         paddings[index] = padding;
-        writers.add(writer);
+        writers[index] = writer;
+        fieldsSet = index + 1;
 
         offset = (int) length;
     }
@@ -413,16 +418,16 @@ public final class TableBuilder {
             buffer.setVersion(version);
         }
 
-        for (int i = 0; i < fields; i++) {
+        for (int i = 0; i < positions.length; i++) {
             buffer.setOffset(positions[i]);
         }
 
-        for (int i = 0; i < fields; i++) {
+        for (int i = 0; i < positions.length; i++) {
             if (paddings[i] > 0) {
                 buffer.setPadding(paddings[i]);
             }
 
-            writers.get(i).accept(buffer);
+            writers[i].accept(buffer);
         }
     }
 
