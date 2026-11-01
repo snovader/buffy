@@ -1,0 +1,24 @@
+{
+  "name": "buffy-typescript",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "core"
+  ],
+  "scripts": {
+    "conformance:generate": "node core/test/conformance/generate.ts",
+    "format:check": "biome format .",
+    "format:write": "yarn format:check --write",
+    "lint:check": "biome lint .",
+    "lint:write": "yarn lint:check --write",
+    "test": "vitest run",
+    "typecheck": "tsc -b ./tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

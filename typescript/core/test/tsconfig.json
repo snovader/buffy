@@ -1,0 +1,9 @@
+{
+    "extends": "../../tsconfig.isomorphic.json",
+    "compilerOptions": {
+        "outDir": "../../.cache/typescript/core/test"
+    },
+    "include": ["."],
+    "exclude": ["conformance"],
+    "references": [{ "path": ".." }]
+}

@@ -7,3 +7,14 @@ updates:
       - "/.github/workflows"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "npm"
+    directory: "/typescript"
+    schedule:
+      interval: "daily"
+    groups:
+      "vitest":
+        patterns:
+          - "vite"
+          - "vitest"
+          - "@vitest/*"
