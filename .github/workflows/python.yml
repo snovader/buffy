@@ -102,6 +102,37 @@ jobs:
       - name: Run benchmarks' tests
         run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks
 
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      - name: Build the package
+        run: uv build --package buffy-core
+
+      - name: Check the package's metadata
+        run: uvx twine check --strict dist/*
+
+      # The wheel installed on its own, as from PyPI, rather than the workspace's source
+      - name: Run the package's example from the wheel
+        run: >-
+          uv run --isolated --no-project --with dist/*.whl
+          python -I -c "import doctest, buffy_core; result = doctest.testmod(buffy_core); assert result.attempted and not result.failed, result"
+
   benchmark:
     name: Benchmark
     needs: changes
@@ -137,7 +168,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Python.
   checks:
     name: Python checks
-    needs: [changes, verify, test, benchmark]
+    needs: [changes, verify, test, package, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

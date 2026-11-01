@@ -27,6 +27,10 @@ messages and tables into code that writes and reads them with a language's
 runtime. It's written in Rust, and the packages for the other languages run it
 as WebAssembly.
 
+The runtimes are released together, with one version.
+[RELEASING.md](RELEASING.md) describes how, and the setup that releases need
+on each registry.
+
 ## Repository
 
 | Directory      | Contents                                                                                       |

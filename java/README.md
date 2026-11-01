@@ -19,9 +19,15 @@ and NullAway. Run the commands below from this directory.
 ./gradlew javadoc
 ```
 
+`./gradlew javadoc` fails on any warning of the runtime's documentation, such
+as a public member without a comment or a parameter without a tag.
 `./gradlew test -PtestJavaVersion=21` runs the tests in Java 21 rather than 25.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
+
+`./gradlew :core:publishToMavenLocal` publishes the runtime's jar, sources,
+documentation and POM to the local Maven repository, unsigned without the
+release's signing key, which RELEASING.md describes.
 
 The test module holds the Java that buffy-gen generates from the example
 schemas in `schemas/`, in a package of each schema,

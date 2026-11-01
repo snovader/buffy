@@ -52,12 +52,18 @@ public final class TableBuilder {
     private final int[] paddings;
     private List<Consumer<ByteBuffer>> writers;
 
-    /** Builds a table of {@link TableLayout#DEFAULT}, such as one to nest in another */
+    /**
+     * Builds a table of {@link TableLayout#DEFAULT}, such as one to nest in another.
+     *
+     * @param fields the number of fields that the table will hold
+     */
     public TableBuilder(int fields) {
         this(fields, TableLayout.DEFAULT);
     }
 
     /**
+     * Builds a table of a layout without a version.
+     *
      * @param fields the number of fields that the table will hold
      * @param layout the table's header and offset width, which its readers must use too
      * @throws IllegalArgumentException if the layout is versioned, or the header alone is longer
@@ -68,6 +74,10 @@ public final class TableBuilder {
     }
 
     /**
+     * Builds a table of a versioned layout, with its version in the header.
+     *
+     * @param fields the number of fields that the table will hold
+     * @param layout the table's header and offset width, which its readers must use too
      * @param version the version to write to the header. Readers can check it with
      *     {@link ByteBuffer#getVersion()} before reading any field.
      * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
@@ -118,6 +128,7 @@ public final class TableBuilder {
     /**
      * Writes the table, once; later calls return the same bytes.
      *
+     * @return the table's bytes
      * @throws IllegalStateException if fewer fields were set than the table holds
      */
     public byte[] bytes() {
@@ -142,89 +153,201 @@ public final class TableBuilder {
         return buffer.bytes();
     }
 
+    /**
+     * Sets the next field to an {@code int8}.
+     *
+     * @param value the field's value
+     */
     public void setInt8(byte value) {
         addField(Byte.BYTES, 0, buffer -> buffer.setInt8(value));
     }
 
+    /**
+     * Sets the next field to a {@code uint8}, the low 8 bits of {@code value}.
+     *
+     * @param value the field's value
+     */
     public void setUint8(short value) {
         addField(Byte.BYTES, 0, buffer -> buffer.setUint8(value));
     }
 
+    /**
+     * Sets the next field to an {@code int16}.
+     *
+     * @param value the field's value
+     */
     public void setInt16(short value) {
         addField(Short.BYTES, 0, buffer -> buffer.setInt16(value));
     }
 
+    /**
+     * Sets the next field to a {@code uint16}, the low 16 bits of {@code value}.
+     *
+     * @param value the field's value
+     */
     public void setUint16(int value) {
         addField(Short.BYTES, 0, buffer -> buffer.setUint16(value));
     }
 
+    /**
+     * Sets the next field to an {@code int32}.
+     *
+     * @param value the field's value
+     */
     public void setInt32(int value) {
         addField(Integer.BYTES, 0, buffer -> buffer.setInt32(value));
     }
 
+    /**
+     * Sets the next field to a {@code uint32}, the low 32 bits of {@code value}.
+     *
+     * @param value the field's value
+     */
     public void setUint32(long value) {
         addField(Integer.BYTES, 0, buffer -> buffer.setUint32(value));
     }
 
+    /**
+     * Sets the next field to an {@code int64}.
+     *
+     * @param value the field's value
+     */
     public void setInt64(long value) {
         addField(Long.BYTES, 0, buffer -> buffer.setInt64(value));
     }
 
-    /** Sets a {@code uint64} from a {@code long} with its bits */
+    /**
+     * Sets the next field to a {@code uint64}, from a {@code long} with its bits.
+     *
+     * @param value the field's value
+     */
     public void setUint64(long value) {
         addField(Long.BYTES, 0, buffer -> buffer.setUint64(value));
     }
 
+    /**
+     * Sets the next field to a {@code float32}.
+     *
+     * @param value the field's value
+     */
     public void setFloat32(float value) {
         addField(Float.BYTES, 0, buffer -> buffer.setFloat32(value));
     }
 
+    /**
+     * Sets the next field to a {@code float64}.
+     *
+     * @param value the field's value
+     */
     public void setFloat64(double value) {
         addField(Double.BYTES, 0, buffer -> buffer.setFloat64(value));
     }
 
+    /**
+     * Sets the next field to an array of {@code int8}s. The table copies {@code values} when it's
+     * written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setInt8Array(byte[] values) {
         addArray(values.length, Byte.BYTES, buffer -> buffer.setInt8Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code uint8}s, the low 8 bits of each value. The table
+     * copies {@code values} when it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setUint8Array(short[] values) {
         addArray(values.length, Byte.BYTES, buffer -> buffer.setUint8Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code int16}s. The table copies {@code values} when it's
+     * written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setInt16Array(short[] values) {
         addArray(values.length, Short.BYTES, buffer -> buffer.setInt16Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code uint16}s, the low 16 bits of each value. The table
+     * copies {@code values} when it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setUint16Array(int[] values) {
         addArray(values.length, Short.BYTES, buffer -> buffer.setUint16Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code int32}s. The table copies {@code values} when it's
+     * written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setInt32Array(int[] values) {
         addArray(values.length, Integer.BYTES, buffer -> buffer.setInt32Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code uint32}s, the low 32 bits of each value. The table
+     * copies {@code values} when it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setUint32Array(long[] values) {
         addArray(values.length, Integer.BYTES, buffer -> buffer.setUint32Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code int64}s. The table copies {@code values} when it's
+     * written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setInt64Array(long[] values) {
         addArray(values.length, Long.BYTES, buffer -> buffer.setInt64Array(values));
     }
 
-    /** Sets {@code uint64}s from {@code long}s with their bits */
+    /**
+     * Sets the next field to an array of {@code uint64}s, from {@code long}s with their bits. The
+     * table copies {@code values} when it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setUint64Array(long[] values) {
         addArray(values.length, Long.BYTES, buffer -> buffer.setUint64Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code float32}s. The table copies {@code values} when
+     * it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setFloat32Array(float[] values) {
         addArray(values.length, Float.BYTES, buffer -> buffer.setFloat32Array(values));
     }
 
+    /**
+     * Sets the next field to an array of {@code float64}s. The table copies {@code values} when
+     * it's written, so they must not change until then.
+     *
+     * @param values the array's elements
+     */
     public void setFloat64Array(double[] values) {
         addArray(values.length, Double.BYTES, buffer -> buffer.setFloat64Array(values));
     }
 
-    /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
+    /**
+     * Sets the next field to {@code string} as UTF-8, with lone surrogates replaced by U+FFFD.
+     *
+     * @param string the field's value
+     */
     public void setString(String string) {
         var utf8 = Utf8.encode(string);
         addField(size.valueOf() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
@@ -234,6 +357,7 @@ public final class TableBuilder {
      * Embeds a table from its builder, padded to the largest element size of its arrays and the
      * alignment of its nested tables, or not at all if it has neither.
      *
+     * @param table the nested table's builder
      * @throws IllegalArgumentException if the builder has fields left to set
      * @see #setTable(TableBuilder, int)
      */
@@ -250,6 +374,7 @@ public final class TableBuilder {
      * table, without bytes of its own, so its arrays must not change until then either. It can
      * still be written itself or nested elsewhere too, since a complete builder doesn't change.</p>
      *
+     * @param table the nested table's builder
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
      * @throws IllegalArgumentException if the builder has fields left to set
      */
@@ -263,6 +388,7 @@ public final class TableBuilder {
      * Embeds a table from its bytes, padded to start at a multiple of 4, which suits tables of 8-,
      * 16- and 32-bit elements.
      *
+     * @param table the nested table's bytes
      * @see #setTable(byte[], int)
      */
     public void setTable(byte[] table) {
@@ -278,6 +404,7 @@ public final class TableBuilder {
      * multiple of {@code alignment}, which keeps them aligned in this table too. Pass 8 for a table
      * with 64-bit arrays.</p>
      *
+     * @param table the nested table's bytes
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
      */
     public void setTable(byte[] table, int alignment) {
@@ -292,6 +419,7 @@ public final class TableBuilder {
      * {@link #setTable(TableBuilder)} writes them, except for those whose layout has another
      * offset size, which are written to their own bytes and copied. Items aren't padded.
      *
+     * @param tables the builder of each item
      * @throws IllegalArgumentException if a builder has fields left to set
      */
     public void setVector(List<TableBuilder> tables) {
@@ -306,7 +434,11 @@ public final class TableBuilder {
         addField(byteLength, 0, buffer -> writeVector(buffer, items));
     }
 
-    /** Writes a vector of tables from their bytes, each with a length prefix */
+    /**
+     * Writes a vector of tables from their bytes, each with a length prefix.
+     *
+     * @param tables the bytes of each item
+     */
     public void setVector(byte[][] tables) {
         var items = tables.clone();
 

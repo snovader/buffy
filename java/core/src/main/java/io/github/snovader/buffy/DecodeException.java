@@ -13,10 +13,22 @@ package io.github.snovader.buffy;
  * all have to declare it.</p>
  */
 public class DecodeException extends RuntimeException {
+    /**
+     * Creates the exception of a read that failed.
+     *
+     * @param message what was read, where, and why it failed
+     */
     public DecodeException(String message) {
         super(message);
     }
 
+    /**
+     * Creates the exception of a read that failed with another exception, such as the
+     * {@link java.nio.charset.CharacterCodingException} of a string that isn't valid UTF-8.
+     *
+     * @param message what was read, where, and why it failed
+     * @param cause the exception that the read failed with
+     */
     public DecodeException(String message, Throwable cause) {
         super(message, cause);
     }

@@ -122,6 +122,39 @@ jobs:
       - name: Run tests
         run: cargo +${{ matrix.toolchain }} test
 
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, whose target directory could hold packages of other
+      # versions
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      # Packages buffy-core as crates.io would receive it, and builds that
+      - name: Package the runtime
+        run: cargo package -p buffy-core --locked
+
+      # Outside the workspace, as from crates.io, without the conformance
+      # suite's test, which reads files the package doesn't hold
+      - name: Test the packaged crate
+        run: |
+          mkdir "$RUNNER_TEMP/package"
+          tar -xzf target/package/buffy-core-*.crate -C "$RUNNER_TEMP/package"
+          cd "$RUNNER_TEMP"/package/buffy-core-*
+          cargo test --locked
+
   big-endian:
     name: Test (big-endian, Miri)
     needs: changes
@@ -228,7 +261,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Rust.
   checks:
     name: Rust checks
-    needs: [changes, formatting, lint, test, big-endian, benchmark, wasm]
+    needs: [changes, formatting, lint, test, package, big-endian, benchmark, wasm]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

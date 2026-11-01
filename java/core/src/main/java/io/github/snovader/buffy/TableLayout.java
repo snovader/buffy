@@ -79,7 +79,12 @@ public final class TableLayout {
 
         private Builder() {}
 
-        /** Whether the header starts with the table's total byte length, which is false by default */
+        /**
+         * Whether the header starts with the table's total byte length, which is false by default
+         *
+         * @param sized whether it does
+         * @return this builder
+         */
         public Builder sized(boolean sized) {
             this.sized = sized;
             return this;
@@ -89,6 +94,9 @@ public final class TableLayout {
          * Whether the header has a slot for a version, after the length when sized, which is false by
          * default. Readers can check it before reading any field, and a {@link TableBuilder} of the
          * layout needs a version to write to it.
+         *
+         * @param versioned whether it has one
+         * @return this builder
          */
         public Builder versioned(boolean versioned) {
             this.versioned = versioned;
@@ -100,12 +108,16 @@ public final class TableLayout {
          * size: {@link AddressableSpace#SIZEOF_8} for up to 255 bytes,
          * {@link AddressableSpace#SIZEOF_16} for 65,535, and {@link AddressableSpace#SIZEOF_32}, the
          * default, for as long as a Java array can be, about 2 GiB.
+         *
+         * @param offsetSize the width
+         * @return this builder
          */
         public Builder offsetSize(AddressableSpace offsetSize) {
             this.offsetSize = Objects.requireNonNull(offsetSize);
             return this;
         }
 
+        /** {@return the layout of the options set so far} */
         public TableLayout build() {
             return new TableLayout(sized, versioned, offsetSize);
         }

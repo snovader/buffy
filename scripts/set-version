@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Sets the version of every package of buffy, which are released together.
+
+    scripts/set-version 1.2.3          sets it in every manifest, and in the lockfiles
+    scripts/set-version --check 1.2.3  checks that every manifest and lockfile has it
+    scripts/set-version --check        checks that they all have the same version
+
+Versions are X.Y.Z, which every registry reads the same way. It needs only
+Python's standard library, from Python 3.10.
+"""
+
+import argparse
+import re
+import sys
+from pathlib import Path
+from typing import NamedTuple
+
+ROOT = Path(__file__).resolve().parent.parent
+
+VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+
+
+class VersionField(NamedTuple):
+    """Where a file holds a package's version: the pattern's one group, which
+    must match exactly once"""
+
+    path: str
+    pattern: re.Pattern[str]
+
+
+def table_field(table: str) -> re.Pattern[str]:
+    """The version key of a TOML table, before the next table starts"""
+    return re.compile(rf'^\[{table}\]\n(?:(?!\[).*\n)*?version = "([^"\n]*)"$', re.M)
+
+
+def lockfile_entry(name: str) -> re.Pattern[str]:
+    """The version of a package's entry in uv.lock or Cargo.lock"""
+    return re.compile(
+        rf'^\[\[package\]\]\nname = "{name}"\nversion = "([^"\n]*)"$', re.M
+    )
+
+
+FIELDS = [
+    VersionField(
+        "typescript/core/package.json",
+        re.compile(r'^  "version": "([^"\n]*)",?$', re.M),
+    ),
+    VersionField("python/core/pyproject.toml", table_field("project")),
+    VersionField("python/uv.lock", lockfile_entry("buffy-core")),
+    VersionField("rust/core/Cargo.toml", table_field("package")),
+    VersionField("rust/Cargo.lock", lockfile_entry("buffy-core")),
+    VersionField(
+        "java/core/build.gradle.kts",
+        re.compile(r'^version = "([^"\n]*)"$', re.M),
+    ),
+]
+
+
+def find(field: VersionField, text: str) -> re.Match[str]:
+    matches = list(field.pattern.finditer(text))
+    if len(matches) != 1:
+        sys.exit(f"{field.path}: found {len(matches)} versions rather than one")
+
+    return matches[0]
+
+
+def read_versions() -> dict[str, str]:
+    """The version in each file"""
+    return {
+        field.path: find(field, (ROOT / field.path).read_text(encoding="utf-8"))[1]
+        for field in FIELDS
+    }
+
+
+def set_version(version: str) -> None:
+    for field in FIELDS:
+        path = ROOT / field.path
+        text = path.read_text(encoding="utf-8")
+        match = find(field, text)
+
+        start, end = match.span(1)
+        path.write_text(text[:start] + version + text[end:], encoding="utf-8")
+        print(f"{field.path}: {match[1]} -> {version}")
+
+
+def check(expected: str | None) -> bool:
+    """Whether every file has the expected version, or all the same one"""
+    versions = read_versions()
+    wanted = expected or next(iter(versions.values()))
+
+    for path, version in versions.items():
+        mark = "" if version == wanted else f"  (expected {wanted})"
+        print(f"{path}: {version}{mark}")
+
+    return all(version == wanted for version in versions.values())
+
+
+def parse_version(value: str) -> str:
+    if not VERSION.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"{value!r} isn't a version of the form X.Y.Z")
+
+    return value
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Sets or checks the version of every package of buffy."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="check the version rather than setting it",
+    )
+    parser.add_argument("version", nargs="?", type=parse_version, help="X.Y.Z")
+    args = parser.parse_args()
+
+    if args.check:
+        sys.exit(0 if check(args.version) else 1)
+
+    if args.version is None:
+        parser.error("the version to set is required")
+
+    set_version(args.version)
+
+
+if __name__ == "__main__":
+    main()

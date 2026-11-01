@@ -21,6 +21,11 @@ uv run python -m unittest discover -s core/tests -t core
 uv run python -m unittest discover -s benchmarks/tests -t benchmarks
 ```
 
+`uv build --package buffy-core` builds the package's source distribution and
+wheel into `dist/`, and `uvx twine check --strict dist/*` checks their
+metadata, which PyPI shows. `core/README.md` is the package's page on PyPI,
+and `core/tests/test_docs.py` runs its example.
+
 The benchmarks' tests check that their workloads have the TypeScript
 comparison's values, and that every codec in the comparison reads back what it
 wrote. `uv run --python 3.15 ...` runs the commands with another Python. Where

@@ -1,9 +1,18 @@
 # @buffy/core
 
-Binary tables of scalars, strings and typed arrays. `TableBuilder` writes a
+Binary tables of scalars, strings and typed arrays, in
+[buffy](https://github.com/snovader/buffy)'s format. `TableBuilder` writes a
 table at its exact size, copying typed arrays in bulk, and `ByteBuffer` reads
 fields back by offset, with arrays as views of the bytes where it can. Every
-read checks that it stays within the bytes it was given.
+read checks that it stays within the bytes it was given, so tables can come
+from untrusted sources.
+
+```sh
+npm install @buffy/core
+```
+
+The package is an ES module with type declarations, and has no
+dependencies.
 
 ```ts
 import { ByteBuffer, TableBuilder, TableLayout } from '@buffy/core';
@@ -12,9 +21,12 @@ import { ByteBuffer, TableBuilder, TableLayout } from '@buffy/core';
 const LAYOUT = TableLayout.create({ sized: true, versioned: true });
 const FORMAT_VERSION = 1;
 
+const timestamps = new Uint32Array([0, 86400]);
+const values = [21.75, 18.5];
+
 const series = new TableBuilder(2);
 series.setUint32Array(timestamps); // a Uint32Array is copied as bytes
-series.setFloat32Array(values); // a number[] would be converted first
+series.setFloat32Array(values); // a number[] is converted first
 
 const builder = new TableBuilder(3, LAYOUT, FORMAT_VERSION);
 builder.setFloat64(59.3293);
@@ -54,10 +66,13 @@ and then the fields in the order they were set:
   arrays when given its builder, and to 4 bytes by default when given bytes.
 - A vector starts with its item count, and each item with its byte length.
 
-The repository's `conformance` directory holds golden tables of every part of
-the format, which every implementation of buffy reads and rebuilds byte for
-byte; its README describes them. This package writes them, and
-`yarn conformance:generate` regenerates them.
+[SPEC.md](https://github.com/snovader/buffy/blob/main/SPEC.md) describes
+the format in full. buffy has implementations in TypeScript, Python, Java and
+Rust, which write the same bytes for the same fields and read each other's
+tables. Each reads and rebuilds the
+[conformance suite](https://github.com/snovader/buffy/tree/main/conformance)
+in buffy's repository, golden tables that cover the whole format, byte for
+byte. This package is the reference implementation, whose tests write them.
 
 ## Performance
 

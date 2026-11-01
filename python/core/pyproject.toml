@@ -5,8 +5,27 @@ build-backend = "uv_build"
 [project]
 name = "buffy-core"
 version = "0.0.0"
-description = "Binary tables of scalars, strings and typed arrays"
+description = "Binary tables of scalars, strings and typed arrays, read with bounds checks and zero-copy views"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "snovader" }]
+keywords = ["binary", "buffer", "serialization", "table", "zero-copy"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+]
 requires-python = ">=3.14"
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/snovader/buffy"
+Source = "https://github.com/snovader/buffy/tree/main/python/core"
+Issues = "https://github.com/snovader/buffy/issues"
+Specification = "https://github.com/snovader/buffy/blob/main/SPEC.md"

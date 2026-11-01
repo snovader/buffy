@@ -3,9 +3,15 @@ name = "buffy-core"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+description = "Binary tables of scalars, strings and arrays, read with bounds checks and zero-copy views"
+readme = "README.md"
 repository.workspace = true
-publish = false
+license.workspace = true
+keywords = ["binary", "buffer", "serialization", "table", "zero-copy"]
+categories = ["encoding"]
+# The conformance suite's test reads its golden tables from the repository's
+# conformance directory, which the package doesn't hold
+exclude = ["tests/conformance.rs"]
 
 [dev-dependencies]
 # Without forking test cases into processes or timing them out, which the

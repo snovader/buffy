@@ -17,6 +17,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
+`cargo package -p buffy-core` packages the runtime as crates.io would receive
+it, and builds the package. The package leaves out `tests/conformance.rs`,
+which reads the conformance suite from the repository, so CI also runs the
+other tests from the package, outside the workspace.
+
 The generator's tests compare its output with golden files, which
 `BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen` rewrites. They lie in the test
 tree of each target's language, as `gen/README.md` lists them, so a change to
