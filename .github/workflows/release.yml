@@ -46,9 +46,10 @@ jobs:
           scripts/set-version --check "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # The commit that sets the version changes a manifest in every
-      # language's directory, so each language's CI runs when it's pushed to
-      # main. A run can take a moment to appear after the push.
+      # Each language's workflow runs on every push to main, and runs its jobs
+      # when the push changes that language, as the commit that sets the
+      # version does in every language. A run can take a moment to appear
+      # after the push.
       - name: Wait for every language's CI to pass on the tag's commit
         env:
           GH_TOKEN: ${{ github.token }}

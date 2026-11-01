@@ -20,9 +20,10 @@ The workflow runs these jobs:
 
 1. **Verify** checks that every manifest has the tag's version, with
    `scripts/set-version --check`, and waits for the TypeScript, Python, Java
-   and Rust workflows to pass on the tag's commit. They run on it when it's
-   pushed to `main`, since the commit that sets the version changes every
-   language's directory. A tag on any other commit fails here.
+   and Rust workflows to pass on the tag's commit. They run on every push to
+   `main`, and run their jobs when the push changes their language, as the
+   commit that sets the version does in every language. A tag on a commit
+   that isn't on `main` fails here.
 2. **Build for npm** and **Build for PyPI** pack the packages, check them,
    and upload them for the jobs that publish them, so that those build
    nothing. `cargo publish` and the Gradle plugin build what they publish,
