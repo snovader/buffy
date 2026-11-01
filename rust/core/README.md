@@ -47,6 +47,14 @@ Records at fixed offsets without a header or offsets, such as stream frames,
 are better written and read with the standard library's `to_le_bytes()` and
 `from_le_bytes()`.
 
+`TableSizer` and `TableWriter` write a table whose fields are known before
+it's written, as the code that tafla-gen generates writes its tables. The
+sizer counts the table's length from its fields, and its writer writes the
+same fields, in the same order, into bytes of that length, without recording
+them first as `TableBuilder` does. Both pad arrays and nested tables as
+`TableBuilder` does, so they write the same bytes, and the writer returns
+`TableBuilder`'s errors.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field
