@@ -215,30 +215,6 @@ impl Style {
     }
 }
 
-#[cfg(any(feature = "typescript", feature = "java"))]
-pub fn camel_case(snake: &str) -> String {
-    let pascal = pascal_case(snake);
-    let mut characters = pascal.chars();
-    characters
-        .next()
-        .map(|first| first.to_ascii_lowercase().to_string() + characters.as_str())
-        .unwrap_or_default()
-}
-
-#[cfg(any(feature = "typescript", feature = "java"))]
-pub fn pascal_case(snake: &str) -> String {
-    snake
-        .split('_')
-        .map(|word| {
-            let mut characters = word.chars();
-            characters
-                .next()
-                .map(|first| first.to_ascii_uppercase().to_string() + characters.as_str())
-                .unwrap_or_default()
-        })
-        .collect()
-}
-
 /// A `/** ... */` comment, as `JSDoc` and Javadoc write them, on one line when
 /// it's one line of text
 #[cfg(any(feature = "typescript", feature = "java"))]

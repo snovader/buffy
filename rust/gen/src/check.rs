@@ -1,9 +1,11 @@
 //! Resolves and checks parsed declarations into a [`Schema`].
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 use crate::diagnostic::Diagnostic;
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::naming::camel_case;
 use crate::parser::{Attribute, Declaration, FieldDeclaration, Keyword, Name};
 
 /// Checks every declaration and returns all the errors found, in source order
@@ -95,26 +97,11 @@ fn check_declaration(
         );
     }
 
-    let mut names = HashSet::new();
+    check_field_names(declaration, errors);
+
     let mut fields = Vec::with_capacity(declaration.fields.len());
 
     for field in &declaration.fields {
-        if !is_snake_case(&field.name.text) {
-            errors.push(Diagnostic::new(
-                format!("`{}` should be snake_case", field.name.text),
-                field.name.span,
-            ));
-        }
-        if !names.insert(field.name.text.as_str()) {
-            errors.push(Diagnostic::new(
-                format!(
-                    "`{}` is declared twice in `{}`",
-                    field.name.text, declaration.name.text
-                ),
-                field.name.span,
-            ));
-        }
-
         if let Some(field_type) = resolve_type(field, declarations, indices, errors) {
             if kind == Kind::Struct && !matches!(field_type, FieldType::Scalar(_)) {
                 errors.push(Diagnostic::new(
@@ -136,6 +123,58 @@ fn check_declaration(
         docs: declaration.docs.clone(),
         kind,
         fields,
+    }
+}
+
+/// Checks that a definition's fields are `snake_case` and declared once, and
+/// that no two share a name in `camelCase`, which TypeScript, JavaScript and
+/// Java name them in
+fn check_field_names(declaration: &Declaration, errors: &mut Vec<Diagnostic>) {
+    let mut names = HashSet::new();
+    // Each camelCase name, with the field that takes it first
+    let mut camel_case_names = HashMap::new();
+
+    for field in &declaration.fields {
+        let name = &field.name;
+        let snake_case = is_snake_case(&name.text);
+        if !snake_case {
+            errors.push(Diagnostic::new(
+                format!("`{}` should be snake_case", name.text),
+                name.span,
+            ));
+        }
+        if !names.insert(name.text.as_str()) {
+            errors.push(Diagnostic::new(
+                format!(
+                    "`{}` is declared twice in `{}`",
+                    name.text, declaration.name.text
+                ),
+                name.span,
+            ));
+            continue;
+        }
+
+        // A name that isn't snake_case has its error already
+        if !snake_case {
+            continue;
+        }
+        match camel_case_names.entry(camel_case(&name.text)) {
+            Entry::Vacant(entry) => {
+                entry.insert(name.text.as_str());
+            }
+            Entry::Occupied(entry) => errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` and `{}` are both `{}` in camelCase",
+                        name.text,
+                        entry.get(),
+                        entry.key()
+                    ),
+                    name.span,
+                )
+                .with_help("TypeScript, JavaScript and Java name fields in camelCase"),
+            ),
+        }
     }
 }
 

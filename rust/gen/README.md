@@ -80,6 +80,9 @@ or read its tables, or a target couldn't generate its code:
 
 - Declarations are `PascalCase` and fields `snake_case`, in ASCII. Each name
   is declared once, and a declaration can't take a built-in type's name.
+- A definition's fields have distinct names in `camelCase` too, which
+  TypeScript, JavaScript and Java name them in. It drops the underscores, so
+  `a_1` and `a1` are both `a1`.
 - Messages, tables and structs hold at least one field.
 - Only messages have attributes, each at most once.
 - A version fits in the message's offsets: 255 for 8-bit offsets, 65,535 for
