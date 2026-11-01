@@ -4,7 +4,6 @@
         "composite": false,
         "declaration": true,
         "emitDeclarationOnly": false,
-        "incremental": false,
         "outDir": "./dist",
         "rewriteRelativeImportExtensions": true,
         "rootDir": "./source",

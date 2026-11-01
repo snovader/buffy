@@ -28,7 +28,7 @@ rules = { possibly-missing-submodule = "ignore" }
 
 [tool.ruff]
 # protoc's messages are its verbatim output, which regenerating them replaces
-extend-exclude = ["dist", "*_pb2.py", "*_pb2.pyi"]
+extend-exclude = ["*_pb2.py", "*_pb2.pyi"]
 # The workspace root has no requires-python of its own to infer these from
 src = ["core/src", "core", "benchmarks/src", "benchmarks"]
 target-version = "py314"

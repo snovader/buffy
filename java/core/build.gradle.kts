@@ -28,7 +28,7 @@ java {
     }
 }
 
-tasks.withType<JavaCompile> {
+tasks.withType<JavaCompile>().configureEach {
     options.release = 21
     // Error Prone reports most checks as warnings and has no flag of its own to fail on them.
     options.compilerArgs.add("-Werror")
