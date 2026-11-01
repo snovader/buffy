@@ -1,0 +1,15 @@
+message Sized (sized: 1) {
+    x: float64;
+}
+
+message Versioned (version) {
+    x: float64;
+}
+
+message WithOffsets (offset_size) {
+    x: float64;
+}
+
+message Odd (offset_size: 12) {
+    x: float64;
+}

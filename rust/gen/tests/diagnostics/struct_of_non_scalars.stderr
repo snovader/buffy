@@ -1,0 +1,17 @@
+error: struct fields must be scalars
+ --> struct_of_non_scalars.buffy:3:11
+  |
+3 |     name: string;
+  |           ^^^^^^
+
+error: struct fields must be scalars
+ --> struct_of_non_scalars.buffy:4:14
+  |
+4 |     values: [float32];
+  |              ^^^^^^^
+
+error: struct fields must be scalars
+ --> struct_of_non_scalars.buffy:5:11
+  |
+5 |     pair: Pair;
+  |           ^^^^

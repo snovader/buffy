@@ -1,0 +1,17 @@
+error: version 256 doesn't fit in 8-bit offsets
+ --> version_too_large.buffy:3:43
+  |
+3 | message Offset8 (offset_size: 8, version: 256) {
+  |                                           ^^^ the largest is 255
+
+error: version 65536 doesn't fit in 16-bit offsets
+ --> version_too_large.buffy:7:28
+  |
+7 | message Offset16 (version: 65536, offset_size: 16) {
+  |                            ^^^^^ the largest is 65535
+
+error: version 4294967296 doesn't fit in 32-bit offsets
+  --> version_too_large.buffy:11:35
+   |
+11 | message Offset32 (sized, version: 4294967296) {
+   |                                   ^^^^^^^^^^ the largest is 4294967295

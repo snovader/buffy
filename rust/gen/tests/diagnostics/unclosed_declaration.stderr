@@ -1,0 +1,5 @@
+error: expected a field name or `}`, found the end of the file
+ --> unclosed_declaration.buffy:4:1
+  |
+4 | 
+  | ^

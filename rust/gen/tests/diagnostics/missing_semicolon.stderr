@@ -1,0 +1,5 @@
+error: expected `;`, found `y`
+ --> missing_semicolon.buffy:3:5
+  |
+3 |     y: float64;
+  |     ^

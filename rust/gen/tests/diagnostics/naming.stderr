@@ -1,0 +1,41 @@
+error: `point` should be PascalCase
+ --> naming.buffy:1:9
+  |
+1 | message point {
+  |         ^^^^^
+
+error: `X` should be snake_case
+ --> naming.buffy:2:5
+  |
+2 |     X: float64;
+  |     ^
+
+error: `snake__case` should be snake_case
+ --> naming.buffy:3:5
+  |
+3 |     snake__case: float64;
+  |     ^^^^^^^^^^^
+
+error: `trailing_` should be snake_case
+ --> naming.buffy:4:5
+  |
+4 |     trailing_: float64;
+  |     ^^^^^^^^^
+
+error: `Pair_Of` should be PascalCase
+ --> naming.buffy:7:7
+  |
+7 | table Pair_Of {
+  |       ^^^^^^^
+
+error: `string` should be PascalCase
+  --> naming.buffy:13:7
+   |
+13 | table string {
+   |       ^^^^^^
+
+error: `string` is a built-in type
+  --> naming.buffy:13:7
+   |
+13 | table string {
+   |       ^^^^^^

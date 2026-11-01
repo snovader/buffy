@@ -1,0 +1,5 @@
+error: arrays of strings aren't supported
+ --> array_of_strings.buffy:2:13
+  |
+2 |     names: [string];
+  |             ^^^^^^

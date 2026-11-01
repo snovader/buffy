@@ -1,0 +1,17 @@
+error: `sized` is given twice
+ --> duplicate_attributes.buffy:1:23
+  |
+1 | message Sized (sized, sized) {
+  |                       ^^^^^
+
+error: `version` is given twice
+ --> duplicate_attributes.buffy:5:32
+  |
+5 | message Versioned (version: 1, version: 2) {
+  |                                ^^^^^^^
+
+error: `offset_size` is given twice
+ --> duplicate_attributes.buffy:9:33
+  |
+9 | message Narrow (offset_size: 8, offset_size: 16) {
+  |                                 ^^^^^^^^^^^

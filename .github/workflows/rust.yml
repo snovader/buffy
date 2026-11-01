@@ -5,17 +5,21 @@ on:
     branches:
       - main
     paths:
+      - ".github/actions/prepare-node-environment/action.yml"
       - ".github/workflows/rust.yml"
       - "conformance/**"
       - "rust/**"
+      - "schemas/**"
 
   pull_request:
     branches:
       - main
     paths:
+      - ".github/actions/prepare-node-environment/action.yml"
       - ".github/workflows/rust.yml"
       - "conformance/**"
       - "rust/**"
+      - "schemas/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
@@ -107,18 +111,53 @@ jobs:
           cache-workspaces: rust -> target
           cache-key: miri
 
+      # The runtime only: the generator reads and writes no bytes in either
+      # order, and would take long under Miri
       - name: Run tests on a big-endian target
-        run: cargo +nightly miri test --target powerpc-unknown-linux-gnu
+        run: cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu
 
       # Miri isolates the tests from the file system, so the conformance suite
       # is ignored above
       - name: Run the conformance suite on a big-endian target
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
-        run: cargo +nightly miri test --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
+        run: cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
+
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
+          components: clippy
+          cache-workspaces: rust -> target
+          cache-key: wasm
+
+      - name: Setup Node
+        uses: ./.github/actions/prepare-node-environment
+
+      # The lint job doesn't compile the module's exports, which only
+      # WebAssembly builds have
+      - name: Run lint check
+        run: cargo clippy -p buffy-gen --lib --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Build the generator's module
+        run: cargo build -p buffy-gen --lib --target wasm32-unknown-unknown --profile wasm
+
+      - name: Check that the module has no imports and generates the golden files
+        run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
 
   dependabot:
-    needs: [formatting, lint, test, big-endian]
+    needs: [formatting, lint, test, big-endian, wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

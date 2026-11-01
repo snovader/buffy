@@ -1,0 +1,15 @@
+message point {
+    X: float64;
+    snake__case: float64;
+    trailing_: float64;
+}
+
+table Pair_Of {
+    first: float32;
+    second_2: float32;
+}
+
+/// `string` is a type of field, so it can't name a table either
+table string {
+    value: uint8;
+}

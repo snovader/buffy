@@ -1,0 +1,5 @@
+error: the integer is too large
+ --> integer_too_large.buffy:1:25
+  |
+1 | message Point (version: 18446744073709551616) {
+  |                         ^^^^^^^^^^^^^^^^^^^^

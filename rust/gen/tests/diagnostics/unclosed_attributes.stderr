@@ -1,0 +1,5 @@
+error: expected `,` or `)`, found `version`
+ --> unclosed_attributes.buffy:1:22
+  |
+1 | message Point (sized version: 1) {
+  |                      ^^^^^^^

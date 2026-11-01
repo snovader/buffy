@@ -1,0 +1,18 @@
+// A table can hold a vector of itself, which can be empty, but not itself
+
+table Node {
+    value: int32;
+    next: Node;
+}
+
+table Even {
+    odd: Odd;
+}
+
+table Odd {
+    even: Even;
+}
+
+table Tree {
+    children: [Tree];
+}

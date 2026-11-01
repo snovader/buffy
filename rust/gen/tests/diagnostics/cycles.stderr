@@ -1,0 +1,17 @@
+error: `Node` contains itself
+ --> cycles.buffy:3:7
+  |
+3 | table Node {
+  |       ^^^^ only a vector can nest a table in itself
+
+error: `Even` contains itself
+ --> cycles.buffy:8:7
+  |
+8 | table Even {
+  |       ^^^^ only a vector can nest a table in itself
+
+error: `Odd` contains itself
+  --> cycles.buffy:12:7
+   |
+12 | table Odd {
+   |       ^^^ only a vector can nest a table in itself

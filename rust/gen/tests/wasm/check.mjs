@@ -1,0 +1,173 @@
+// Checks the generator's WebAssembly module: it has no imports, so it runs
+// with an empty import object, and its `buffy_compile` export generates the
+// golden files of every example schema and renders the errors of every
+// invalid schema in tests/diagnostics, as the native library does.
+//
+// node gen/tests/wasm/check.mjs <buffy_gen.wasm>
+
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const TESTS = fileURLToPath(new URL('..', import.meta.url));
+const SCHEMAS = join(TESTS, '..', '..', '..', 'schemas');
+const GOLDEN = join(TESTS, 'golden');
+const DIAGNOSTICS = join(TESTS, 'diagnostics');
+const TARGETS = ['typescript', 'javascript', 'python', 'java', 'rust'];
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+/**
+ * Compiles through the module's exports: a request of length-prefixed
+ * strings in memory from `buffy_alloc`, and a response that starts with its
+ * own length and a status, which `buffy_free` frees.
+ *
+ * @param {WebAssembly.Instance} instance
+ * @param {string[]} strings
+ * @returns {{ status: number, files?: Map<string, string>, errors?: string }}
+ */
+function call(instance, strings) {
+    const { memory, buffy_alloc, buffy_compile, buffy_free } = instance.exports;
+    const encoded = strings.map(string => encoder.encode(string));
+    const length = encoded.reduce((sum, bytes) => sum + 4 + bytes.length, 0);
+
+    const request = buffy_alloc(length);
+    // Allocating may grow the memory, which detaches earlier views of it
+    let view = new DataView(memory.buffer);
+    let offset = request;
+    for (const bytes of encoded) {
+        view.setUint32(offset, bytes.length, true);
+        new Uint8Array(memory.buffer, offset + 4, bytes.length).set(bytes);
+        offset += 4 + bytes.length;
+    }
+
+    const response = buffy_compile(request, length);
+    view = new DataView(memory.buffer);
+    const responseLength = view.getUint32(response, true);
+    const status = view.getUint32(response + 4, true);
+    offset = response + 8;
+    const readString = () => {
+        const byteLength = view.getUint32(offset, true);
+        const bytes = new Uint8Array(memory.buffer, offset + 4, byteLength);
+        offset += 4 + byteLength;
+        return decoder.decode(bytes);
+    };
+
+    try {
+        if (status !== 0) {
+            return { status, errors: readString() };
+        }
+
+        const count = view.getUint32(offset, true);
+        offset += 4;
+        const files = new Map();
+        for (let i = 0; i < count; i++) {
+            const path = readString();
+            files.set(path, readString());
+        }
+        return { status, files };
+    } finally {
+        buffy_free(response, responseLength);
+    }
+}
+
+/** @returns {Map<string, string>} every file under `directory`, by path */
+function readTree(directory) {
+    const files = new Map();
+    const visit = current => {
+        for (const name of readdirSync(current).sort()) {
+            const path = join(current, name);
+            if (statSync(path).isDirectory()) {
+                visit(path);
+            } else {
+                files.set(
+                    relative(directory, path),
+                    readFileSync(path, 'utf8')
+                );
+            }
+        }
+    };
+    visit(directory);
+    return files;
+}
+
+/** @returns {string[]} the names of the files in `directory` with `extension` */
+function namesWith(directory, extension) {
+    return readdirSync(directory)
+        .filter(name => name.endsWith(extension))
+        .map(name => name.slice(0, -extension.length))
+        .sort();
+}
+
+const failures = [];
+const fail = message => failures.push(message);
+
+const wasm = readFileSync(process.argv[2]);
+const module = new WebAssembly.Module(wasm);
+const imports = WebAssembly.Module.imports(module);
+if (imports.length > 0) {
+    fail(`the module imports ${JSON.stringify(imports)}`);
+}
+const instance = new WebAssembly.Instance(module, {});
+
+let compiles = 0;
+for (const schema of namesWith(SCHEMAS, '.buffy')) {
+    const source = readFileSync(join(SCHEMAS, `${schema}.buffy`), 'utf8');
+
+    for (const target of TARGETS) {
+        const fileName = `schemas/${schema}.buffy`;
+        const response = call(instance, [target, fileName, source, '', '']);
+        compiles++;
+        if (response.status !== 0) {
+            fail(`${fileName} for ${target}: ${response.errors}`);
+            continue;
+        }
+
+        const golden = readTree(join(GOLDEN, schema, target));
+        const paths = [...response.files.keys()].sort();
+        if (JSON.stringify(paths) !== JSON.stringify([...golden.keys()])) {
+            fail(`${fileName} for ${target} generates ${paths.join(', ')}`);
+            continue;
+        }
+        for (const [path, contents] of response.files) {
+            if (contents !== golden.get(path)) {
+                fail(`${fileName} for ${target}: ${path} differs`);
+            }
+        }
+    }
+}
+
+for (const name of namesWith(DIAGNOSTICS, '.buffy')) {
+    const fileName = `${name}.buffy`;
+    const source = readFileSync(join(DIAGNOSTICS, fileName), 'utf8');
+    const expected = readFileSync(join(DIAGNOSTICS, `${name}.stderr`), 'utf8');
+
+    const response = call(instance, ['rust', fileName, source, '', '']);
+    compiles++;
+    if (response.status !== 1 || response.errors !== expected) {
+        fail(`${fileName}: ${response.errors}`);
+    }
+}
+
+const unknown = call(instance, ['go', 'point.buffy', '', '', '']);
+if (
+    unknown.status !== 1 ||
+    !unknown.errors.startsWith('unknown target `go`: this build generates')
+) {
+    fail(`an unknown target: ${JSON.stringify(unknown)}`);
+}
+
+// Two strings rather than five
+const malformed = call(instance, ['rust', 'point.buffy']);
+if (malformed.status !== 1 || malformed.errors !== 'malformed request\n') {
+    fail(`a malformed request: ${JSON.stringify(malformed)}`);
+}
+
+if (failures.length > 0) {
+    console.error(failures.join('\n'));
+    process.exit(1);
+}
+console.log(
+    `${wasm.length} bytes, no imports, ${compiles} compiles match the native output`
+);

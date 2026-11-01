@@ -36,6 +36,7 @@ as WebAssembly.
 | `python/`      | The Python runtime and the generator's package                                                 |
 | `java/`        | The Java runtime and the generator's package                                                   |
 | `rust/`        | The Rust runtime and the generator                                                             |
+| `schemas/`     | Example schemas, which the generator's tests compile                                           |
 
 Each language's directory is the root of its own toolchain, and its README
 lists the commands that check it.

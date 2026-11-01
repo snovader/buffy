@@ -1,5 +1,5 @@
 [workspace]
-members = ["core"]
+members = ["core", "gen"]
 resolver = "3"
 
 [workspace.package]
@@ -11,3 +11,11 @@ repository = "https://github.com/snovader/buffy"
 [profile.release]
 codegen-units = 1
 lto = true
+
+# The generator's WebAssembly module, which hosts download and load, so it's
+# built for size, and it aborts on a panic rather than unwinding
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+panic = "abort"
+strip = true

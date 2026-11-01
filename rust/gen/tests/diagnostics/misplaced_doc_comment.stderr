@@ -1,0 +1,5 @@
+error: found a doc comment that documents nothing
+ --> misplaced_doc_comment.buffy:3:5
+  |
+3 |     /// A comment that documents no field
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doc comments come before what they document

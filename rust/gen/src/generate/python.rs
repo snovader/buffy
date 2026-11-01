@@ -1,0 +1,585 @@
+//! Python for `buffy_core`. Messages and tables are classes that read
+//! fields lazily from their bytes, written from `TypedDict`s of their fields,
+//! and structs are frozen dataclasses packed with `struct`.
+
+use super::writer::{CodeWriter, Style, call, text};
+use super::{GeneratedFile, Options};
+use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+
+/// The runtime's package, unless [`Options::runtime`] names another
+const RUNTIME: &str = "buffy_core";
+
+const STYLE: Style = Style {
+    width: 88,
+    indent: "    ",
+    trailing_comma: true,
+    hug_arguments: true,
+    max_arguments_width: None,
+};
+
+/// Python keywords and soft keywords, which names get a `_` after
+const KEYWORDS: [&str; 38] = [
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class",
+    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
+    "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return",
+    "try", "type", "while", "with", "yield",
+];
+
+pub fn generate(
+    schema: &Schema,
+    stem: &str,
+    header: &str,
+    options: &Options,
+) -> Vec<GeneratedFile> {
+    let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
+
+    let mut writer = CodeWriter::new(STYLE.indent);
+    writer.line(format!("# {header}"));
+    writer.blank();
+    imports(&mut writer, schema, runtime);
+
+    for definition in &schema.definitions {
+        writer.blanks(2);
+        match definition.kind {
+            Kind::Message(layout) => message(&mut writer, schema, definition, layout),
+            Kind::Table => table(&mut writer, schema, definition),
+            Kind::Struct => structure(&mut writer, schema, definition),
+        }
+
+        if definition.kind != Kind::Struct {
+            writer.blanks(2);
+            fields_type(&mut writer, schema, definition);
+        }
+    }
+
+    vec![GeneratedFile {
+        path: format!("{stem}.py"),
+        contents: writer.finish(),
+    }]
+}
+
+fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
+    let has = |predicate: fn(&Definition) -> bool| schema.definitions.iter().any(predicate);
+    let has_message = has(|definition| matches!(definition.kind, Kind::Message(_)));
+    let has_table = has(|definition| matches!(definition.kind, Kind::Message(_) | Kind::Table));
+    let has_struct = has(|definition| definition.kind == Kind::Struct);
+    let has_field = |predicate: fn(FieldType) -> bool| {
+        schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| predicate(field.field_type))
+    };
+    let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
+    let has_vector = has_field(|field_type| matches!(field_type, FieldType::Vector(_)));
+    let versioned = has(|definition| {
+        matches!(
+            definition.kind,
+            Kind::Message(Layout {
+                version: Some(_),
+                ..
+            })
+        )
+    });
+
+    let mut abc = Vec::new();
+    if has_message || has_array || has_struct {
+        abc.push("Buffer");
+    }
+    if has_array {
+        abc.push("Iterable");
+    }
+    if has_vector {
+        abc.push("Sequence");
+    }
+
+    let mut typing = Vec::new();
+    if has_struct {
+        typing.push("ClassVar");
+    }
+    if has_message {
+        typing.push("Final");
+    }
+    if has_struct {
+        typing.push("Self");
+    }
+    if has_table {
+        typing.push("TypedDict");
+    }
+    if has_message {
+        typing.push("Unpack");
+    }
+
+    let mut buffer = Vec::new();
+    if has_table {
+        buffer.push("ByteBuffer");
+    }
+    if versioned || has_struct {
+        buffer.push("DecodeError");
+    }
+    if has_table {
+        buffer.push("TableBuilder");
+    }
+    if has_message {
+        buffer.push("TableLayout");
+    }
+
+    let standard: Vec<(&str, Vec<&str>)> = vec![
+        ("collections.abc", abc),
+        (
+            "dataclasses",
+            if has_struct {
+                vec!["dataclass"]
+            } else {
+                vec![]
+            },
+        ),
+        (
+            "struct",
+            if has_struct {
+                vec!["Struct", "error"]
+            } else {
+                vec![]
+            },
+        ),
+        ("typing", typing),
+    ];
+    for (module, names) in standard {
+        if !names.is_empty() {
+            from_import(writer, module, &names);
+        }
+    }
+    // A schema without definitions imports nothing
+    if !buffer.is_empty() {
+        writer.blank();
+        from_import(writer, runtime, &buffer);
+    }
+}
+
+fn from_import(writer: &mut CodeWriter, module: &str, names: &[&str]) {
+    let statement = format!("from {module} import {}", names.join(", "));
+    if statement.len() <= STYLE.width {
+        writer.line(statement);
+        return;
+    }
+
+    writer.open(format!("from {module} import ("));
+    for name in names {
+        writer.line(format!("{name},"));
+    }
+    writer.close(")");
+}
+
+fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
+    let name = &definition.name;
+
+    writer.open(format!("class {name}:"));
+    docstring(writer, &definition.docs);
+    writer.blank();
+    writer.line("__slots__ = (\"_buffer\",)");
+    writer.blank();
+
+    if let Some(version) = layout.version {
+        writer.line(format!("FORMAT_VERSION: Final = {version}"));
+        docstring(
+            writer,
+            &[
+                "The version of the format, which the header carries and the constructor"
+                    .to_owned(),
+                "checks".to_owned(),
+            ],
+        );
+        writer.blank();
+    }
+    writer.line(format!("_LAYOUT: Final = {}", layout_expression(layout)));
+    writer.blank();
+
+    writer.open("def __init__(self, data: Buffer) -> None:");
+    if layout.version.is_some() {
+        docstring(
+            writer,
+            &["Raises `DecodeError` if `data` is in another format version.".to_owned()],
+        );
+    }
+    writer.line("self._buffer = ByteBuffer(data, self._LAYOUT)");
+    if layout.version.is_some() {
+        writer.blank();
+        writer.line("version = self._buffer.get_version()");
+        writer.open("if version != self.FORMAT_VERSION:");
+        let message = format!(
+            "f\"Expected format version {{self.FORMAT_VERSION}} of {name}, got {{version}}\""
+        );
+        writer.statement(
+            &STYLE,
+            "raise ",
+            &call("DecodeError", vec![text(message)]),
+            "",
+        );
+        writer.dedent();
+    }
+    writer.dedent();
+    writer.blank();
+
+    writer.line("@classmethod");
+    writer.statement(
+        &STYLE,
+        "def ",
+        &call(
+            "serialize",
+            vec![text("cls"), text(format!("**fields: Unpack[{name}Fields]"))],
+        ),
+        " -> memoryview:",
+    );
+    writer.indent();
+    docstring(
+        writer,
+        &[format!("Writes {} with every field", article(name))],
+    );
+    let mut arguments = vec![
+        text(definition.fields.len().to_string()),
+        text("cls._LAYOUT"),
+    ];
+    if layout.version.is_some() {
+        arguments.push(text("cls.FORMAT_VERSION"));
+    }
+    writer.statement(&STYLE, "builder = ", &call("TableBuilder", arguments), "");
+    setters(writer, schema, definition);
+    writer.blank();
+    writer.line("return builder.bytes()");
+    writer.dedent();
+
+    getters(writer, schema, definition, true);
+    writer.dedent();
+}
+
+fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let name = &definition.name;
+
+    writer.open(format!("class {name}:"));
+    if !definition.docs.is_empty() {
+        docstring(writer, &definition.docs);
+        writer.blank();
+    }
+    writer.line("__slots__ = (\"_buffer\", \"_position\")");
+    writer.blank();
+
+    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    docstring(
+        writer,
+        &["Reads the table at `position`, as its parent's getter finds it".to_owned()],
+    );
+    writer.line("self._buffer = buffer");
+    writer.line("self._position = position");
+    writer.dedent();
+    writer.blank();
+
+    writer.line("@staticmethod");
+    writer.open(format!(
+        "def builder(fields: {name}Fields) -> TableBuilder:"
+    ));
+    docstring(
+        writer,
+        &[
+            "Returns a builder with every field set, which a parent writes straight".to_owned(),
+            "into its own bytes".to_owned(),
+        ],
+    );
+    writer.line(format!(
+        "builder = TableBuilder({})",
+        definition.fields.len()
+    ));
+    setters(writer, schema, definition);
+    writer.blank();
+    writer.line("return builder");
+    writer.dedent();
+
+    getters(writer, schema, definition, false);
+    writer.dedent();
+}
+
+fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let name = &definition.name;
+    let format: String = definition
+        .fields
+        .iter()
+        .map(|field| match field.field_type {
+            FieldType::Scalar(scalar) => struct_code(scalar),
+            _ => unreachable!("structs hold scalars only"),
+        })
+        .collect();
+
+    writer.line("@dataclass(frozen=True, slots=True)");
+    writer.open(format!("class {name}:"));
+    docstring(writer, &definition.docs);
+    writer.blank();
+    writer.line(format!(
+        "SIZE: ClassVar[int] = {}",
+        definition.struct_size()
+    ));
+    docstring(writer, &[format!("The byte length of {}", article(name))]);
+    writer.line(format!("_STRUCT: ClassVar[Struct] = Struct(\"<{format}\")"));
+    writer.blank();
+    for field in &definition.fields {
+        writer.line(format!(
+            "{}: {}",
+            identifier(&field.name),
+            value_type(field.field_type, schema)
+        ));
+        docstring(writer, &field.docs);
+    }
+    writer.blank();
+
+    writer.line("@classmethod");
+    writer.open("def read(cls, data: Buffer, offset: int = 0) -> Self:");
+    docstring(
+        writer,
+        &[
+            format!("Reads {} at `offset` in `data`.", article(name)),
+            String::new(),
+            "Raises `DecodeError` if `data` ends before it does.".to_owned(),
+        ],
+    );
+    writer.open("try:");
+    writer.line("values = cls._STRUCT.unpack_from(data, offset)");
+    writer.dedent();
+    writer.open("except error as cause:");
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call(
+            "DecodeError",
+            vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
+        ),
+        " from cause",
+    );
+    writer.dedent();
+    writer.blank();
+    writer.line("return cls(*values)");
+    writer.dedent();
+    writer.blank();
+
+    writer.open("def serialize(self) -> bytes:");
+    let fields = definition
+        .fields
+        .iter()
+        .map(|field| text(format!("self.{}", identifier(&field.name))))
+        .collect();
+    writer.statement(&STYLE, "return ", &call("self._STRUCT.pack", fields), "");
+    writer.dedent();
+    writer.dedent();
+}
+
+fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    writer.open(format!("class {}Fields(TypedDict):", definition.name));
+    docstring(
+        writer,
+        &[format!(
+            "The fields of {}, to write",
+            article(&definition.name)
+        )],
+    );
+    writer.blank();
+    for field in &definition.fields {
+        writer.line(format!(
+            "{}: {}",
+            identifier(&field.name),
+            input_type(field.field_type, schema)
+        ));
+        docstring(writer, &field.docs);
+    }
+    writer.dedent();
+}
+
+fn setters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    for field in &definition.fields {
+        let value = format!("fields[\"{}\"]", identifier(&field.name));
+        let (method, argument) = match field.field_type {
+            FieldType::Scalar(scalar) => (format!("set_{}", scalar.name()), text(value)),
+            FieldType::Array(scalar) => (format!("set_{}_array", scalar.name()), text(value)),
+            FieldType::String => ("set_string".to_owned(), text(value)),
+            FieldType::Table(index) => {
+                let table = &schema.definition(index).name;
+                (
+                    "set_table".to_owned(),
+                    call(format!("{table}.builder"), vec![text(value)]),
+                )
+            }
+            FieldType::Vector(index) => {
+                let table = &schema.definition(index).name;
+                let builders = format!("[{table}.builder(item) for item in {value}]");
+                ("set_vector".to_owned(), text(builders))
+            }
+        };
+        writer.statement(
+            &STYLE,
+            "",
+            &call(format!("builder.{method}"), vec![argument]),
+            "",
+        );
+    }
+}
+
+fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
+    for (index, field) in definition.fields.iter().enumerate() {
+        let offset = if is_root {
+            call("self._buffer.root_offset", vec![text(index.to_string())])
+        } else {
+            call(
+                "self._buffer.field_offset",
+                vec![text("self._position"), text(index.to_string())],
+            )
+        };
+
+        writer.blank();
+        writer.open(format!(
+            "def {}(self) -> {}:",
+            identifier(&field.name),
+            value_type(field.field_type, schema)
+        ));
+        docstring(writer, &field.docs);
+
+        match field.field_type {
+            FieldType::Scalar(scalar) => {
+                let get = call(format!("self._buffer.get_{}", scalar.name()), vec![offset]);
+                writer.statement(&STYLE, "return ", &get, "");
+            }
+            FieldType::Array(scalar) => {
+                let get = call(
+                    format!("self._buffer.get_{}_array", scalar.name()),
+                    vec![offset],
+                );
+                writer.statement(&STYLE, "return ", &get, "");
+            }
+            FieldType::String => {
+                writer.statement(
+                    &STYLE,
+                    "return ",
+                    &call("self._buffer.get_string", vec![offset]),
+                    "",
+                );
+            }
+            FieldType::Table(index) => {
+                let table = &schema.definition(index).name;
+                let read = call(table.clone(), vec![text("self._buffer"), offset]);
+                writer.statement(&STYLE, "return ", &read, "");
+            }
+            FieldType::Vector(index) => {
+                let table = &schema.definition(index).name;
+                writer.statement(
+                    &STYLE,
+                    "offsets = ",
+                    &call("self._buffer.get_vector_offsets", vec![offset]),
+                    "",
+                );
+                writer.line(format!(
+                    "return [{table}(self._buffer, offset) for offset in offsets]"
+                ));
+            }
+        }
+        writer.dedent();
+    }
+}
+
+/// A docstring, with Markdown's code spans as reStructuredText's, and
+/// backslashes and quotes escaped so that the text can't end the string
+fn docstring(writer: &mut CodeWriter, docs: &[String]) {
+    let docs: Vec<String> = docs
+        .iter()
+        .map(|line| {
+            line.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('`', "``")
+        })
+        .collect();
+    match docs.as_slice() {
+        [] => {}
+        [line] => writer.line(format!("\"\"\"{line}\"\"\"")),
+        [first, rest @ ..] => {
+            writer.line(format!("\"\"\"{first}"));
+            for line in rest {
+                writer.line(line);
+            }
+            writer.line("\"\"\"");
+        }
+    }
+}
+
+fn layout_expression(layout: Layout) -> String {
+    let mut arguments = Vec::new();
+    if layout.sized {
+        arguments.push("sized=True".to_owned());
+    }
+    if layout.version.is_some() {
+        arguments.push("versioned=True".to_owned());
+    }
+    if layout.offset_size != OffsetSize::U32 {
+        arguments.push(format!("offset_size={}", layout.offset_size.bytes()));
+    }
+
+    if arguments.is_empty() {
+        "TableLayout.DEFAULT".to_owned()
+    } else {
+        format!("TableLayout({})", arguments.join(", "))
+    }
+}
+
+fn identifier(name: &str) -> String {
+    if KEYWORDS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// "a `Name`" or "an `Name`", in a docstring
+fn article(name: &str) -> String {
+    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} `{name}`")
+}
+
+fn value_type(field_type: FieldType, schema: &Schema) -> String {
+    match field_type {
+        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
+        FieldType::String => "str".to_owned(),
+        FieldType::Table(index) => schema.definition(index).name.clone(),
+        FieldType::Vector(index) => format!("list[{}]", schema.definition(index).name),
+    }
+}
+
+fn input_type(field_type: FieldType, schema: &Schema) -> String {
+    match field_type {
+        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
+        FieldType::String => "str".to_owned(),
+        FieldType::Table(index) => format!("{}Fields", schema.definition(index).name),
+        FieldType::Vector(index) => format!("Sequence[{}Fields]", schema.definition(index).name),
+    }
+}
+
+const fn scalar_type(scalar: Scalar) -> &'static str {
+    match scalar {
+        Scalar::Float32 | Scalar::Float64 => "float",
+        _ => "int",
+    }
+}
+
+/// The `struct` module's format character, which is little-endian with `<`
+const fn struct_code(scalar: Scalar) -> char {
+    match scalar {
+        Scalar::Int8 => 'b',
+        Scalar::Uint8 => 'B',
+        Scalar::Int16 => 'h',
+        Scalar::Uint16 => 'H',
+        Scalar::Int32 => 'i',
+        Scalar::Uint32 => 'I',
+        Scalar::Int64 => 'q',
+        Scalar::Uint64 => 'Q',
+        Scalar::Float32 => 'f',
+        Scalar::Float64 => 'd',
+    }
+}

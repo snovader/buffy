@@ -1,0 +1,7 @@
+table Pair {
+    first: float32;
+}
+
+message Pair {
+    second: float32;
+}

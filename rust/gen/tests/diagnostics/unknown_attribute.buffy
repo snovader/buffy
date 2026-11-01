@@ -1,0 +1,3 @@
+message Point (sized, compressed) {
+    x: float64;
+}
