@@ -154,7 +154,7 @@ done
 uv run --python 3.14+gil python -m tafla_benchmarks.report results.json
 ```
 
-The full run takes about 18 minutes. `--append` adds to an existing file, so
+The full run takes about 20 minutes. `--append` adds to an existing file, so
 remove the last run's `results.json` first. `--filter <regex>` runs only the
 groups whose name matches, and `--reverse` runs each group's codecs in reverse
 order. pyperf's own options apply too, and its commands read the results:
@@ -162,7 +162,7 @@ order. pyperf's own options apply too, and its commands read the results:
 example.
 
 A quick run of one worker per benchmark, which calls each operation once,
-checks that every benchmark works in about 10 seconds, most of which its 58
+checks that every benchmark works in about 13 seconds, most of which its 66
 workers spend starting and importing numpy. CI runs it after the round-trip
 test, on Python 3.14. Its numbers mean little.
 
@@ -279,16 +279,37 @@ Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
 tables, for example.
 
+The array of 100 structs was added after that run, and timed on the same day
+with the vector of nested tables, in their groups alone: the full run's four
+runs with `--filter 'structs|nested'`. It took 5 minutes, while another session
+ran benchmarks, which kept the 1-minute load average between 2.7 and 3.5, with
+a median of 3.2. pyperf's mean was within 4% of the fastest value for all 16
+benchmarks, and the vector's fastest values were within 6% of the full run's.
+
+| Benchmark                                | tafla |    flatbuffers |     protobuf |       msgpack |
+| ---------------------------------------- | ----: | -------------: | -----------: | ------------: |
+| vector of 100 nested tables: serialize   | 264.8 |  541.7 (2.05×) | 42.5 (0.16×) |  21.5 (0.08×) |
+| vector of 100 nested tables: deserialize |  87.7 |  656.6 (7.49×) | 40.6 (0.46×) |  31.2 (0.36×) |
+| array of 100 structs: serialize          | 9.852 | 114.5 (11.63×) | 29.2 (2.97×) | 9.412 (0.96×) |
+| array of 100 structs: deserialize        |  14.9 | 247.7 (16.66×) | 28.9 (1.94×) |  17.1 (1.15×) |
+
+- tafla writes the 100 structs in 9.9 µs, against 265 µs for the same items as
+  nested tables, packing them with one `Struct` call each, and reads them in
+  15 µs, against 88 µs, 6.5 µs of which creates the 100 dataclasses. msgpack,
+  in C, takes 9.4 µs and 17 µs, and protobuf 29 µs each way.
+- FlatBuffers creates and reads each struct with pure-Python calls, in 115 µs
+  and 248 µs.
+
 `python -m tafla_benchmarks.encoding` printed:
 
 ```
 Encoded size (bytes)
-                        record     doc 100  doc 100000      vector       fixed
-  tafla                     60        1296     1200096        3208          12
-  flatbuffers               72        1328     1200128        2832          32
-  protobuf                  47        1243     1187503        1900          16
-  msgpack                   53        1276     1200082        4710          32
-  struct                                                                    12
+                        record     doc 100  doc 100000      vector     structs       fixed
+  tafla                     60        1296     1200096        3208        1208          12
+  flatbuffers               72        1328     1200128        2832        1224          32
+  protobuf                  47        1243     1187503        1900        1700          16
+  msgpack                   53        1276     1200082        4710        2804          32
+  struct                                                                                12
 
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
@@ -303,5 +324,6 @@ Truncated document of 100000 rows: deserialize()
 
 Every library rejects the truncated document. FlatBuffers' Python runtime reads
 through `struct`, whose range checks raise `struct.error`. msgpack packs the
-floats of the vector and the fixed-size record as float64s, so its vector is
-the largest.
+floats of the vector, the array of structs and the fixed-size record as
+float64s, so its vector is the largest, and its array of structs, at 2,804
+bytes, more than twice the size of tafla's 1,208.
