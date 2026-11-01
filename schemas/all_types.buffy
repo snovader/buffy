@@ -1,0 +1,104 @@
+// Every type of field: each scalar alone and as an array, strings, nested
+// tables, vectors of tables and structs, with doc comments on each kind of
+// declaration and field names that are keywords in some target language.
+
+/// A field of every scalar type
+message Scalars {
+    int8: int8;
+    uint8: uint8;
+    int16: int16;
+    uint16: uint16;
+    int32: int32;
+    uint32: uint32;
+    int64: int64;
+    uint64: uint64;
+    float32: float32;
+    float64: float64;
+}
+
+/// An array of every scalar type
+message Arrays {
+    int8: [int8];
+    uint8: [uint8];
+    int16: [int16];
+    uint16: [uint16];
+    int32: [int32];
+    uint32: [uint32];
+    int64: [int64];
+    uint64: [uint64];
+    float32: [float32];
+    float64: [float64];
+}
+
+/// Tables nested in tables, by field and in vectors
+message Nested {
+    /// A string beside the tables
+    label: string;
+    /// The first of three levels of tables
+    outer: Outer;
+    /// A vector of tables that hold vectors of themselves
+    trees: [Tree];
+}
+
+table Outer {
+    count: uint32;
+    inner: Inner;
+}
+
+table Inner {
+    name: string;
+    values: [float64];
+}
+
+/// A table that holds a vector of its own type, which a vector can since it
+/// may be empty
+table Tree {
+    value: int32;
+    children: [Tree];
+}
+
+/// Fields named after keywords of TypeScript, Python, Java or Rust
+table Keywords {
+    class: uint8;
+    default: uint8;
+    in: uint8;
+    match: uint8;
+    self: uint8;
+    type: string;
+}
+
+/// A message that nests the table of keywords, so that it's written
+message Reserved {
+    keywords: Keywords;
+}
+
+/// A struct of every scalar type, at fixed offsets without padding
+struct Packed {
+    int8: int8;
+    uint8: uint8;
+    int16: int16;
+    uint16: uint16;
+    int32: int32;
+    uint32: uint32;
+    int64: int64;
+    uint64: uint64;
+    float32: float32;
+    float64: float64;
+}
+
+// A comment, which the generated code leaves out
+//// A comment of four slashes, which isn't documentation either
+
+/// Documentation of several lines.
+///
+/// It can hold Markdown's `code spans`, non-ASCII text such as å, 世界 and
+/// 🦀, and text that closes a comment or string in some language: */, """,
+/// a backslash \ and a trailing quote"
+struct Documented {
+    /// A field's documentation, of one line
+    one: uint8;
+    /// A field's documentation,
+    /// of two lines
+    two: uint16;
+    undocumented: uint32;
+}

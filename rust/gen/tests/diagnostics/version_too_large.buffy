@@ -1,0 +1,13 @@
+// One more than the largest version that each offset size holds
+
+message Offset8 (offset_size: 8, version: 256) {
+    x: float64;
+}
+
+message Offset16 (version: 65536, offset_size: 16) {
+    x: float64;
+}
+
+message Offset32 (sized, version: 4294967296) {
+    x: float64;
+}

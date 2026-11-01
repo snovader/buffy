@@ -1,0 +1,4 @@
+message Point {
+    x: float64;
+    /// A comment that documents no field
+}

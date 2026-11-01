@@ -1,0 +1,52 @@
+// Generic shapes of tables: a point of scalars and a string, a document
+// whose header nests a table of columns, a list of small nested tables, and a
+// fixed-size sample.
+
+/// A small table of two coordinates, an identifier and a name
+message Point {
+    x: float64;
+    y: float64;
+    id: int64;
+    name: string;
+}
+
+/// A document, whose header holds its length and version, with a nested
+/// table of columns of the same length
+message Document (sized, version: 1) {
+    x: float64;
+    y: float64;
+    name: string;
+    columns: Columns;
+}
+
+/// Columns with a value per key
+table Columns {
+    /// The value that `keys` count from
+    base: int64;
+    keys: [uint32];
+    a: [float32];
+    b: [float32];
+}
+
+/// A list of items, each a table of its own
+message ItemList {
+    items: [Item];
+}
+
+table Item {
+    value: float32;
+    pair: Pair;
+}
+
+/// Two values of an item
+table Pair {
+    first: float32;
+    second: float32;
+}
+
+/// A fixed-size sample, such as a stream sends one per frame
+struct Sample {
+    key: uint32;
+    a: float32;
+    b: float32;
+}

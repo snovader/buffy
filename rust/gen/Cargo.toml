@@ -1,0 +1,38 @@
+[package]
+name = "buffy-gen"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "buffy_gen"
+# cdylib for the WebAssembly module, see README.md
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "buffy-gen"
+path = "src/main.rs"
+
+[features]
+default = ["typescript", "python", "java", "rust"]
+# Each target language's generator, so that a crate that generates one
+# language from its build script doesn't compile the others. `typescript`
+# generates JavaScript too.
+typescript = []
+python = []
+java = []
+rust = []
+
+[dev-dependencies]
+# Compiles the generated Rust in tests/generated_rust.rs
+buffy-core = { path = "../core" }
+proptest = "1"
+tempfile = "3"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+must_use_candidate = { level = "allow", priority = 1 }

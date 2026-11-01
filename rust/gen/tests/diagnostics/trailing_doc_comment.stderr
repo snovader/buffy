@@ -1,0 +1,5 @@
+error: found a doc comment that documents nothing
+ --> trailing_doc_comment.buffy:5:1
+  |
+5 | /// A comment after the last declaration
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doc comments come before what they document

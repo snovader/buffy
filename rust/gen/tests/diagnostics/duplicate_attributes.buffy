@@ -1,0 +1,11 @@
+message Sized (sized, sized) {
+    x: float64;
+}
+
+message Versioned (version: 1, version: 2) {
+    x: float64;
+}
+
+message Narrow (offset_size: 8, offset_size: 16) {
+    x: float64;
+}

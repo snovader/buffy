@@ -1,6 +1,8 @@
 # buffy for Rust
 
-`core/` holds `buffy-core`, the runtime.
+`core/` holds `buffy-core`, the runtime, and `gen/` holds `buffy-gen`, the
+code generator, which compiles schemas into code for every language's
+runtime and also runs as WebAssembly.
 
 ## Development
 
@@ -13,17 +15,27 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-Miri runs the tests on a big-endian target, which reads every array through
-its byte-swapping path. It takes several minutes:
+The generator's tests compare its output with golden files, which
+`BUFFY_GEN_UPDATE=1 cargo test -p buffy-gen` rewrites. Its WebAssembly
+module builds with the `wasm` profile, and a Node script checks it:
 
 ```sh
-cargo +nightly miri test --target powerpc-unknown-linux-gnu
+rustup target add wasm32-unknown-unknown
+cargo build -p buffy-gen --lib --target wasm32-unknown-unknown --profile wasm
+node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/buffy_gen.wasm
+```
+
+Miri runs the runtime's tests on a big-endian target, which reads every
+array through its byte-swapping path. It takes several minutes:
+
+```sh
+cargo +nightly miri test -p buffy-core --target powerpc-unknown-linux-gnu
 ```
 
 Miri keeps tests from reading files, so the conformance suite needs its own
 run:
 
 ```sh
-MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test \
+MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test -p buffy-core \
     --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
 ```

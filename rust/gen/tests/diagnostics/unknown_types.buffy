@@ -1,0 +1,11 @@
+message Point {
+    x: flaot64;
+    pair: Piar;
+    rotation: quaternion;
+    values: [unit32];
+}
+
+table Pair {
+    first: float32;
+    second: float32;
+}

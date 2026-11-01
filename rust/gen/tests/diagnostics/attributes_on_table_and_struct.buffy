@@ -1,0 +1,8 @@
+table Pair (sized) {
+    first: float32;
+    second: float32;
+}
+
+struct Sample (version: 1, sized) {
+    key: uint32;
+}

@@ -1,0 +1,4 @@
+/// Columns count in characters, so the caret is under `ö`
+message Größe {
+    value: float64;
+}

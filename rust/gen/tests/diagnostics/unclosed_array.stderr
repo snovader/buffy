@@ -1,0 +1,5 @@
+error: expected `]`, found `;`
+ --> unclosed_array.buffy:2:21
+  |
+2 |     values: [float32;
+  |                     ^

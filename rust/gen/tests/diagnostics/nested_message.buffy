@@ -1,0 +1,8 @@
+message Header {
+    version: uint32;
+}
+
+message Document {
+    header: Header;
+    pages: [Header];
+}

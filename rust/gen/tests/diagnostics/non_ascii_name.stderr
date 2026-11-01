@@ -1,0 +1,5 @@
+error: unexpected character `ö`
+ --> non_ascii_name.buffy:2:11
+  |
+2 | message Größe {
+  |           ^

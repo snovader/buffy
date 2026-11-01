@@ -1,0 +1,23 @@
+error: `sized` takes no value
+ --> attribute_values.buffy:1:23
+  |
+1 | message Sized (sized: 1) {
+  |                       ^
+
+error: `version` needs a value
+ --> attribute_values.buffy:5:20
+  |
+5 | message Versioned (version) {
+  |                    ^^^^^^^ such as `version: 1`
+
+error: `offset_size` needs a value
+ --> attribute_values.buffy:9:22
+  |
+9 | message WithOffsets (offset_size) {
+  |                      ^^^^^^^^^^^ such as `offset_size: 16`
+
+error: offsets are 8, 16 or 32 bits wide
+  --> attribute_values.buffy:13:27
+   |
+13 | message Odd (offset_size: 12) {
+   |                           ^^

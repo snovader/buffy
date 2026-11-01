@@ -1,0 +1,11 @@
+struct Sample {
+    key: uint32;
+    name: string;
+    values: [float32];
+    pair: Pair;
+}
+
+table Pair {
+    first: float32;
+    second: float32;
+}

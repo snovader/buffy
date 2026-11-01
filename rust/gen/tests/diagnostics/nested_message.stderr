@@ -1,0 +1,11 @@
+error: `Header` is a message, which can't be nested
+ --> nested_message.buffy:6:13
+  |
+6 |     header: Header;
+  |             ^^^^^^ declare it as a table to nest it
+
+error: `Header` is a message, which can't be nested
+ --> nested_message.buffy:7:13
+  |
+7 |     pages: [Header];
+  |             ^^^^^^ declare it as a table to nest it

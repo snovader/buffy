@@ -1,0 +1,23 @@
+error: unknown type `flaot64`
+ --> unknown_types.buffy:2:8
+  |
+2 |     x: flaot64;
+  |        ^^^^^^^ did you mean `float64`?
+
+error: unknown type `Piar`
+ --> unknown_types.buffy:3:11
+  |
+3 |     pair: Piar;
+  |           ^^^^ did you mean `Pair`?
+
+error: unknown type `quaternion`
+ --> unknown_types.buffy:4:15
+  |
+4 |     rotation: quaternion;
+  |               ^^^^^^^^^^
+
+error: unknown type `unit32`
+ --> unknown_types.buffy:5:14
+  |
+5 |     values: [unit32];
+  |              ^^^^^^ did you mean `uint32`?
