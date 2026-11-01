@@ -309,10 +309,10 @@ class ByteBuffer:
     def __pack(self, struct: Struct, value: float) -> None:
         """Writes ``value`` at the position. struct checks the range and the
         value before it writes, and raises struct.error, which isn't a
-        ValueError."""
+        ValueError, or OverflowError for a float too large for a float32."""
         try:
             struct.pack_into(self.__view, self.__position, value)
-        except StructError as error:
+        except (StructError, OverflowError) as error:
             raise ValueError(
                 f"Can't write {value!r} at {self.__position}: {error}"
             ) from error

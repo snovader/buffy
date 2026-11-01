@@ -69,6 +69,14 @@ class TestTableBuilder(unittest.TestCase):
     def test_finalizes_an_empty_table(self) -> None:
         self.assertEqual(TableBuilder(0).bytes(), b"")
 
+    def test_rejects_a_scalar_that_doesnt_fit_its_type_from_finalize(self) -> None:
+        for setter, value in [("set_uint32", 2**32), ("set_float32", 1e300)]:
+            builder = TableBuilder(1)
+            getattr(builder, setter)(value)
+
+            with self.subTest(setter=setter), self.assertRaises(ValueError):
+                builder.finalize()
+
     def test_rejects_a_field_beyond_the_number_the_table_holds(self) -> None:
         builder = TableBuilder(1)
         builder.set_uint8(1)
