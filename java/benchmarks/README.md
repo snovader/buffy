@@ -241,30 +241,3 @@ Truncated document of 100000 rows: deserialize()
 
 Every library rejects the truncated document. FlatBuffers' Java runtime reads
 through a `java.nio.ByteBuffer`, whose range checks throw.
-
-## Experiments
-
-[uint32 conversion](experiments/uint32/README.md) compares the current runtime,
-a simpler scalar loop and explicit SIMD on both document sizes and their
-uint32 arrays. It includes an interleaved harness, A/A controls, allocation
-measurements and raw results. The chosen scalar setter is now in production.
-
-The [unsigned-setter follow-up](experiments/uint-setters/README.md) measures
-the indexed loop for uint8, uint16 and uint32, both directly and through
-`TableBuilder`. The runtime uses indexed loops for uint16 and uint32 and a
-local cursor for uint8. The [uint8 allocation investigation](experiments/uint-setters/allocation.md)
-identifies a validation-induced JIT effect in the earlier experiments and
-records corrected uint8 comparisons: the cursor retains the table-write gain
-without extra allocation in direct writes.
-
-The [corrected uint16/uint32 and document comparison](experiments/uint-setters/isolated-wide.md)
-reruns both indexed setters and the actual production document codec with
-validation in a separate JVM. It includes fresh A/A controls, repeated runs,
-allocation measurements and unchanged-reader checks.
-
-The [table-writer allocation investigation](experiments/uint-setters/table-allocation.md)
-traces the remaining 24 bytes to `ArrayList` escape analysis and replaces the
-writer list with a fixed-size array. Powered repeats confirm the table-write
-gain, unchanged large-document write speed, faster small-document writes,
-and reduced allocation. Earlier timings under load and low battery are
-retained in the report but excluded from its timing conclusions.
