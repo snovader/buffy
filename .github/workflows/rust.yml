@@ -1,0 +1,139 @@
+name: Rust
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rust.yml"
+      - "conformance/**"
+      - "rust/**"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rust.yml"
+      - "conformance/**"
+      - "rust/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: rustfmt
+          cache: false
+
+      - name: Run formatting check
+        run: cargo fmt --all -- --check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy
+          cache-workspaces: rust -> target
+
+      - name: Run lint check
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test (${{ matrix.toolchain }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        # stable, and the workspace's rust-version
+        toolchain: ["stable", "1.88"]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          cache-workspaces: rust -> target
+          cache-key: ${{ matrix.toolchain }}
+
+      - name: Run tests
+        run: cargo +${{ matrix.toolchain }} test
+
+  big-endian:
+    name: Test (big-endian, Miri)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: nightly
+          components: miri, rust-src
+          cache-workspaces: rust -> target
+          cache-key: miri
+
+      - name: Run tests on a big-endian target
+        run: cargo +nightly miri test --target powerpc-unknown-linux-gnu
+
+      # Miri isolates the tests from the file system, so the conformance suite
+      # is ignored above
+      - name: Run the conformance suite on a big-endian target
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+        run: cargo +nightly miri test --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
+
+  dependabot:
+    needs: [formatting, lint, test, big-endian]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'}}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          PR_HEAD_SHA: ${{github.event.pull_request.head.sha}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}

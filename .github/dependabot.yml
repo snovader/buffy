@@ -28,3 +28,10 @@ updates:
     directory: "/java"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
