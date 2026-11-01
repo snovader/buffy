@@ -1,0 +1,15 @@
+{
+  "name": "@buffy/benchmarks",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@buffy/core": "workspace:^",
+    "flatbuffers": "25.9.23",
+    "msgpackr": "2.1.2",
+    "protobufjs": "8.8.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
