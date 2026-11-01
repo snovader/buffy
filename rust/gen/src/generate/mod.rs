@@ -7,6 +7,8 @@
 
 #[cfg(feature = "java")]
 mod java;
+// Options name a Java package in every build
+mod java_package;
 #[cfg(feature = "python")]
 mod python;
 #[cfg(feature = "rust")]
@@ -20,6 +22,8 @@ mod typescript;
     feature = "rust"
 ))]
 mod writer;
+
+pub use java_package::{InvalidJavaPackage, JavaPackage};
 
 use crate::model::Schema;
 
@@ -76,12 +80,12 @@ pub struct Options {
     pub runtime: Option<String>,
     /// The package of generated Java classes, which is `generated` by
     /// default. Other targets ignore it.
-    pub package: Option<String>,
+    pub package: Option<JavaPackage>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneratedFile {
-    /// Relative to the output directory, with `/` separators
+    /// Relative to the output directory and within it, with `/` separators
     pub path: String,
     pub contents: String,
 }
@@ -124,9 +128,13 @@ pub fn generate(
 
 /// The schema's file name without its directory and extensions, which names
 /// the file of the generators that write one per schema. Java's writes one
-/// per class.
+/// per class. On Windows, the directory may end with `\` or a drive's `:`,
+/// either of which would take the file out of the output directory.
 #[cfg(any(feature = "typescript", feature = "python", feature = "rust"))]
 fn stem(file_name: &str) -> &str {
-    let name = file_name.rsplit('/').next().unwrap_or(file_name);
+    let name = file_name
+        .rsplit(['/', '\\', ':'])
+        .next()
+        .unwrap_or(file_name);
     name.split('.').next().unwrap_or(name)
 }

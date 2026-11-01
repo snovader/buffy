@@ -5,8 +5,9 @@
 
 use std::fmt::Write;
 
+use super::java_package::KEYWORDS;
 use super::writer::{CodeWriter, Style, call, doc_comment, text};
-use super::{GeneratedFile, Options};
+use super::{GeneratedFile, JavaPackage, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 use crate::naming::camel_case;
 
@@ -25,64 +26,6 @@ const STYLE: Style = Style {
     hug_arguments: false,
     max_arguments_width: None,
 };
-
-/// Keywords and literals, which names take a `_` after
-const KEYWORDS: [&str; 54] = [
-    "abstract",
-    "assert",
-    "boolean",
-    "break",
-    "byte",
-    "case",
-    "catch",
-    "char",
-    "class",
-    "const",
-    "continue",
-    "default",
-    "do",
-    "double",
-    "else",
-    "enum",
-    "extends",
-    "final",
-    "finally",
-    "float",
-    "for",
-    "goto",
-    "if",
-    "implements",
-    "import",
-    "instanceof",
-    "int",
-    "interface",
-    "long",
-    "native",
-    "new",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "short",
-    "static",
-    "strictfp",
-    "super",
-    "switch",
-    "synchronized",
-    "this",
-    "throw",
-    "throws",
-    "transient",
-    "try",
-    "void",
-    "volatile",
-    "while",
-    "_",
-    "true",
-    "false",
-    "null",
-];
 
 /// Names that getters and record components can't take, which names take a
 /// `_` after too: the methods of `Object` without parameters, which they would
@@ -103,7 +46,10 @@ const MEMBERS: [&str; 10] = [
 
 pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<GeneratedFile> {
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
-    let package = options.package.as_deref().unwrap_or(PACKAGE);
+    let package = options
+        .package
+        .as_ref()
+        .map_or(PACKAGE, JavaPackage::as_str);
 
     schema
         .definitions
