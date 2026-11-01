@@ -144,16 +144,8 @@ const LENGTH_PREFIXED_WRITES = fc.oneof(
 describe('writes past the end of the bytes', () => {
     const lengths = fc.nat({ max: 24 });
 
-    it.prop([lengths, LAYOUTS, fc.array(WRITES, { maxLength: 8 })])(
-        'should throw a RangeError and write nothing',
-        expectWritesWithin
-    );
-
-    // Fails: setString() and setVector() write their length or count, and
-    // then throw when the bytes after it don't fit. A buffer of one byte, with
-    // 1-byte lengths, holds the length 1 after setString() of one byte throws,
-    // and the count 1 after setVector() of one empty item throws.
-    it.fails.prop(
+    // The examples once wrote their length or count before throwing
+    it.prop(
         [lengths, LAYOUTS, fc.array(fc.oneof(WRITES, LENGTH_PREFIXED_WRITES), { maxLength: 8 })],
         {
             examples: [
@@ -161,13 +153,15 @@ describe('writes past the end of the bytes', () => {
                     1,
                     { sized: false, versioned: false, offsetSize: 1 },
                     [{ setter: 'setString', value: new Uint8Array(1) }]
+                ],
+                [
+                    1,
+                    { sized: false, versioned: false, offsetSize: 1 },
+                    [{ setter: 'setVector', value: [new Uint8Array(0)] }]
                 ]
             ]
         }
-    )(
-        'should throw a RangeError and write nothing, from strings and vectors too',
-        expectWritesWithin
-    );
+    )('should throw a RangeError and write nothing', expectWritesWithin);
 });
 
 /**
