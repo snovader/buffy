@@ -1,0 +1,203 @@
+package experiment;
+
+import com.sun.management.ThreadMXBean;
+import io.github.snovader.buffy.benchmarks.*;
+import io.github.snovader.buffy.benchmarks.codecs.DocumentWorkload;
+import java.io.*;
+import java.lang.management.ManagementFactory;
+import java.nio.ByteOrder;
+import java.util.*;
+import jdk.incubator.vector.LongVector;
+
+/** Each variant/operation has its own timing loop and concrete runtime classes. */
+public final class Harness {
+    private static volatile Object sink;
+    private static final ThreadMXBean ALLOCATION = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+    private static final long THREAD = Thread.currentThread().threadId();
+    private static final long[] EDGES = {0, 1, 0x7fff_ffffL, 0x8000_0000L, 0xffff_ffffL,
+        0x1_0000_0000L, -1, Long.MIN_VALUE, Long.MAX_VALUE};
+
+    private interface Timer {
+        long run(int iterations);
+    }
+
+    private static final class Task {
+        final String variant;
+        final String operation;
+        final int rows;
+        final Timer timer;
+
+        Task(String variant, String operation, int rows, Timer timer) {
+            this.variant = variant;
+            this.operation = operation;
+            this.rows = rows;
+            this.timer = timer;
+        }
+    }
+
+    private record State(DocumentInput input, byte[] arrayBytes, byte[] documentBytes) {}
+
+    public static void main(String[] args) throws Exception {
+        Locale.setDefault(Locale.ROOT);
+        System.out.printf("JDK %s; %s; %s%n",
+            System.getProperty("java.runtime.version"), System.getProperty("os.arch"),
+            ByteOrder.nativeOrder());
+VECTOR_INFO
+        if (!Boolean.getBoolean("experiment.skipValidation") || Boolean.parseBoolean(args[0])) {
+VALIDATE_VARIANTS
+            System.out.println("PASS: bytes, unsigned boundaries, tails, unaligned inputs, all offset widths, truncated inputs, write position, full documents");
+        }
+        if (Boolean.parseBoolean(args[0])) {
+            return;
+        }
+        ALLOCATION.setThreadAllocatedMemoryEnabled(true);
+        serve(Objects.requireNonNull(System.getProperty("experiment.worker")));
+    }
+
+    private static void serve(String variant) throws IOException {
+        var tasks = new ArrayList<Task>();
+        for (int rows : new int[]{100, 100_000}) {
+REGISTER_VARIANTS
+        }
+        var selected = tasks.stream().filter(t -> t.variant.equals(variant)).toList();
+        var input = new BufferedReader(new InputStreamReader(System.in));
+        System.out.println("READY");
+        for (String line; (line = input.readLine()) != null;) {
+            var command = line.split(" ");
+            int rows = Integer.parseInt(command[0]);
+            String operation = command[1];
+            int iterations = Integer.parseInt(command[2]);
+            var task = selected.stream().filter(t -> t.rows == rows && t.operation.equals(operation)).findFirst().orElseThrow();
+            long collections = gcCount();
+            long gcMillis = gcTime();
+            long allocated = ALLOCATION.getThreadAllocatedBytes(THREAD);
+            long elapsed = task.timer.run(iterations);
+            allocated = ALLOCATION.getThreadAllocatedBytes(THREAD) - allocated;
+            System.out.printf("SAMPLE,%d,%d,%d,%d%n", elapsed, allocated, gcCount() - collections, gcTime() - gcMillis);
+        }
+    }
+
+    private static long gcCount() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(b -> Math.max(0, b.getCollectionCount())).sum();
+    }
+
+    private static long gcTime() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(b -> Math.max(0, b.getCollectionTime())).sum();
+    }
+
+    private static State state(int rows) {
+        var input = Workloads.documentInput(rows);
+        var buffer = experiment.reference.ByteBuffer.allocate(4 + rows * 4);
+        buffer.setUint32Array(input.keys());
+        var document = experiment.reference.BuffyCodec.create().document().serialize(input);
+        return new State(input, buffer.bytes(), document);
+    }
+
+    private static void require(boolean condition) {
+        if (!condition) {
+            throw new AssertionError("Incorrect variant result");
+        }
+    }
+
+// BEGIN VARIANT
+    private static final DocumentWorkload CODEC_VARIANT = experiment.VARIANT.BuffyCodec.create().document();
+
+    private static void register_VARIANT(List<Task> tasks, int rows) {
+        var state = state(rows);
+        tasks.add(new Task("VARIANT", "array_write", rows, n -> arrayWrite_VARIANT(state, n)));
+        tasks.add(new Task("VARIANT", "array_read", rows, n -> arrayRead_VARIANT(state, n)));
+        tasks.add(new Task("VARIANT", "document_write", rows, n -> documentWrite_VARIANT(state, n)));
+        tasks.add(new Task("VARIANT", "document_read", rows, n -> documentRead_VARIANT(state, n)));
+    }
+
+    private static long arrayWrite_VARIANT(State state, int iterations) {
+        var keys = state.input.keys();
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            var buffer = experiment.VARIANT.ByteBuffer.allocate(4 + keys.length * 4);
+            buffer.setUint32Array(keys);
+            sink = buffer.bytes();
+        }
+        return System.nanoTime() - start;
+    }
+
+    private static long arrayRead_VARIANT(State state, int iterations) {
+        var bytes = state.arrayBytes;
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            var buffer = new experiment.VARIANT.ByteBuffer(bytes);
+            sink = buffer.getUint32Array(0);
+        }
+        return System.nanoTime() - start;
+    }
+
+    private static long documentWrite_VARIANT(State state, int iterations) {
+        var input = state.input;
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            sink = CODEC_VARIANT.serialize(input);
+        }
+        return System.nanoTime() - start;
+    }
+
+    private static long documentRead_VARIANT(State state, int iterations) {
+        var bytes = state.documentBytes;
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            sink = CODEC_VARIANT.deserialize(bytes);
+        }
+        return System.nanoTime() - start;
+    }
+
+    private static void validate_VARIANT() {
+        var random = new Random(0x32);
+        for (var width : experiment.VARIANT.AddressableSpace.values()) {
+            var layout = experiment.VARIANT.TableLayout.builder().offsetSize(width).build();
+            for (int length = 0; length <= 65; length++) {
+                var values = new long[length];
+                var expected = new long[length];
+                for (int i = 0; i < length; i++) {
+                    values[i] = i < EDGES.length ? EDGES[i] : random.nextLong();
+                    expected[i] = values[i] & 0xffff_ffffL;
+                }
+                // Independent byte oracle, little-endian, with an unaligned prefix and a marker.
+                var oracle = java.nio.ByteBuffer.allocate(1 + width.valueOf() + 4 * length + 4).order(ByteOrder.LITTLE_ENDIAN);
+                oracle.put((byte) 42);
+                for (int b = 0; b < width.valueOf(); b++) {
+                    oracle.put((byte) (length >>> (8 * b)));
+                }
+                for (long value : values) {
+                    oracle.putInt((int) value);
+                }
+                oracle.putInt(0x12345678);
+                var buffer = new experiment.VARIANT.ByteBuffer(new byte[oracle.capacity()], layout);
+                buffer.setInt8((byte) 42);
+                buffer.setUint32Array(values);
+                buffer.setInt32(0x12345678);
+                require(Arrays.equals(buffer.bytes(), oracle.array()));
+                require(Arrays.equals(buffer.getUint32Array(1), expected));
+
+                int end = 1 + width.valueOf() + 4 * length;
+                for (int cut : new int[]{0, 1, end - 1}) {
+                    var truncated = new experiment.VARIANT.ByteBuffer(Arrays.copyOf(buffer.bytes(), cut), layout);
+                    try {
+                        truncated.getUint32Array(1);
+                        throw new AssertionError("Truncated array accepted");
+                    } catch (experiment.VARIANT.DecodeException expectedError) {
+                        // All failed reads must use the public decode exception.
+                    }
+                }
+            }
+        }
+        for (int rows : new int[]{100, 100_000}) {
+            var state = state(rows);
+            var buffer = experiment.VARIANT.ByteBuffer.allocate(state.arrayBytes.length);
+            buffer.setUint32Array(state.input.keys());
+            require(Arrays.equals(buffer.bytes(), state.arrayBytes));
+            require(Arrays.equals(buffer.getUint32Array(0), state.input.keys()));
+            require(Arrays.equals(CODEC_VARIANT.serialize(state.input), state.documentBytes));
+            require(CODEC_VARIANT.deserialize(state.documentBytes).equals(state.input));
+        }
+    }
+// END VARIANT
+}

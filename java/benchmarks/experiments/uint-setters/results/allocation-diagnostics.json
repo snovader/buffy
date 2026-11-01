@@ -1,0 +1,295 @@
+[
+  {
+    "name": "original",
+    "variant": "current",
+    "flags": [],
+    "object_sizes": [
+      "SIZE experiment.current.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "cursor",
+    "variant": "cursor",
+    "flags": [],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "helper",
+    "variant": "helper",
+    "flags": [],
+    "object_sizes": [
+      "SIZE experiment.helper.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "cursor-no-validation",
+    "variant": "cursor",
+    "flags": [
+      "-Dexperiment.skipValidation=true"
+    ],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0
+    ],
+    "median_allocated_bytes_per_op": 120.0
+  },
+  {
+    "name": "cursor-success-validation",
+    "variant": "cursor",
+    "flags": [
+      "-Dexperiment.skipFailureChecks=true"
+    ],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0,
+      176.0
+    ],
+    "median_allocated_bytes_per_op": 176.0
+  },
+  {
+    "name": "original-no-validation",
+    "variant": "current",
+    "flags": [
+      "-Dexperiment.skipValidation=true"
+    ],
+    "object_sizes": [
+      "SIZE experiment.current.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0,
+      120.0
+    ],
+    "median_allocated_bytes_per_op": 120.0
+  },
+  {
+    "name": "cursor-clean-no-ea",
+    "variant": "cursor",
+    "flags": [
+      "-Dexperiment.skipValidation=true",
+      "-XX:-DoEscapeAnalysis"
+    ],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "cursor-clean-no-inline",
+    "variant": "cursor",
+    "flags": [
+      "-Dexperiment.skipValidation=true",
+      "-XX:CompileCommand=dontinline,experiment.cursor.ByteBuffer::setUint8Array"
+    ],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "helper-no-ea",
+    "variant": "helper",
+    "flags": [
+      "-XX:-DoEscapeAnalysis"
+    ],
+    "object_sizes": [
+      "SIZE experiment.helper.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "cursor-no-inline",
+    "variant": "cursor",
+    "flags": [
+      "-XX:CompileCommand=dontinline,experiment.cursor.ByteBuffer::setUint8Array"
+    ],
+    "object_sizes": [
+      "SIZE experiment.cursor.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  },
+  {
+    "name": "helper-payload-no-inline",
+    "variant": "helper",
+    "flags": [
+      "-XX:CompileCommand=dontinline,experiment.helper.ByteBuffer::writeUint8Elements"
+    ],
+    "object_sizes": [
+      "SIZE experiment.helper.ByteBuffer 48",
+      "SIZE java.nio.HeapByteBuffer 56",
+      "SIZE byte[104] 120"
+    ],
+    "allocated_bytes_per_op": [
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0,
+      224.0
+    ],
+    "median_allocated_bytes_per_op": 224.0
+  }
+]

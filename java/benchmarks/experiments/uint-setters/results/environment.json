@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-01",
+  "baseline_revision": "cfec1f8f07820fa9896831a1d7b5633f1ffbfc7b",
+  "baseline_byte_buffer_sha256": "022a847bd59dbeb502fbbfbd918f24e1e245e9f379783a944e89f01df512d7f4",
+  "cpu": "Apple M2 Pro",
+  "logical_cpus": 10,
+  "memory_bytes": 34359738368,
+  "os": "macOS 27.0.1 (26A434)",
+  "jdk": "Oracle 25.0.1+8-27 aarch64",
+  "compile_release": 21,
+  "jvm_options": [
+    "-Xms2g",
+    "-Xmx2g"
+  ],
+  "rounds": 20,
+  "warmup_rounds": 16,
+  "target_milliseconds_per_sample": 100,
+  "initial_one_minute_load": {
+    "run1": 2.69,
+    "run2": 3.37
+  },
+  "production_source_sha256": {
+    "core/src/main/java/io/github/snovader/buffy/ByteBuffer.java": "304c16e7929b7c5d972bf0a248c6d312890cec2e77c8ebd8f532c8886e43b006",
+    "core/src/main/java/io/github/snovader/buffy/TableBuilder.java": "0be09329a6894cf4e1973435a720d85afc5d2f3ba452a2485e3890abd330ee70"
+  },
+  "applied_setters": [
+    "uint16",
+    "uint32"
+  ],
+  "unchanged_setters": [
+    "uint8"
+  ]
+}

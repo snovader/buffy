@@ -1,0 +1,93 @@
+{
+  "date": "2026-11-01",
+  "baseline_revision": "cfec1f8f07820fa9896831a1d7b5633f1ffbfc7b",
+  "cpu": "Apple M2 Pro",
+  "logical_cpus": 10,
+  "memory_bytes": 34359738368,
+  "os": "macOS 27.0.1 (26A434)",
+  "jdk": "Oracle 25.0.1+8-27 aarch64",
+  "compile_release": 21,
+  "jvm_options": [
+    "-Xms2g",
+    "-Xmx2g"
+  ],
+  "rounds": 20,
+  "warmup_rounds": 16,
+  "target_milliseconds_per_sample": 100,
+  "initial_one_minute_load": {
+    "fixed-writers-run1": 3.86,
+    "fixed-writers-run2": 4.36,
+    "fixed-writers-document1": 10.03,
+    "fixed-writers-powered": 3.85,
+    "fixed-writers-powered-document1": 4.22,
+    "fixed-writers-powered-document2": 5.43
+  },
+  "validation": "Separate JVM before timing; timed workers use -Dexperiment.skipValidation=true",
+  "git_head": "cfec1f8f07820fa9896831a1d7b5633f1ffbfc7b",
+  "comparisons": {
+    "focused": [
+      "original setters/list builder",
+      "identical original A/A",
+      "indexed setters/list builder",
+      "indexed setters/fixed writer array"
+    ],
+    "document": [
+      "adopted setters/list builder",
+      "identical A/A",
+      "same adopted setters/fixed writer array"
+    ]
+  },
+  "source_sha256": {
+    "benchmarks/experiments/uint-setters/run.py": "65673f84aed56c6953d660fafb0652a9c1abf8aa4469e8eca77a653e6fd1fbad",
+    "benchmarks/experiments/uint-setters/Harness.java.template": "60e0cac8f16581e7d2f07c9092d4828620b321e5a2b5ca2975d31098ca8ee1a5",
+    "benchmarks/experiments/uint-setters/table-allocation-probe.py": "a5cb78d98a9d63ffa9354711eb0865885c73f18850e9a1eb5e8ce663a51a0601",
+    "benchmarks/experiments/uint-setters/AllocationEvents.java": "64157594a4d41acbcfeffe818f0177db704cab60284b845a952683450b6cef91",
+    "benchmarks/experiments/uint32/run.py": "1b40e8aa41a6503cb014806ca1363b4cb0c5f1ddbe3b094bad548215a0dfef33",
+    "benchmarks/experiments/uint32/Harness.java.template": "0818a6d76c546695a1c66d70cdb953a503560ff0e8d5655582a644b768e9759d",
+    "core/src/main/java/io/github/snovader/buffy/AddressableSpace.java": "2bb082a6006f4c5dba307c25e527d4a0a02029882bc193ccd8accb3f20ad48a8",
+    "core/src/main/java/io/github/snovader/buffy/ByteBuffer.java": "2baca138ca9dd59004435f036233adc8839a3f2fe83b1adf6fc43dcee961294a",
+    "core/src/main/java/io/github/snovader/buffy/DecodeException.java": "70f52ce6b3044c731ca410ea62dad23e5d0eff71ee40378b53a8d07172b0ac33",
+    "core/src/main/java/io/github/snovader/buffy/TableBuilder.java": "89c82d6e1640c83edcf684c67d52e160378cca0229ae57745a2ed431e20bab41",
+    "core/src/main/java/io/github/snovader/buffy/TableLayout.java": "0348dce3d535c06382d6b08ba7be73b43f09b53e9a115feed17110151a7f3d47",
+    "core/src/main/java/io/github/snovader/buffy/Utf8.java": "e79170fcba05c4e1029ee043964fbb5180ce74b9a0662698cfec92a267a5cef3",
+    "core/src/main/java/io/github/snovader/buffy/package-info.java": "c132e24f12da16ccd10bfe684e074415b4ae8ba7e6fd1fcd3b869f8991d99e40",
+    "benchmarks/build/uint32/src/inputs/Codec.java": "36d92c7bc1209f5221087cb083b7dc4c2daf4724b7aeeafd069e959905fd009c",
+    "benchmarks/build/uint32/src/inputs/DocumentInput.java": "456b1e0c3d3b9da295cdaaacd709afb5bf01c25870205bca5870ab16e087cb42",
+    "benchmarks/build/uint32/src/inputs/DocumentWorkload.java": "af2684cd540247e84ae0f04f6cd447c759d025d054617bed160078ef8633eaf7",
+    "benchmarks/build/uint32/src/inputs/ItemInput.java": "e31d73e94e91a0656d33c7df22b89aa7accd6c68a3496c35b990aadbb4b68db8",
+    "benchmarks/build/uint32/src/inputs/ListInput.java": "9e6f0136c624ce1baa664f9653fa8daac0e2f84c2482aa6c0c2499e8c0bf5cb5",
+    "benchmarks/build/uint32/src/inputs/RecordInput.java": "3f325c7ac1596cbcfecec465c92c16fd75bb96d939cff6a315b2c6624a4cc64d",
+    "benchmarks/build/uint32/src/inputs/SampleInput.java": "3f479b201d99b88211d5a7175e15cbe756ba32a0db32cb0670afba7a689d92b7",
+    "benchmarks/build/uint32/src/inputs/Workload.java": "f761bb3a4975bb183e99ca2bca3f9669e5ed9cabf3666f9cdb29914ca952e534",
+    "benchmarks/build/uint32/src/inputs/Workloads.java": "3fa82c248590bf77f94d9530438a8e95ce8f1918a4c7bc432627cb7b68cea165",
+    "benchmarks/src/main/java/io/github/snovader/buffy/benchmarks/codecs/BuffyCodec.java": "b5cf85ade883232d185ada68bf5f69c96523e2273f51e89b0ecbb23953214829"
+  },
+  "timing_limitations": "Focused run 2 and document run 1 under low battery/load remain excluded from timing conclusions. Fresh AC-powered focused and two document runs confirm the improvement; background applications remained active.",
+  "generated_runtime_sha256": {
+    "uint-setters/current/ByteBuffer.java": "f31c1d6a9ee491af41a3a0c6804d211d1cbf41fe6b71317d8e0f95b25febab80",
+    "uint-setters/current/TableBuilder.java": "f4d5bb25bf544f34e36eb63b3e7200c288400953b78f78a347a852ac3b011754",
+    "uint-setters/scalar/ByteBuffer.java": "1dd03b20ae601872d6d51574ff014483fa5944ecc503f2b16d54ae3e46256677",
+    "uint-setters/scalar/TableBuilder.java": "4bdd6f47781b7a2cb9f1948fb91f01ac15959077912e3705aac4637889b67a48",
+    "uint-setters/fixed/ByteBuffer.java": "35ca3475d6274bf65b50e5fefad3d43162d254f384ec09ed0244622ddcad30b5",
+    "uint-setters/fixed/TableBuilder.java": "fa051192d18386cb222486e041c9b03302178ebb2efa0fe95ce6be8a0c50d72a",
+    "uint32/current/ByteBuffer.java": "1b8807bb78b7ca0e0e9def45fce5402670b7538b80181f80c9633d6161214006",
+    "uint32/current/TableBuilder.java": "f4d5bb25bf544f34e36eb63b3e7200c288400953b78f78a347a852ac3b011754",
+    "uint32/production/ByteBuffer.java": "6a451701dcbac8f4f3cbba36827a820d7f1572429d05e09f2449c196c0b7cbe2",
+    "uint32/production/TableBuilder.java": "a0275f8e66be7e860c6bf42384391832f52b1523df5024dab0bbcf874d369b28"
+  },
+  "powered_repeats": {
+    "fixed-writers-powered": {
+      "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=36503651)\t47%; charging; 1:48 remaining present: true",
+      "load": "15:15  up 7 days,  2:33, 2 users, load averages: 3.85 3.19 3.14"
+    },
+    "fixed-writers-powered-document1": {
+      "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=36503651)\t49%; charging; 2:06 remaining present: true",
+      "load": "15:17  up 7 days,  2:35, 2 users, load averages: 4.22 3.71 3.36"
+    },
+    "fixed-writers-powered-document2": {
+      "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=36503651)\t50%; charging; 2:07 remaining present: true",
+      "load": "15:17  up 7 days,  2:36, 2 users, load averages: 5.43 4.14 3.54"
+    }
+  },
+  "powered_sources_unchanged": true
+}
