@@ -147,9 +147,9 @@ An implementation's test loads `cases.json` and:
 
 1. Reads every valid table as described above, and compares what it reads with
    the description. Comparing the description with its values replaced by the
-   ones read, as the TypeScript and Python tests do, covers every value. Floats
-   compare by value, with NaN and negative zero by their names; the Java and
-   Rust tests compare their bits.
+   ones read, as the TypeScript and Python tests do, covers every value. The
+   TypeScript test compares floats by value, with NaN and negative zero by
+   their names; the Python, Java and Rust tests compare their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
 3. Reads every invalid table up to `field`, and checks that `field` fails with
