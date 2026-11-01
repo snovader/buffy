@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Binary tables of scalars, strings and arrays, read with bounds checks and zero-copy views"
 readme = "README.md"
-homepage = "https://github.com/snovader/buffy"
 repository.workspace = true
 license.workspace = true
 keywords = ["binary", "buffer", "serialization", "table", "zero-copy"]
