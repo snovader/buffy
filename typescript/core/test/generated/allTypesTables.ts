@@ -11,6 +11,8 @@ import {
     message,
     scalar,
     string,
+    struct,
+    structArray,
     table,
     vector
 } from './descriptions.ts';
@@ -24,8 +26,12 @@ import type {
     NestedFields,
     OuterFields,
     PackedFields,
+    PathFields,
+    PointFields,
     ReservedFields,
     ScalarsFields,
+    SegmentFields,
+    StructsFields,
     TreeFields
 } from './all_types/typescript/allTypes.ts';
 
@@ -55,6 +61,10 @@ type Reserved = typescript.Reserved | javascript.Reserved;
 type Keywords = typescript.Keywords | javascript.Keywords;
 type Packed = typescript.Packed | javascript.Packed;
 type Documented = typescript.Documented | javascript.Documented;
+type Structs = typescript.Structs | javascript.Structs;
+type Path = typescript.Path | javascript.Path;
+type Segment = typescript.Segment | javascript.Segment;
+type Point = typescript.Point | javascript.Point;
 
 /** The scalar types in the order of the fields of `Scalars`, `Arrays` and `Packed` */
 const SCALAR_TYPES = [
@@ -147,6 +157,31 @@ export function readDocumented(documented: Documented): DocumentedFields {
     };
 }
 
+export function readStructs(structs: Structs): StructsFields {
+    return {
+        packed: readScalars(structs.packed()),
+        documented: structs.documented().map(readDocumented),
+        segment: readSegment(structs.segment()),
+        segments: structs.segments().map(readSegment),
+        path: readPath(structs.path())
+    };
+}
+
+function readPath(path: Path): PathFields {
+    return {
+        start: readPoint(path.start()),
+        points: path.points().map(readPoint)
+    };
+}
+
+function readSegment(segment: Segment): SegmentFields {
+    return { start: readPoint(segment.start()), end: readPoint(segment.end()) };
+}
+
+function readPoint(point: Point): PointFields {
+    return { x: point.x(), y: point.y() };
+}
+
 // The tables that the generated code writes, in the conformance suite's
 // model
 
@@ -198,6 +233,55 @@ export function describeReserved({
             string(keywords.type)
         ])
     ]);
+}
+
+/** The scalars of a `Segment`, those of its two points in their place */
+const SEGMENT_TYPES: ScalarType[] = [
+    'float32',
+    'float32',
+    'float32',
+    'float32'
+];
+
+export function describeStructs({
+    packed,
+    documented,
+    segment,
+    segments,
+    path
+}: StructsFields): TableDescription {
+    return message(DEFAULT_LAYOUT, [
+        struct(SCALAR_TYPES.map(type => [type, packed[type]])),
+        structArray(
+            ['uint8', 'uint16', 'uint32'],
+            documented.map(({ one, two, undocumented }) => [
+                one,
+                two,
+                undocumented
+            ])
+        ),
+        struct(
+            segmentValues(segment).map((value, index) => [
+                SEGMENT_TYPES[index],
+                value
+            ])
+        ),
+        structArray(SEGMENT_TYPES, segments.map(segmentValues)),
+        table([
+            struct([
+                ['float32', path.start.x],
+                ['float32', path.start.y]
+            ]),
+            structArray(
+                ['float32', 'float32'],
+                path.points.map(({ x, y }) => [x, y])
+            )
+        ])
+    ]);
+}
+
+function segmentValues({ start, end }: SegmentFields): number[] {
+    return [start.x, start.y, end.x, end.y];
 }
 
 /**
@@ -303,4 +387,22 @@ export const DOCUMENTED_FIELDS: fc.Arbitrary<DocumentedFields> = fc.record({
     one: SCALAR_VALUES.uint8,
     two: SCALAR_VALUES.uint16,
     undocumented: SCALAR_VALUES.uint32
+});
+
+const POINTS: fc.Arbitrary<PointFields> = fc.record({
+    x: SCALAR_VALUES.float32,
+    y: SCALAR_VALUES.float32
+});
+
+const SEGMENTS: fc.Arbitrary<SegmentFields> = fc.record({
+    start: POINTS,
+    end: POINTS
+});
+
+export const STRUCTS_FIELDS: fc.Arbitrary<StructsFields> = fc.record({
+    packed: SCALARS_FIELDS,
+    documented: arrays(DOCUMENTED_FIELDS),
+    segment: SEGMENTS,
+    segments: arrays(SEGMENTS),
+    path: fc.record({ start: POINTS, points: arrays(POINTS) })
 });

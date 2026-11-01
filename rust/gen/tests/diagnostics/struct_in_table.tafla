@@ -1,9 +1,0 @@
-struct Sample {
-    key: uint32;
-    value: float32;
-}
-
-message Samples {
-    first: Sample;
-    rest: [Sample];
-}

@@ -22,7 +22,8 @@ pub enum Kind {
     Message(Layout),
     /// A table nested in a message or another table
     Table,
-    /// Scalars at fixed offsets, without a header or padding
+    /// Scalars at fixed offsets, without a header or padding, read and
+    /// written on their own, as a field of a table or in an array
     Struct,
 }
 
@@ -72,6 +73,10 @@ pub enum FieldType {
     Scalar(Scalar),
     Array(Scalar),
     String,
+    /// A struct, in place, by its index in [`Schema::definitions`]
+    Struct(usize),
+    /// An array of structs, by the structs' index in [`Schema::definitions`]
+    StructArray(usize),
     /// A nested table, by its index in [`Schema::definitions`]
     Table(usize),
     /// A vector of tables, by the tables' index in [`Schema::definitions`]
@@ -140,6 +145,41 @@ impl Schema {
     pub fn definition(&self, index: usize) -> &Definition {
         &self.definitions[index]
     }
+
+    /// The scalars of a struct in order, those of the structs in it in their
+    /// place
+    pub fn struct_scalars(&self, definition: &Definition) -> Vec<Scalar> {
+        let mut scalars = Vec::new();
+        self.push_scalars(definition, &mut scalars);
+        scalars
+    }
+
+    fn push_scalars(&self, definition: &Definition, scalars: &mut Vec<Scalar>) {
+        for field in &definition.fields {
+            match field.field_type {
+                FieldType::Scalar(scalar) => scalars.push(scalar),
+                FieldType::Struct(index) => self.push_scalars(self.definition(index), scalars),
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+    }
+
+    /// The byte length of a struct
+    pub fn struct_size(&self, definition: &Definition) -> usize {
+        self.struct_scalars(definition)
+            .iter()
+            .map(|scalar| usize::from(scalar.size()))
+            .sum()
+    }
+
+    /// The alignment of an array of a struct: its largest scalar's size
+    pub fn struct_alignment(&self, definition: &Definition) -> u8 {
+        self.struct_scalars(definition)
+            .iter()
+            .map(|scalar| scalar.size())
+            .max()
+            .unwrap_or(1)
+    }
 }
 
 impl Definition {
@@ -148,16 +188,5 @@ impl Definition {
             Kind::Message(layout) => Some(layout),
             Kind::Table | Kind::Struct => None,
         }
-    }
-
-    /// The byte length of a struct
-    pub fn struct_size(&self) -> usize {
-        self.fields
-            .iter()
-            .map(|field| match field.field_type {
-                FieldType::Scalar(scalar) => usize::from(scalar.size()),
-                _ => unreachable!("structs hold scalars only"),
-            })
-            .sum()
     }
 }

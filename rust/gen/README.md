@@ -40,8 +40,11 @@ A schema declares messages, tables and structs, in any order:
   255 bytes, 64 KiB or 4 GiB.
 - A **table** is nested in a message or another table, as a field of its type
   or in a vector of them. It has no header, and 32-bit offsets.
-- A **struct** holds scalars at fixed offsets, without a header, offsets or
-  padding, such as the frames of a stream.
+- A **struct** holds scalars and other structs at fixed offsets, without a
+  header, offsets or padding. It's read and written on its own, such as the
+  frames of a stream, and tables hold it in place, like a scalar, and in
+  arrays, which store its values one struct after another, aligned to its
+  largest scalar.
 
 Each field is `name: type;`, of one of these types:
 
@@ -51,6 +54,8 @@ Each field is `name: type;`, of one of these types:
 | `float32`, `float64`                                                     | A float                   |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
 | `string`                                                                 | A UTF-8 string            |
+| A struct's name                                                          | A struct, in place        |
+| `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
 | `[` a table's name `]`                                                   | A vector of tables        |
 
@@ -92,8 +97,8 @@ or read its tables, or a target couldn't generate its code:
 - A message with 8- or 16-bit offsets can't nest tables, since readers read a
   nested table's offsets as wide as its message's, and tables have 32-bit
   offsets.
-- Structs hold scalars only, and tables can't hold structs yet. Arrays of
-  strings aren't supported.
+- Structs hold scalars and structs only, and a struct can't contain itself,
+  even within another struct. Arrays of strings aren't supported.
 
 It doesn't check yet for declarations whose names clash with a target's own,
 such as one named after a class that the generated code imports, like `List`
@@ -115,17 +120,24 @@ error: unknown type `flaot64`
 
 Messages and tables read their fields lazily from the bytes, and are written
 from their fields in one call; tables nested from builders are written
-straight into their parent. Structs are read and written whole. A versioned
-message's reader fails with the runtime's decode error when the bytes are in
-another version.
+straight into their parent. Structs are read and written whole, and arrays of
+them are read into a struct each, and written from them into one run of
+bytes. A versioned message's reader fails with the runtime's decode error
+when the bytes are in another version.
 
 | Target     | Files                                    | Messages and tables                                                      | Structs                                              |
 | ---------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
-| TypeScript | `<schema>.ts`, in camelCase              | Classes, written from interfaces of their fields                         | Classes, read eagerly                                |
+| TypeScript | `<schema>.ts`, in camelCase              | Classes, written from interfaces of their fields                         | Classes, read eagerly at any offset                  |
 | JavaScript | `<schema>.js`, an ES module with `JSDoc` | As in TypeScript, with `@typedef`s of their fields                       | As in TypeScript                                     |
 | Python     | `<schema>.py`                            | Classes, written from `TypedDict`s of their fields as keyword arguments  | Frozen dataclasses, read and written with `struct`   |
 | Java       | `<package>/<Name>.java`                  | Final classes, written from a nested `Fields` record                     | Records, read and written in place with `VarHandle`s |
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
+
+A table's getter of an array of structs returns an array of them in
+TypeScript, JavaScript and Java, as Java's getters of arrays of scalars
+return Java arrays, a `list` in Python, and an iterator that reads each from
+the bytes in Rust. Each struct writes an array
+of them with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
 
 Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
@@ -260,7 +272,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 190 KB. It has no imports, so any host runs it with an empty import
+about 230 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 

@@ -103,9 +103,11 @@ fn check_declaration(
 
     for field in &declaration.fields {
         if let Some(field_type) = resolve_type(field, declarations, indices, errors) {
-            if kind == Kind::Struct && !matches!(field_type, FieldType::Scalar(_)) {
+            if kind == Kind::Struct
+                && !matches!(field_type, FieldType::Scalar(_) | FieldType::Struct(_))
+            {
                 errors.push(Diagnostic::new(
-                    "struct fields must be scalars",
+                    "struct fields must be scalars or structs",
                     field.type_name.span,
                 ));
             }
@@ -298,13 +300,11 @@ fn resolve_type(
             );
             None
         }
-        Keyword::Struct => {
-            errors.push(Diagnostic::new(
-                format!("`{}` is a struct, which tables can't hold yet", name.text),
-                name.span,
-            ));
-            None
-        }
+        Keyword::Struct => Some(if field.is_array {
+            FieldType::StructArray(index)
+        } else {
+            FieldType::Struct(index)
+        }),
     }
 }
 
@@ -335,29 +335,35 @@ fn unknown_type(name: &Name, indices: &HashMap<&str, usize>) -> Diagnostic {
 }
 
 /// Rejects tables that nest themselves without a vector in between, since
-/// every field is required and such a table would never end
+/// every field is required and such a table would never end, and structs that
+/// contain themselves, which would have no size
 fn check_cycles(
     definitions: &[Definition],
     declarations: &[Declaration],
     errors: &mut Vec<Diagnostic>,
 ) {
     for (start, definition) in definitions.iter().enumerate() {
-        let mut stack: Vec<usize> = nested_tables(definition).collect();
+        let mut stack: Vec<usize> = nested_in_place(definition).collect();
         let mut seen = vec![false; definitions.len()];
 
         while let Some(index) = stack.pop() {
             if index == start {
+                let help = if definition.kind == Kind::Struct {
+                    "a struct can't contain itself, even within another struct"
+                } else {
+                    "only a vector can nest a table in itself"
+                };
                 errors.push(
                     Diagnostic::new(
                         format!("`{}` contains itself", definition.name),
                         declarations[start].name.span,
                     )
-                    .with_help("only a vector can nest a table in itself"),
+                    .with_help(help),
                 );
                 break;
             }
             if !std::mem::replace(&mut seen[index], true) {
-                stack.extend(nested_tables(&definitions[index]));
+                stack.extend(nested_in_place(&definitions[index]));
             }
         }
     }
@@ -397,12 +403,14 @@ fn check_nested_offsets(
     }
 }
 
-fn nested_tables(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
+/// The tables and structs that a definition holds in place, rather than in a
+/// vector or an array, which can be empty
+fn nested_in_place(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
     definition
         .fields
         .iter()
         .filter_map(|field| match field.field_type {
-            FieldType::Table(index) => Some(index),
+            FieldType::Table(index) | FieldType::Struct(index) => Some(index),
             _ => None,
         })
 }

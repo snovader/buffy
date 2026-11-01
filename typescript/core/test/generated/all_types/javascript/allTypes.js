@@ -587,10 +587,371 @@ export class Reserved {
  * @property {KeywordsFields} keywords
  */
 
+/**
+ * Structs as fields, in place like scalars, and in arrays, which are aligned
+ * to their structs' largest scalar
+ */
+export class Structs {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @type {ByteBuffer} */
+    #buffer;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this.#buffer = new ByteBuffer(bytes, Structs.#LAYOUT);
+    }
+
+    /**
+     * Writes a `Structs` with every field
+     *
+     * @param {StructsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const builder = new TableBuilder(5, Structs.#LAYOUT);
+        builder.setStruct(Packed.serialize(fields.packed));
+        builder.setStructArray(
+            Documented.serializeArray(fields.documented),
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        builder.setStruct(Segment.serialize(fields.segment));
+        builder.setStructArray(
+            Segment.serializeArray(fields.segments),
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        builder.setTable(Path.builder(fields.path));
+
+        return builder.bytes();
+    }
+
+    /** @returns {Packed} A struct of every scalar type */
+    packed() {
+        return new Packed(this.#buffer.bytes(), this.#buffer.rootOffset(0));
+    }
+
+    /** @returns {Documented[]} An array of structs of 7 bytes, aligned to 4 */
+    documented() {
+        const bytes = this.#buffer.getStructArray(
+            this.#buffer.rootOffset(1),
+            Documented.SIZE
+        );
+        const items = new Array(bytes.length / Documented.SIZE);
+
+        for (let i = 0; i < items.length; i++) {
+            items[i] = new Documented(bytes, i * Documented.SIZE);
+        }
+
+        return items;
+    }
+
+    /** @returns {Segment} A struct of structs */
+    segment() {
+        return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
+    }
+
+    /** @returns {Segment[]} */
+    segments() {
+        const bytes = this.#buffer.getStructArray(
+            this.#buffer.rootOffset(3),
+            Segment.SIZE
+        );
+        const items = new Array(bytes.length / Segment.SIZE);
+
+        for (let i = 0; i < items.length; i++) {
+            items[i] = new Segment(bytes, i * Segment.SIZE);
+        }
+
+        return items;
+    }
+
+    /**
+     * A table nested in the message, which holds structs too
+     *
+     * @returns {Path}
+     */
+    path() {
+        return new Path(this.#buffer, this.#buffer.rootOffset(4));
+    }
+}
+
+/**
+ * The fields of a `Structs`, to write
+ *
+ * @typedef {object} StructsFields
+ * @property {PackedFields} packed A struct of every scalar type
+ * @property {readonly DocumentedFields[]} documented An array of structs of 7 bytes, aligned to 4
+ * @property {SegmentFields} segment A struct of structs
+ * @property {readonly SegmentFields[]} segments
+ * @property {PathFields} path A table nested in the message, which holds structs too
+ */
+
+export class Path {
+    /** @type {ByteBuffer} */
+    #buffer;
+    /** @type {number} */
+    #position;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     */
+    constructor(buffer, position) {
+        this.#buffer = buffer;
+        this.#position = position;
+    }
+
+    /**
+     * Returns a builder with every field set, which a parent writes
+     * straight into its own bytes
+     *
+     * @param {PathFields} fields
+     * @returns {TableBuilder}
+     */
+    static builder(fields) {
+        const builder = new TableBuilder(2);
+        builder.setStruct(Point.serialize(fields.start));
+        builder.setStructArray(
+            Point.serializeArray(fields.points),
+            Point.SIZE,
+            Point.ALIGNMENT
+        );
+
+        return builder;
+    }
+
+    /** @returns {Point} */
+    start() {
+        return new Point(
+            this.#buffer.bytes(),
+            this.#buffer.fieldOffset(this.#position, 0)
+        );
+    }
+
+    /** @returns {Point[]} */
+    points() {
+        const bytes = this.#buffer.getStructArray(
+            this.#buffer.fieldOffset(this.#position, 1),
+            Point.SIZE
+        );
+        const items = new Array(bytes.length / Point.SIZE);
+
+        for (let i = 0; i < items.length; i++) {
+            items[i] = new Point(bytes, i * Point.SIZE);
+        }
+
+        return items;
+    }
+}
+
+/**
+ * The fields of a `Path`, to write
+ *
+ * @typedef {object} PathFields
+ * @property {PointFields} start
+ * @property {readonly PointFields[]} points
+ */
+
+/** Two points, whose scalars lie in the segment's place */
+export class Segment {
+    /** The byte length of a `Segment` */
+    static SIZE = 16;
+
+    /**
+     * The alignment of an array of `Segment`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    static #writer = new StructWriter(new Uint8Array(Segment.SIZE));
+
+    /** @type {Point} */
+    #start;
+    /** @type {Point} */
+    #end;
+
+    /**
+     * Reads a `Segment` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Segment` does.
+     */
+    constructor(bytes, offset = 0) {
+        this.#start = new Point(bytes, offset);
+        this.#end = new Point(bytes, offset + 8);
+    }
+
+    /**
+     * Writes a `Segment`
+     *
+     * @param {SegmentFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const writer = Segment.#writer;
+        writer.reset();
+        Segment.write(writer, fields);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes `Segment`s one after another, as an array of them holds them
+     *
+     * @param {readonly SegmentFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Segment.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Segment.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Segment` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {SegmentFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        Point.write(writer, fields.start);
+        Point.write(writer, fields.end);
+    }
+
+    /** @returns {Point} */
+    start() {
+        return this.#start;
+    }
+
+    /** @returns {Point} */
+    end() {
+        return this.#end;
+    }
+}
+
+/**
+ * The fields of a `Segment`, to write
+ *
+ * @typedef {object} SegmentFields
+ * @property {PointFields} start
+ * @property {PointFields} end
+ */
+
+export class Point {
+    /** The byte length of a `Point` */
+    static SIZE = 8;
+
+    /**
+     * The alignment of an array of `Point`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    static #writer = new StructWriter(new Uint8Array(Point.SIZE));
+
+    /** @type {number} */
+    #x;
+    /** @type {number} */
+    #y;
+
+    /**
+     * Reads a `Point` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Point` does.
+     */
+    constructor(bytes, offset = 0) {
+        this.#x = readFloat32(bytes, offset);
+        this.#y = readFloat32(bytes, offset + 4);
+    }
+
+    /**
+     * Writes a `Point`
+     *
+     * @param {PointFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const writer = Point.#writer;
+        writer.reset();
+        Point.write(writer, fields);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes `Point`s one after another, as an array of them holds them
+     *
+     * @param {readonly PointFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Point.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Point.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Point` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {PointFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        writer.setFloat32(fields.x);
+        writer.setFloat32(fields.y);
+    }
+
+    /** @returns {number} */
+    x() {
+        return this.#x;
+    }
+
+    /** @returns {number} */
+    y() {
+        return this.#y;
+    }
+}
+
+/**
+ * The fields of a `Point`, to write
+ *
+ * @typedef {object} PointFields
+ * @property {number} x
+ * @property {number} y
+ */
+
 /** A struct of every scalar type, at fixed offsets without padding */
 export class Packed {
     /** The byte length of a `Packed` */
     static SIZE = 42;
+
+    /**
+     * The alignment of an array of `Packed`: its largest scalar's size
+     *
+     * @type {8}
+     */
+    static ALIGNMENT = 8;
 
     static #writer = new StructWriter(new Uint8Array(Packed.SIZE));
 
@@ -616,23 +977,24 @@ export class Packed {
     #float64;
 
     /**
-     * Reads a `Packed` from the start of `bytes`, eagerly, so that it
+     * Reads a `Packed` at `offset` in `bytes`, eagerly, so that it
      * doesn't keep them alive
      *
      * @param {Uint8Array} bytes
-     * @throws {DecodeError} If `bytes` are shorter than `Packed.SIZE`.
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Packed` does.
      */
-    constructor(bytes) {
-        this.#int8 = readInt8(bytes, 0);
-        this.#uint8 = readUint8(bytes, 1);
-        this.#int16 = readInt16(bytes, 2);
-        this.#uint16 = readUint16(bytes, 4);
-        this.#int32 = readInt32(bytes, 6);
-        this.#uint32 = readUint32(bytes, 10);
-        this.#int64 = readInt64(bytes, 14);
-        this.#uint64 = readUint64(bytes, 22);
-        this.#float32 = readFloat32(bytes, 30);
-        this.#float64 = readFloat64(bytes, 34);
+    constructor(bytes, offset = 0) {
+        this.#int8 = readInt8(bytes, offset);
+        this.#uint8 = readUint8(bytes, offset + 1);
+        this.#int16 = readInt16(bytes, offset + 2);
+        this.#uint16 = readUint16(bytes, offset + 4);
+        this.#int32 = readInt32(bytes, offset + 6);
+        this.#uint32 = readUint32(bytes, offset + 10);
+        this.#int64 = readInt64(bytes, offset + 14);
+        this.#uint64 = readUint64(bytes, offset + 22);
+        this.#float32 = readFloat32(bytes, offset + 30);
+        this.#float64 = readFloat64(bytes, offset + 34);
     }
 
     /**
@@ -644,6 +1006,35 @@ export class Packed {
     static serialize(fields) {
         const writer = Packed.#writer;
         writer.reset();
+        Packed.write(writer, fields);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes `Packed`s one after another, as an array of them holds them
+     *
+     * @param {readonly PackedFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Packed.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Packed.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Packed` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {PackedFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
         writer.setInt8(fields.int8);
         writer.setUint8(fields.uint8);
         writer.setInt16(fields.int16);
@@ -654,8 +1045,6 @@ export class Packed {
         writer.setUint64(fields.uint64);
         writer.setFloat32(fields.float32);
         writer.setFloat64(fields.float64);
-
-        return writer.bytes();
     }
 
     /** @returns {number} */
@@ -736,6 +1125,13 @@ export class Documented {
     /** The byte length of a `Documented` */
     static SIZE = 7;
 
+    /**
+     * The alignment of an array of `Documented`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
     static #writer = new StructWriter(new Uint8Array(Documented.SIZE));
 
     /** @type {number} */
@@ -746,16 +1142,17 @@ export class Documented {
     #undocumented;
 
     /**
-     * Reads a `Documented` from the start of `bytes`, eagerly, so that it
+     * Reads a `Documented` at `offset` in `bytes`, eagerly, so that it
      * doesn't keep them alive
      *
      * @param {Uint8Array} bytes
-     * @throws {DecodeError} If `bytes` are shorter than `Documented.SIZE`.
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Documented` does.
      */
-    constructor(bytes) {
-        this.#one = readUint8(bytes, 0);
-        this.#two = readUint16(bytes, 1);
-        this.#undocumented = readUint32(bytes, 3);
+    constructor(bytes, offset = 0) {
+        this.#one = readUint8(bytes, offset);
+        this.#two = readUint16(bytes, offset + 1);
+        this.#undocumented = readUint32(bytes, offset + 3);
     }
 
     /**
@@ -767,11 +1164,38 @@ export class Documented {
     static serialize(fields) {
         const writer = Documented.#writer;
         writer.reset();
+        Documented.write(writer, fields);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes `Documented`s one after another, as an array of them holds them
+     *
+     * @param {readonly DocumentedFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Documented.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Documented.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Documented` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {DocumentedFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
         writer.setUint8(fields.one);
         writer.setUint16(fields.two);
         writer.setUint32(fields.undocumented);
-
-        return writer.bytes();
     }
 
     /** @returns {number} A field's documentation, of one line */

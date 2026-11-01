@@ -2,6 +2,8 @@
 //! tables back with every getter, and the values of the fields that it
 //! writes, as `crate::tables` describes them.
 
+// Each test crate uses a part of the generated code
+#[allow(dead_code)]
 #[path = "../golden/shapes/rust/shapes.rs"]
 pub mod generated;
 

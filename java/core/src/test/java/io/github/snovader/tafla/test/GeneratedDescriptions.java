@@ -114,6 +114,34 @@ final class GeneratedDescriptions {
         return new StringField(value);
     }
 
+    /**
+     * A struct of the scalars in the order of their offsets, as generated code sets it from its
+     * record's bytes
+     */
+    static StructField struct(List<ScalarField> scalars) {
+        return new StructField(scalars);
+    }
+
+    /**
+     * An array of structs of scalars of the types, as generated code sets it from its records' bytes,
+     * with each struct's scalars in the order of their offsets
+     *
+     * @throws IllegalArgumentException if a struct's scalars aren't of the types
+     */
+    static StructArrayField structArray(List<ScalarType> types, List<List<ScalarField>> items) {
+        var values = new ArrayList<List<Long>>(items.size());
+        for (var scalars : items) {
+            var item = struct(scalars);
+            if (!item.types().equals(types)) {
+                throw new IllegalArgumentException(String.format("%s isn't a struct of %s", item, types));
+            }
+
+            values.add(item.values());
+        }
+
+        return new StructArrayField(types, values);
+    }
+
     /** A table nested from its builder at its default alignment, as generated code nests it */
     static TableField table(FieldDescription... fields) {
         return new TableField(Source.BUILDER, tableOf(fields), OptionalInt.empty());

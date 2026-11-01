@@ -2,7 +2,7 @@
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`.
 
-use super::writer::{CodeWriter, Style, call, text};
+use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
@@ -29,7 +29,7 @@ const KEYWORDS: [&str; 38] = [
 /// `_` after too: the classes' own methods, the parameter of `serialize()`
 /// beside its keyword arguments, and the built-in types that getters return,
 /// which their annotations find in the class
-const MEMBERS: [&str; 9] = [
+const MEMBERS: [&str; 11] = [
     "builder",
     "cls",
     "float",
@@ -37,7 +37,9 @@ const MEMBERS: [&str; 9] = [
     "list",
     "memoryview",
     "read",
+    "read_array",
     "serialize",
+    "serialize_array",
     "str",
 ];
 
@@ -87,7 +89,10 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
-    let has_vector = has_field(|field_type| matches!(field_type, FieldType::Vector(_)));
+    let has_sequence = has_struct
+        || has_field(|field_type| {
+            matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
+        });
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -105,7 +110,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if has_array {
         abc.push("Iterable");
     }
-    if has_vector {
+    if has_sequence {
         abc.push("Sequence");
     }
 
@@ -117,6 +122,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         typing.push("Final");
     }
     if has_struct {
+        typing.push("Literal");
         typing.push("Self");
     }
     if has_table {
@@ -313,16 +319,33 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     writer.dedent();
 }
 
+#[allow(clippy::too_many_lines)]
 fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     let name = &definition.name;
-    let format: String = definition
+    let format: String = schema
+        .struct_scalars(definition)
+        .into_iter()
+        .map(struct_code)
+        .collect();
+    let is_flat = definition
         .fields
         .iter()
-        .map(|field| match field.field_type {
-            FieldType::Scalar(scalar) => struct_code(scalar),
-            _ => unreachable!("structs hold scalars only"),
-        })
-        .collect();
+        .all(|field| matches!(field.field_type, FieldType::Scalar(_)));
+    // The struct's values as its Struct unpacks them, a struct within it as
+    // a struct of its own
+    let construction = if is_flat {
+        call("cls", vec![text("*values")])
+    } else {
+        construction(schema, definition, "cls", &mut 0)
+    };
+    let does_not_fit = call(
+        "DecodeError",
+        vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
+    );
+    let values_do_not_fit = call(
+        "ValueError",
+        vec![text(format!("\"{name}'s values don't fit its fields\""))],
+    );
 
     writer.line("@dataclass(frozen=True, slots=True)");
     writer.open(format!("class {name}:"));
@@ -330,9 +353,20 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.blank();
     writer.line(format!(
         "SIZE: ClassVar[int] = {}",
-        definition.struct_size()
+        schema.struct_size(definition)
     ));
     docstring(writer, &[format!("The byte length of {}", article(name))]);
+    let alignment = schema.struct_alignment(definition);
+    writer.line(format!(
+        "ALIGNMENT: ClassVar[Literal[{alignment}]] = {alignment}"
+    ));
+    docstring(
+        writer,
+        &[format!(
+            "The alignment of an array of {}: its largest scalar's size",
+            article(name)
+        )],
+    );
     writer.line(format!("_STRUCT: ClassVar[Struct] = Struct(\"<{format}\")"));
     writer.blank();
     for field in &definition.fields {
@@ -355,10 +389,6 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             "Raises `DecodeError` if `offset` is negative or `data` ends before it.".to_owned(),
         ],
     );
-    let does_not_fit = call(
-        "DecodeError",
-        vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
-    );
     // unpack_from() counts a negative offset from the end of the data
     writer.open("if offset < 0:");
     writer.statement(&STYLE, "raise ", &does_not_fit, "");
@@ -371,7 +401,47 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.statement(&STYLE, "raise ", &does_not_fit, " from cause");
     writer.dedent();
     writer.blank();
-    writer.line("return cls(*values)");
+    writer.statement(&STYLE, "return ", &construction, "");
+    writer.dedent();
+    writer.blank();
+
+    writer.line("@classmethod");
+    writer.open("def read_array(cls, data: Buffer) -> list[Self]:");
+    docstring(
+        writer,
+        &[
+            format!("Reads the `{name}`s one after another in `data`."),
+            String::new(),
+            "Raises `DecodeError` if `data` isn't a whole number of them.".to_owned(),
+        ],
+    );
+    writer.open("try:");
+    let comprehension = format!(
+        "return [{} for values in cls._STRUCT.iter_unpack(data)]",
+        construction.flat()
+    );
+    if STYLE.indent.len() * 3 + comprehension.len() <= STYLE.width {
+        writer.line(comprehension);
+    } else {
+        writer.open("return [");
+        writer.statement(&STYLE, "", &construction, "");
+        writer.line("for values in cls._STRUCT.iter_unpack(data)");
+        writer.close("]");
+    }
+    writer.dedent();
+    writer.open("except error as cause:");
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call(
+            "DecodeError",
+            vec![text(format!(
+                "f\"{name}s don't fit in {{memoryview(data).nbytes}} bytes\""
+            ))],
+        ),
+        " from cause",
+    );
+    writer.dedent();
     writer.dedent();
     writer.blank();
 
@@ -384,29 +454,88 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
         ],
     );
-    let fields = definition
-        .fields
-        .iter()
-        .map(|field| text(format!("self.{}", identifier(&field.name))))
-        .collect();
+    let mut fields = Vec::new();
+    push_values(schema, definition, "self", &mut fields);
     // struct raises its error for an integer out of range and OverflowError
     // for a float too large, neither of which is the runtime's ValueError
     writer.open("try:");
     writer.statement(&STYLE, "return ", &call("self._STRUCT.pack", fields), "");
     writer.dedent();
     writer.open("except (error, OverflowError) as cause:");
-    writer.statement(
-        &STYLE,
-        "raise ",
-        &call(
-            "ValueError",
-            vec![text(format!("\"{name}'s values don't fit its fields\""))],
-        ),
-        " from cause",
+    writer.statement(&STYLE, "raise ", &values_do_not_fit, " from cause");
+    writer.dedent();
+    writer.dedent();
+    writer.blank();
+
+    writer.line("@classmethod");
+    writer.open("def serialize_array(cls, items: Sequence[Self]) -> bytearray:");
+    docstring(
+        writer,
+        &[
+            format!("Returns the bytes of `{name}`s one after another, as an array of them"),
+            "holds them.".to_owned(),
+            String::new(),
+            "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
+        ],
     );
+    writer.line("data = bytearray(len(items) * cls.SIZE)");
+    let mut arguments = vec![text("data"), text("index * cls.SIZE")];
+    push_values(schema, definition, "item", &mut arguments);
+    writer.open("try:");
+    writer.open("for index, item in enumerate(items):");
+    writer.statement(&STYLE, "", &call("cls._STRUCT.pack_into", arguments), "");
     writer.dedent();
     writer.dedent();
+    writer.open("except (error, OverflowError) as cause:");
+    writer.statement(&STYLE, "raise ", &values_do_not_fit, " from cause");
     writer.dedent();
+    writer.blank();
+    writer.line("return data");
+    writer.dedent();
+    writer.dedent();
+}
+
+/// The call that makes a struct of the values that its `Struct` unpacks, from
+/// `values[*index]` on, which it moves past them
+fn construction(
+    schema: &Schema,
+    definition: &Definition,
+    constructor: &str,
+    index: &mut usize,
+) -> Expr {
+    let arguments = definition
+        .fields
+        .iter()
+        .map(|field| match field.field_type {
+            FieldType::Scalar(_) => {
+                let value = text(format!("values[{index}]"));
+                *index += 1;
+                value
+            }
+            FieldType::Struct(inner) => {
+                let inner = schema.definition(inner);
+                construction(schema, inner, &inner.name, index)
+            }
+            _ => unreachable!("structs hold scalars and structs only"),
+        })
+        .collect();
+
+    call(constructor, arguments)
+}
+
+/// Pushes the attributes of a struct's scalars, those of a struct within it
+/// in its place, as its `Struct` packs them
+fn push_values(schema: &Schema, definition: &Definition, owner: &str, values: &mut Vec<Expr>) {
+    for field in &definition.fields {
+        let attribute = format!("{owner}.{}", identifier(&field.name));
+        match field.field_type {
+            FieldType::Scalar(_) => values.push(text(attribute)),
+            FieldType::Struct(inner) => {
+                push_values(schema, schema.definition(inner), &attribute, values);
+            }
+            _ => unreachable!("structs hold scalars and structs only"),
+        }
+    }
 }
 
 fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
@@ -433,27 +562,42 @@ fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
 fn setters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields[\"{}\"]", identifier(&field.name));
-        let (method, argument) = match field.field_type {
-            FieldType::Scalar(scalar) => (format!("set_{}", scalar.name()), text(value)),
-            FieldType::Array(scalar) => (format!("set_{}_array", scalar.name()), text(value)),
-            FieldType::String => ("set_string".to_owned(), text(value)),
+        let (method, arguments) = match field.field_type {
+            FieldType::Scalar(scalar) => (format!("set_{}", scalar.name()), vec![text(value)]),
+            FieldType::Array(scalar) => (format!("set_{}_array", scalar.name()), vec![text(value)]),
+            FieldType::String => ("set_string".to_owned(), vec![text(value)]),
+            FieldType::Struct(_) => (
+                "set_struct".to_owned(),
+                vec![call(format!("{value}.serialize"), vec![])],
+            ),
+            FieldType::StructArray(index) => {
+                let structure = &schema.definition(index).name;
+                (
+                    "set_struct_array".to_owned(),
+                    vec![
+                        call(format!("{structure}.serialize_array"), vec![text(value)]),
+                        text(format!("{structure}.SIZE")),
+                        text(format!("{structure}.ALIGNMENT")),
+                    ],
+                )
+            }
             FieldType::Table(index) => {
                 let table = &schema.definition(index).name;
                 (
                     "set_table".to_owned(),
-                    call(format!("{table}.builder"), vec![text(value)]),
+                    vec![call(format!("{table}.builder"), vec![text(value)])],
                 )
             }
             FieldType::Vector(index) => {
                 let table = &schema.definition(index).name;
                 let builders = format!("[{table}.builder(item) for item in {value}]");
-                ("set_vector".to_owned(), text(builders))
+                ("set_vector".to_owned(), vec![text(builders)])
             }
         };
         writer.statement(
             &STYLE,
             "",
-            &call(format!("builder.{method}"), vec![argument]),
+            &call(format!("builder.{method}"), arguments),
             "",
         );
     }
@@ -497,6 +641,24 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                     &call("self._buffer.get_string", vec![offset]),
                     "",
                 );
+            }
+            FieldType::Struct(index) => {
+                let structure = &schema.definition(index).name;
+                let bytes = call(
+                    "self._buffer.get_struct",
+                    vec![offset, text(format!("{structure}.SIZE"))],
+                );
+                let read = call(format!("{structure}.read"), vec![bytes]);
+                writer.statement(&STYLE, "return ", &read, "");
+            }
+            FieldType::StructArray(index) => {
+                let structure = &schema.definition(index).name;
+                let bytes = call(
+                    "self._buffer.get_struct_array",
+                    vec![offset, text(format!("{structure}.SIZE"))],
+                );
+                let read = call(format!("{structure}.read_array"), vec![bytes]);
+                writer.statement(&STYLE, "return ", &read, "");
             }
             FieldType::Table(index) => {
                 let table = &schema.definition(index).name;
@@ -586,8 +748,10 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
-        FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::Vector(index) => format!("list[{}]", schema.definition(index).name),
+        FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
+        FieldType::StructArray(index) | FieldType::Vector(index) => {
+            format!("list[{}]", schema.definition(index).name)
+        }
     }
 }
 
@@ -596,6 +760,9 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
+        // Structs are written from their dataclasses
+        FieldType::Struct(index) => schema.definition(index).name.clone(),
+        FieldType::StructArray(index) => format!("Sequence[{}]", schema.definition(index).name),
         FieldType::Table(index) => format!("{}Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("Sequence[{}Fields]", schema.definition(index).name),
     }

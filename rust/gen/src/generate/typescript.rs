@@ -345,7 +345,22 @@ impl Generator<'_> {
         writer.line(format!(
             "{}SIZE = {};",
             self.static_readonly(),
-            definition.struct_size()
+            self.schema.struct_size(definition)
+        ));
+        writer.blank();
+        // A static of JavaScript is a number, rather than the literal that
+        // setStructArray() takes, without its type
+        let alignment = self.schema.struct_alignment(definition);
+        self.doc(
+            writer,
+            &[format!(
+                "The alignment of an array of `{name}`: its largest scalar's size"
+            )],
+            &[format!("@type {{{alignment}}}")],
+        );
+        writer.line(format!(
+            "{}ALIGNMENT = {alignment};",
+            self.static_readonly()
         ));
         writer.blank();
         writer.statement(
@@ -370,35 +385,52 @@ impl Generator<'_> {
         self.doc(
             writer,
             &[
-                format!("Reads a `{name}` from the start of `bytes`, eagerly, so that it"),
+                format!("Reads a `{name}` at `offset` in `bytes`, eagerly, so that it"),
                 "doesn't keep them alive".to_owned(),
             ],
             &[
                 "@param {Uint8Array} bytes".to_owned(),
-                format!("@throws {{DecodeError}} If `bytes` are shorter than `{name}.SIZE`."),
+                "@param {number} [offset]".to_owned(),
+                format!("@throws {{DecodeError}} If `bytes` end before the `{name}` does."),
             ],
         );
         writer.open(format!(
-            "constructor(bytes{}) {{",
+            "constructor(bytes{}, offset = 0) {{",
             self.annotation("Uint8Array")
         ));
         // The runtime's read functions, which check each read, skip making a
         // ByteBuffer and its DataView, which took five times as long
         let mut offset = 0;
         for field in &definition.fields {
-            let FieldType::Scalar(scalar) = field.field_type else {
-                unreachable!("structs hold scalars only")
+            let position = if offset == 0 {
+                text("offset")
+            } else {
+                text(format!("offset + {offset}"))
+            };
+            let (read, size) = match field.field_type {
+                FieldType::Scalar(scalar) => (
+                    call(
+                        format!("read{}", scalar_method(scalar)),
+                        vec![text("bytes"), position],
+                    ),
+                    usize::from(scalar.size()),
+                ),
+                FieldType::Struct(index) => {
+                    let inner = self.schema.definition(index);
+                    (
+                        call(format!("new {}", inner.name), vec![text("bytes"), position]),
+                        self.schema.struct_size(inner),
+                    )
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
             };
             writer.statement(
                 &STYLE,
                 &format!("this.#{} = ", identifier(&field.name)),
-                &call(
-                    format!("read{}", scalar_method(scalar)),
-                    vec![text("bytes"), text(offset.to_string())],
-                ),
+                &read,
                 ";",
             );
-            offset += usize::from(scalar.size());
+            offset += size;
         }
         writer.close("}");
         writer.blank();
@@ -420,18 +452,67 @@ impl Generator<'_> {
         // The writer is shared, and a previous call whose value threw, such
         // as a number for an int64, left it within that struct
         writer.line("writer.reset();");
-        for field in &definition.fields {
-            let FieldType::Scalar(scalar) = field.field_type else {
-                unreachable!("structs hold scalars only")
-            };
-            writer.line(format!(
-                "writer.set{}(fields.{});",
-                scalar_method(scalar),
-                identifier(&field.name)
-            ));
-        }
+        writer.line(format!("{name}.write(writer, fields);"));
         writer.blank();
         writer.line("return writer.bytes();");
+        writer.close("}");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &[format!(
+                "Writes `{name}`s one after another, as an array of them holds them"
+            )],
+            &[
+                format!("@param {{readonly {name}Fields[]}} items"),
+                "@returns {Uint8Array}".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static serializeArray(items{}){} {{",
+            self.annotation(&format!("readonly {name}Fields[]")),
+            self.annotation("Uint8Array")
+        ));
+        writer.line(format!(
+            "const bytes = new Uint8Array(items.length * {name}.SIZE);"
+        ));
+        writer.line("const writer = new StructWriter(bytes);");
+        writer.open("for (const fields of items) {");
+        writer.line(format!("{name}.write(writer, fields);"));
+        writer.close("}");
+        writer.blank();
+        writer.line("return bytes;");
+        writer.close("}");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &[format!("Writes a `{name}` at the writer's position")],
+            &[
+                "@param {StructWriter} writer".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static write(writer{}, fields{}){} {{",
+            self.annotation("StructWriter"),
+            self.annotation(&format!("{name}Fields")),
+            self.annotation("void")
+        ));
+        for field in &definition.fields {
+            let value = format!("fields.{}", identifier(&field.name));
+            match field.field_type {
+                FieldType::Scalar(scalar) => {
+                    writer.line(format!("writer.set{}({value});", scalar_method(scalar)));
+                }
+                FieldType::Struct(index) => {
+                    let inner = &self.schema.definition(index).name;
+                    writer.line(format!("{inner}.write(writer, {value});"));
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
         writer.close("}");
 
         for field in &definition.fields {
@@ -491,17 +572,38 @@ impl Generator<'_> {
     fn setters(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let value = format!("fields.{}", identifier(&field.name));
-            let (method, argument) = match field.field_type {
-                FieldType::Scalar(scalar) => (format!("set{}", scalar_method(scalar)), text(value)),
-                FieldType::Array(scalar) => {
-                    (format!("set{}Array", scalar_method(scalar)), text(value))
+            let (method, arguments) = match field.field_type {
+                FieldType::Scalar(scalar) => {
+                    (format!("set{}", scalar_method(scalar)), vec![text(value)])
                 }
-                FieldType::String => ("setString".to_owned(), text(value)),
+                FieldType::Array(scalar) => (
+                    format!("set{}Array", scalar_method(scalar)),
+                    vec![text(value)],
+                ),
+                FieldType::String => ("setString".to_owned(), vec![text(value)]),
+                FieldType::Struct(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    (
+                        "setStruct".to_owned(),
+                        vec![call(format!("{structure}.serialize"), vec![text(value)])],
+                    )
+                }
+                FieldType::StructArray(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    (
+                        "setStructArray".to_owned(),
+                        vec![
+                            call(format!("{structure}.serializeArray"), vec![text(value)]),
+                            text(format!("{structure}.SIZE")),
+                            text(format!("{structure}.ALIGNMENT")),
+                        ],
+                    )
+                }
                 FieldType::Table(index) => {
                     let table = &self.schema.definition(index).name;
                     (
                         "setTable".to_owned(),
-                        call(format!("{table}.builder"), vec![text(value)]),
+                        vec![call(format!("{table}.builder"), vec![text(value)])],
                     )
                 }
                 FieldType::Vector(index) => {
@@ -510,13 +612,13 @@ impl Generator<'_> {
                         format!("{value}.map"),
                         vec![text(format!("{table}.builder"))],
                     );
-                    ("setVector".to_owned(), builders)
+                    ("setVector".to_owned(), vec![builders])
                 }
             };
             writer.statement(
                 &STYLE,
                 "",
-                &call(format!("builder.{method}"), vec![argument]),
+                &call(format!("builder.{method}"), arguments),
                 ";",
             );
         }
@@ -565,6 +667,18 @@ impl Generator<'_> {
                         ";",
                     );
                 }
+                FieldType::Struct(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    let read = call(
+                        format!("new {structure}"),
+                        vec![text("this.#buffer.bytes()"), offset],
+                    );
+                    writer.statement(&STYLE, "return ", &read, ";");
+                }
+                FieldType::StructArray(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    self.struct_array_getter(writer, offset, structure);
+                }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = call(format!("new {table}"), vec![text("this.#buffer"), offset]);
@@ -606,6 +720,41 @@ impl Generator<'_> {
 
             writer.close("}");
         }
+    }
+
+    /// The body of a getter of an array of structs, which reads each struct
+    /// eagerly from a view of their bytes
+    fn struct_array_getter(&self, writer: &mut CodeWriter, offset: Expr, structure: &str) {
+        let array = if self.typed {
+            format!("new Array<{structure}>(bytes.length / {structure}.SIZE)")
+        } else {
+            format!("new Array(bytes.length / {structure}.SIZE)")
+        };
+
+        writer.statement(
+            &STYLE,
+            "const bytes = ",
+            &call(
+                "this.#buffer.getStructArray",
+                vec![offset, text(format!("{structure}.SIZE"))],
+            ),
+            ";",
+        );
+        writer.statement(&STYLE, "const items = ", &text(array), ";");
+        writer.blank();
+        writer.open("for (let i = 0; i < items.length; i++) {");
+        writer.statement(
+            &STYLE,
+            "items[i] = ",
+            &call(
+                format!("new {structure}"),
+                vec![text("bytes"), text(format!("i * {structure}.SIZE"))],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.blank();
+        writer.line("return items;");
     }
 
     /// A getter's documentation, with its return type in JavaScript
@@ -716,8 +865,10 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
-        FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::Vector(index) => format!("{}[]", schema.definition(index).name),
+        FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
+        FieldType::StructArray(index) | FieldType::Vector(index) => {
+            format!("{}[]", schema.definition(index).name)
+        }
     }
 }
 
@@ -733,8 +884,12 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
             )
         }
         FieldType::String => "string".to_owned(),
-        FieldType::Table(index) => format!("{}Fields", schema.definition(index).name),
-        FieldType::Vector(index) => format!("readonly {}Fields[]", schema.definition(index).name),
+        FieldType::Struct(index) | FieldType::Table(index) => {
+            format!("{}Fields", schema.definition(index).name)
+        }
+        FieldType::StructArray(index) | FieldType::Vector(index) => {
+            format!("readonly {}Fields[]", schema.definition(index).name)
+        }
     }
 }
 

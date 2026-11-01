@@ -2,7 +2,7 @@
 //! every type, writes the tables that `TableBuilder` writes by hand, reads
 //! back what it writes, and reads corrupted and arbitrary bytes as values or
 //! decode errors without panicking. Its structs are written and read at
-//! their fixed sizes.
+//! their fixed sizes, as fields and in arrays.
 
 #[path = "golden/all_types/rust/all_types.rs"]
 mod all_types;
@@ -12,18 +12,18 @@ use std::ops::Range;
 
 use all_types::{
     Arrays, ArraysFields, Documented, Inner, InnerFields, Keywords, KeywordsFields, Nested,
-    NestedFields, Outer, OuterFields, Packed, Reserved, ReservedFields, Scalars, ScalarsFields,
-    Tree, TreeFields,
+    NestedFields, Outer, OuterFields, Packed, Path, PathFields, Point, Reserved, ReservedFields,
+    Scalars, ScalarsFields, Segment, Structs, StructsFields, Tree, TreeFields,
 };
 use proptest::array::uniform5;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tables::{
     CASES, Fields, Header, MAX_LENGTH, Value, arbitrary_bytes, arrays, build, check_truncated,
-    expected, float32s, float64s, integers, overwrites, placements, strings, table, to_vec,
-    truncations, vector,
+    expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
+    to_vec, truncations, vector,
 };
-use tafla::{DecodeError, TableLayout};
+use tafla::{Alignment, DecodeError, TableLayout};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
@@ -110,6 +110,53 @@ fn read_keywords(keywords: &Keywords) -> Fields {
         keywords.self_().map(Value::U8),
         keywords.r#type().map(Value::string),
     ]
+}
+
+fn read_structs(structs: &Structs) -> Fields {
+    vec![
+        structs
+            .packed()
+            .map(|packed| Value::Struct(describe_packed(&packed))),
+        structs.documented().map(|items| {
+            struct_array(
+                Documented::SIZE,
+                Documented::ALIGNMENT,
+                items.map(describe_documented),
+            )
+        }),
+        structs
+            .segment()
+            .map(|segment| Value::Struct(describe_segment(segment))),
+        structs.segments().map(|items| {
+            struct_array(
+                Segment::SIZE,
+                Segment::ALIGNMENT,
+                items.map(describe_segment),
+            )
+        }),
+        structs.path().and_then(|path| table(read_path(&path))),
+    ]
+}
+
+fn read_path(path: &Path) -> Fields {
+    vec![
+        path.start()
+            .map(|start| Value::Struct(describe_point(start))),
+        path.points()
+            .map(|items| struct_array(Point::SIZE, Point::ALIGNMENT, items.map(describe_point))),
+    ]
+}
+
+fn struct_array(
+    size: usize,
+    alignment: Alignment,
+    items: impl Iterator<Item = Vec<Value>>,
+) -> Value {
+    Value::StructArray {
+        size,
+        alignment,
+        items: items.collect(),
+    }
 }
 
 // The values of the fields, of their types in the schema
@@ -201,6 +248,64 @@ fn describe_packed(packed: &Packed) -> Vec<Value> {
         Value::U64(packed.uint64),
         Value::f32(packed.float32),
         Value::f64(packed.float64),
+    ]
+}
+
+fn describe_documented(documented: Documented) -> Vec<Value> {
+    vec![
+        Value::U8(documented.one),
+        Value::U16(documented.two),
+        Value::U32(documented.undocumented),
+    ]
+}
+
+/// The scalars of a `Segment`, those of its points in their place
+fn describe_segment(segment: Segment) -> Vec<Value> {
+    [describe_point(segment.start), describe_point(segment.end)].concat()
+}
+
+fn describe_point(point: Point) -> Vec<Value> {
+    vec![Value::f32(point.x), Value::f32(point.y)]
+}
+
+/// The values of `Structs`, whose arrays are aligned to their structs'
+/// largest scalars, and the scalars of a struct within a struct in its place
+fn describe_structs(fields: &StructsFields) -> Vec<Value> {
+    vec![
+        Value::Struct(describe_packed(&fields.packed)),
+        Value::StructArray {
+            size: 7,
+            alignment: Alignment::Four,
+            items: fields
+                .documented
+                .iter()
+                .copied()
+                .map(describe_documented)
+                .collect(),
+        },
+        Value::Struct(describe_segment(fields.segment)),
+        Value::StructArray {
+            size: 16,
+            alignment: Alignment::Four,
+            items: fields
+                .segments
+                .iter()
+                .copied()
+                .map(describe_segment)
+                .collect(),
+        },
+        Value::Table(describe_path(&fields.path)),
+    ]
+}
+
+fn describe_path(fields: &PathFields) -> Vec<Value> {
+    vec![
+        Value::Struct(describe_point(fields.start)),
+        Value::StructArray {
+            size: 8,
+            alignment: Alignment::Four,
+            items: fields.points.iter().copied().map(describe_point).collect(),
+        },
     ]
 }
 
@@ -515,6 +620,55 @@ fn documenteds() -> impl Strategy<Value = Documented> {
     })
 }
 
+fn points() -> impl Strategy<Value = Point> {
+    (float32s(), float32s()).prop_map(|(x, y)| Point { x, y })
+}
+
+fn segments() -> impl Strategy<Value = Segment> {
+    (points(), points()).prop_map(|(start, end)| Segment { start, end })
+}
+
+/// The values of a `Structs`' fields, whose arrays it borrows
+#[derive(Clone, Debug)]
+struct OwnedStructs {
+    packed: Packed,
+    documented: Vec<Documented>,
+    segment: Segment,
+    segments: Vec<Segment>,
+    start: Point,
+    points: Vec<Point>,
+}
+
+impl OwnedStructs {
+    fn fields(&self) -> StructsFields<'_> {
+        StructsFields {
+            packed: self.packed,
+            documented: &self.documented,
+            segment: self.segment,
+            segments: &self.segments,
+            path: PathFields {
+                start: self.start,
+                points: &self.points,
+            },
+        }
+    }
+}
+
+fn owned_structs() -> impl Strategy<Value = OwnedStructs> {
+    let arrays_of_structs = (arrays(documenteds()), arrays(segments()), arrays(points()));
+
+    (packeds(), segments(), points(), arrays_of_structs).prop_map(
+        |(packed, segment, start, (documented, segments, points))| OwnedStructs {
+            packed,
+            documented,
+            segment,
+            segments,
+            start,
+            points,
+        },
+    )
+}
+
 /// Bytes too short for a struct of `size` bytes
 fn shorter_than(size: usize) -> impl Strategy<Value = Vec<u8>> {
     vec(any::<u8>(), 0..size)
@@ -579,6 +733,18 @@ proptest! {
         prop_assert_eq!(read, expected(describe_reserved(&fields)));
     }
 
+    #[test]
+    fn structs_read_back_its_structs_in_place_in_arrays_and_within_structs_wherever_its_bytes_lie(
+        structs in owned_structs(),
+        placement in placements(),
+    ) {
+        let fields = structs.fields();
+        let bytes = placement.place(&fields.serialize()?);
+
+        let read = read_structs(&Structs::new(bytes.bytes()));
+        prop_assert_eq!(read, expected(describe_structs(&fields)));
+    }
+
     // Tables built by hand
 
     #[test]
@@ -606,6 +772,13 @@ proptest! {
         let fields = keywords.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_reserved(&fields)));
+    }
+
+    #[test]
+    fn structs_is_written_as_table_builder_writes_it(structs in owned_structs()) {
+        let fields = structs.fields();
+
+        prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_structs(&fields)));
     }
 
     // Decode errors
@@ -678,11 +851,28 @@ proptest! {
     }
 
     #[test]
+    fn a_corrupted_structs_reads_as_values_or_decode_errors(
+        structs in owned_structs(),
+        overwrite in overwrites(),
+    ) {
+        let fields = structs.fields();
+        let bytes = fields.serialize()?;
+        let written = describe_structs(&fields);
+
+        for truncated in truncations(&bytes) {
+            check_truncated(Ok(read_structs(&Structs::new(truncated))), &written)?;
+        }
+
+        read_structs(&Structs::new(&overwrite.apply(&bytes)));
+    }
+
+    #[test]
     fn arbitrary_bytes_read_as_any_message_or_decode_errors(bytes in arbitrary_bytes()) {
         read_scalars(&Scalars::new(&bytes));
         read_arrays(&Arrays::new(&bytes));
         read_nested(&Nested::new(&bytes));
         read_reserved(&Reserved::new(&bytes));
+        read_structs(&Structs::new(&bytes));
     }
 
     // The structs
@@ -741,5 +931,39 @@ proptest! {
     fn documented_fails_to_read_from_fewer_than_7_bytes(bytes in shorter_than(Documented::SIZE)) {
         let read = Documented::read(&bytes);
         prop_assert!(matches!(read, Err(DecodeError::OutOfRange { .. })), "{:?}", read);
+    }
+
+    #[test]
+    fn structs_are_written_one_after_another_as_arrays_aligned_to_their_largest_scalar_hold_them(
+        structs in owned_structs(),
+    ) {
+        let packed = [structs.packed, structs.packed];
+        prop_assert_eq!(Packed::ALIGNMENT, Alignment::Eight);
+        prop_assert_eq!(Packed::array_to_bytes(&packed), [packed_bytes(&packed[0]), packed_bytes(&packed[1])].concat());
+
+        prop_assert_eq!(Documented::ALIGNMENT, Alignment::Four);
+        let documented: Vec<u8> = structs.documented.iter().copied().flat_map(documented_bytes).collect();
+        prop_assert_eq!(Documented::array_to_bytes(&structs.documented), documented);
+
+        prop_assert_eq!((Segment::SIZE, Segment::ALIGNMENT), (16, Alignment::Four));
+        let segments: Vec<u8> = structs.segments.iter().flat_map(|segment| struct_bytes(&describe_segment(*segment))).collect();
+        prop_assert_eq!(Segment::array_to_bytes(&structs.segments), segments);
+
+        prop_assert_eq!((Point::SIZE, Point::ALIGNMENT), (8, Alignment::Four));
+        let points: Vec<u8> = structs.points.iter().flat_map(|point| struct_bytes(&describe_point(*point))).collect();
+        prop_assert_eq!(Point::array_to_bytes(&structs.points), points);
+    }
+
+    #[test]
+    fn a_segment_is_read_back_from_its_bytes_wherever_they_lie(
+        segment in segments(),
+        placement in placements(),
+    ) {
+        let bytes = segment.to_bytes();
+        prop_assert_eq!(bytes.to_vec(), struct_bytes(&describe_segment(segment)));
+
+        let read = Segment::read(placement.place(&bytes).bytes())?;
+        prop_assert_eq!(describe_segment(read), describe_segment(segment));
+        prop_assert_eq!(describe_segment(Segment::from_bytes(&bytes)), describe_segment(segment));
     }
 }

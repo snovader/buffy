@@ -1,7 +1,7 @@
 """How tests compare what the generated code reads with what it wrote, as
 descriptions of ``tests/tables.py``, and read bytes that may be corrupted."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from unittest import TestCase
 
@@ -26,6 +26,20 @@ def assert_same_fields(
     test.assertEqual(
         [comparable_field(field) for field in actual],
         [comparable_field(field) for field in expected],
+    )
+
+
+def assert_same_structs[Struct](
+    test: TestCase,
+    actual: Sequence[Struct],
+    expected: Sequence[Struct],
+    describe: Callable[[Struct], list[Description]],
+) -> None:
+    """Asserts that two lists of structs hold the same values, by the
+    descriptions of their fields, as ``assert_same_fields()`` compares them"""
+    test.assertEqual(
+        [[comparable_field(field) for field in describe(item)] for item in actual],
+        [[comparable_field(field) for field in describe(item)] for item in expected],
     )
 
 

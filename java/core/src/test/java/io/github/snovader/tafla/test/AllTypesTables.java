@@ -4,6 +4,8 @@ import io.github.snovader.tafla.test.FieldDescription.*;
 import io.github.snovader.tafla.test.generated.all_types.*;
 import net.jqwik.api.*;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static io.github.snovader.tafla.test.FieldValues.*;
@@ -18,6 +20,18 @@ import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
 final class AllTypesTables {
     /** How many levels of {@code Tree}s a tree holds below itself at most */
     private static final int TREE_DEPTH = 2;
+
+    // The types of each struct's scalars in the order of their offsets, with the scalars of a struct
+    // within a struct in its place
+
+    /** Every scalar type, in the order of {@link ScalarType}'s constants */
+    static final List<ScalarType> PACKED_TYPES = List.of(ScalarType.values());
+    static final List<ScalarType> DOCUMENTED_TYPES = List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32);
+    static final List<ScalarType> POINT_TYPES = List.of(ScalarType.FLOAT32, ScalarType.FLOAT32);
+    /** A start point and an end point */
+    static final List<ScalarType> SEGMENT_TYPES = Collections.nCopies(2, POINT_TYPES).stream()
+        .flatMap(List::stream)
+        .toList();
 
     private AllTypesTables() {}
 
@@ -73,6 +87,20 @@ final class AllTypesTables {
 
     static Reserved.Fields readReserved(Reserved reserved) {
         return new Reserved.Fields(readKeywords(reserved.keywords()));
+    }
+
+    static Structs.Fields readStructs(Structs structs) {
+        return new Structs.Fields(
+            structs.packed(),
+            structs.documented(),
+            structs.segment(),
+            structs.segments(),
+            readPath(structs.path())
+        );
+    }
+
+    private static Path.Fields readPath(Path path) {
+        return new Path.Fields(path.start(), path.points());
     }
 
     private static Keywords.Fields readKeywords(Keywords keywords) {
@@ -153,6 +181,25 @@ final class AllTypesTables {
         );
     }
 
+    static TableDescription describeStructs(Structs.Fields structs) {
+        var documented = List.of(structs.documented()).stream().map(AllTypesTables::describeDocumented).toList();
+        var segments = List.of(structs.segments()).stream().map(AllTypesTables::describeSegment).toList();
+
+        return message(
+            DEFAULT_LAYOUT,
+            struct(describePacked(structs.packed())),
+            structArray(DOCUMENTED_TYPES, documented),
+            struct(describeSegment(structs.segment())),
+            structArray(SEGMENT_TYPES, segments),
+            describePath(structs.path())
+        );
+    }
+
+    private static TableField describePath(Path.Fields path) {
+        var points = List.of(path.points()).stream().map(AllTypesTables::describePoint).toList();
+        return table(struct(describePoint(path.start())), structArray(POINT_TYPES, points));
+    }
+
     /** {@return the fields of a {@code Packed} in the order of their offsets} */
     static List<ScalarField> describePacked(Packed packed) {
         return List.of(
@@ -172,6 +219,19 @@ final class AllTypesTables {
     /** {@return the fields of a {@code Documented} in the order of their offsets} */
     static List<ScalarField> describeDocumented(Documented documented) {
         return List.of(uint8(documented.one()), uint16(documented.two()), uint32(documented.undocumented()));
+    }
+
+    /** {@return the scalars of a {@code Segment}'s points in the order of their offsets} */
+    static List<ScalarField> describeSegment(Segment segment) {
+        var scalars = new ArrayList<>(describePoint(segment.start()));
+        scalars.addAll(describePoint(segment.end()));
+
+        return scalars;
+    }
+
+    /** {@return the fields of a {@code Point} in the order of their offsets} */
+    static List<ScalarField> describePoint(Point point) {
+        return List.of(float32(point.x()), float32(point.y()));
     }
 
     // Arbitrary values of the fields
@@ -276,5 +336,25 @@ final class AllTypesTables {
 
     static Arbitrary<Documented> documentedFields() {
         return Combinators.combine(uint8s(), uint16s(), uint32s()).as(Documented::new);
+    }
+
+    static Arbitrary<Structs.Fields> structsFields() {
+        var path = Combinators.combine(pointFields(), structArraysOf(pointFields(), Point[].class)).as(Path.Fields::new);
+
+        return Combinators.combine(
+            packedFields(),
+            structArraysOf(documentedFields(), Documented[].class),
+            segmentFields(),
+            structArraysOf(segmentFields(), Segment[].class),
+            path
+        ).as(Structs.Fields::new);
+    }
+
+    static Arbitrary<Segment> segmentFields() {
+        return Combinators.combine(pointFields(), pointFields()).as(Segment::new);
+    }
+
+    static Arbitrary<Point> pointFields() {
+        return Combinators.combine(float32s(), float32s()).as(Point::new);
     }
 }
