@@ -1,11 +1,13 @@
 [tool.uv.workspace]
-members = ["core"]
+members = ["core", "benchmarks"]
 
 [dependency-groups]
 dev = ["hypothesis>=6.170.12", "ruff>=0.17.3", "ty>=0.0.92"]
 
 [tool.ty.src]
-include = ["core/src", "core/tests"]
+include = ["core/src", "core/tests", "benchmarks/src", "benchmarks/tests"]
+# protoc's stubs, its verbatim output, leave Mapping's type arguments out
+exclude = ["**/*_pb2.pyi"]
 
 [tool.ty.rules]
 missing-override-decorator = "error"
@@ -19,10 +21,16 @@ possibly-missing-attribute = "error"
 possibly-missing-import = "error"
 redundant-condition-strict = "error"
 
+[[tool.ty.overrides]]
+# flatc's code imports the flatbuffers package, which imports its submodules
+include = ["benchmarks/src/buffy_benchmarks/generated/flatbuffers/**"]
+rules = { possibly-missing-submodule = "ignore" }
+
 [tool.ruff]
-extend-exclude = ["dist"]
+# protoc's messages are its verbatim output, which regenerating them replaces
+extend-exclude = ["dist", "*_pb2.py", "*_pb2.pyi"]
 # The workspace root has no requires-python of its own to infer these from
-src = ["core/src", "core"]
+src = ["core/src", "core", "benchmarks/src", "benchmarks"]
 target-version = "py314"
 
 [tool.ruff.lint]
@@ -37,6 +45,11 @@ extend-select = [
   "ANN206",
 ]
 ignore = ["RUF022"]
+
+[tool.ruff.lint.per-file-ignores]
+# The FlatBuffers modules keep the shape of flatc's Python code: modules named
+# after their tables, classes that derive from object, and no annotations
+"benchmarks/src/buffy_benchmarks/generated/flatbuffers/*" = ["ANN", "N999", "UP004"]
 
 [tool.ruff.format]
 docstring-code-format = false

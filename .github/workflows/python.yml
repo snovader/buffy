@@ -76,8 +76,40 @@ jobs:
       - name: Run tests
         run: uv run --locked python -m unittest discover -s core/tests -t core
 
+      - name: Run benchmarks' tests
+        run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      # Shared runners are too noisy for the numbers to mean much; these runs
+      # check that every codec in the comparison reads back what it wrote, and
+      # that the benchmarks work
+      - name: Run round-trip test
+        run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks -p test_round_trips.py
+
+      - name: Run benchmarks briefly
+        run: uv run --locked python -m buffy_benchmarks --debug-single-value --quiet
+
+      - name: Print encoded sizes
+        run: uv run --locked python -m buffy_benchmarks.encoding
+
   dependabot:
-    needs: [verify, test]
+    needs: [verify, test, benchmark]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

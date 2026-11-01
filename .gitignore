@@ -17,6 +17,7 @@ __pycache__
 .ruff_cache
 /python/.venv
 /python/**/dist
+/python/results.json
 
 # Java
 .jqwik-database
