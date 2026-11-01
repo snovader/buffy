@@ -66,16 +66,25 @@ class TestByteBuffer(unittest.TestCase):
 
         self.assertEqual(backing, bytearray(32))
 
-    def test_rejects_a_value_that_doesnt_fit_its_type(self) -> None:
-        buffer = ByteBuffer(bytearray(8))
+    def test_rejects_a_value_that_doesnt_fit_its_type_and_writes_nothing(self) -> None:
+        backing = bytearray(8)
+        buffer = ByteBuffer(backing)
 
         for write, value in [
             (buffer.set_uint8, 256),
             (buffer.set_int16, -(2**15) - 1),
             (buffer.set_uint64, -1),
         ]:
-            with self.subTest(write=write.__name__), self.assertRaises(ValueError):
-                write(value)
+            with self.subTest(write=write.__name__, value=value):
+                with self.assertRaises(ValueError):
+                    write(value)
+                self.assertEqual(backing, bytearray(8))
+
+        for value in [1e300, -1e300]:
+            with self.subTest(write="set_float32", value=value):
+                with self.assertRaises(ValueError):
+                    buffer.set_float32(value)
+                self.assertEqual(backing, bytearray(8))
 
     def test_writes_padding_as_zeros(self) -> None:
         backing = bytearray(b"\xff" * 4)
