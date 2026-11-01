@@ -3,7 +3,7 @@ plugins {
 }
 
 rootProject.name = "buffy"
-include("core")
+include("core", "benchmarks")
 
 dependencyResolutionManagement {
     repositories {

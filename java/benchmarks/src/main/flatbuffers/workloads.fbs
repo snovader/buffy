@@ -1,0 +1,15 @@
+// The workloads' tables, the same as the TypeScript comparison's. The Java classes in
+// src/main/java/io/github/snovader/buffy/benchmarks/generated/flatbuffers are written by hand in the
+// shape that `flatc --java` generates from this schema.
+namespace io.github.snovader.buffy.benchmarks.generated.flatbuffers;
+
+table Record { x: double; y: double; id: long; name: string; }
+
+table Columns { base: long; keys: [uint]; a: [float]; b: [float]; }
+table Document { x: double; y: double; name: string; columns: Columns; }
+
+table Pair { first: float; second: float; }
+table Item { value: float; pair: Pair; }
+table List { items: [Item]; }
+
+table Sample { key: uint; a: float; b: float; }
