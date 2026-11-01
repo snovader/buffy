@@ -288,12 +288,11 @@ impl ItemListFields<'_> {
     /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut builder = TableBuilder::new(1, ItemList::LAYOUT)?;
-        builder.set_vector(
-            self.items
-                .iter()
-                .map(ItemFields::builder)
-                .collect::<Result<Vec<_>, _>>()?,
-        )?;
+        let mut items = Vec::with_capacity(self.items.len());
+        for item in self.items {
+            items.push(item.builder()?);
+        }
+        builder.set_vector(items)?;
 
         builder.to_bytes()
     }

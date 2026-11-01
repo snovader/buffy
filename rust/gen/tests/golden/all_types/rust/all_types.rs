@@ -342,12 +342,11 @@ impl NestedFields<'_> {
         let mut builder = TableBuilder::new(3, Nested::LAYOUT)?;
         builder.set_str(self.label)?;
         builder.set_table(self.outer.builder()?)?;
-        builder.set_vector(
-            self.trees
-                .iter()
-                .map(TreeFields::builder)
-                .collect::<Result<Vec<_>, _>>()?,
-        )?;
+        let mut items = Vec::with_capacity(self.trees.len());
+        for item in self.trees {
+            items.push(item.builder()?);
+        }
+        builder.set_vector(items)?;
 
         builder.to_bytes()
     }
@@ -516,12 +515,11 @@ impl<'a> TreeFields<'a> {
     pub fn builder(&self) -> Result<TableBuilder<'a>, BuildError> {
         let mut builder = TableBuilder::new(2, TableLayout::DEFAULT)?;
         builder.set_i32(self.value)?;
-        builder.set_vector(
-            self.children
-                .iter()
-                .map(TreeFields::builder)
-                .collect::<Result<Vec<_>, _>>()?,
-        )?;
+        let mut items = Vec::with_capacity(self.children.len());
+        for item in self.children {
+            items.push(item.builder()?);
+        }
+        builder.set_vector(items)?;
 
         Ok(builder)
     }
