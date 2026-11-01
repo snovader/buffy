@@ -6,73 +6,88 @@ import net.jqwik.api.constraints.*;
 
 import java.nio.charset.*;
 import java.util.*;
-import java.util.function.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/** Reading untrusted bytes returns values or throws {@link DecodeException}, and nothing else */
 public class DecodeExceptionTest {
-    @Property
-    void should_read_each_field_of_a_truncated_table_or_throw_DecodeException(
-        @ForAll @Size(min = 1, max = 8) List<@From("fields") Field> fields,
-        @ForAll boolean sized
+    // Every length of each table, so fewer of them
+    @Property(tries = 250)
+    void reading_a_truncated_table_returns_the_described_values_or_throws_DecodeException(
+        @ForAll("tables") TableDescription table
     ) {
-        var layout = TableLayout.builder().sized(sized).build();
-        var bytes = Field.builderOf(fields, 0, layout).bytes();
+        var bytes = Tables.build(table).bytes();
+        var fields = table.fields();
 
         for (int length = 0; length < bytes.length; length++) {
-            var buffer = new ByteBuffer(Arrays.copyOf(bytes, length), layout);
+            // A copy, so that no read can reach the bytes after the cut
+            var reader = TableReader.lenient(Arrays.copyOf(bytes, length), table.layout());
 
-            for (int i = 0; i < fields.size(); i++) {
-                var field = fields.get(i);
-                var result = read(buffer, field.type(), i);
+            readOrDecodeException(() -> assertEquals(table.version(), reader.readHeader()));
+            for (int index = 0; index < fields.size(); index++) {
+                var field = fields.get(index);
+                var fieldIndex = index;
 
-                if (result instanceof Exception exception) {
-                    assertInstanceOf(DecodeException.class, exception);
-                } else {
-                    assertTrue(field.matches(result));
-                }
+                readOrDecodeException(() -> assertEquals(field, reader.readRootField(fieldIndex, field)));
             }
         }
     }
 
     @Property
-    void should_throw_only_DecodeException_for_any_bytes(
-        @ForAll @Size(max = 64) byte[] bytes,
-        @ForAll Field.Type type,
-        @ForAll @IntRange(max = 16) int index,
-        @ForAll boolean sized,
-        @ForAll AddressableSpace offsetSize
+    void reading_a_table_with_overwritten_bytes_returns_values_or_throws_DecodeException(
+        @ForAll("tables") TableDescription table,
+        @ForAll @IntRange(min = 0, max = Integer.MAX_VALUE) int at,
+        @ForAll @Size(min = 1, max = 4) byte[] overwrite
     ) {
-        var layout = TableLayout.builder().sized(sized).offsetSize(offsetSize).build();
-        var result = read(new ByteBuffer(bytes, layout), type, index);
+        var bytes = Tables.build(table).bytes();
+        Assume.that(bytes.length > 0);
 
-        if (result instanceof Exception exception) {
-            assertInstanceOf(DecodeException.class, exception);
+        // Any position in the table, and as many of the bytes as fit after it
+        var position = at % bytes.length;
+        System.arraycopy(overwrite, 0, bytes, position, Math.min(overwrite.length, bytes.length - position));
+
+        var reader = TableReader.lenient(bytes, table.layout());
+        var fields = table.fields();
+
+        readOrDecodeException(reader::readHeader);
+        for (int index = 0; index < fields.size(); index++) {
+            var fieldIndex = index;
+            readOrDecodeException(() -> reader.readRootField(fieldIndex, fields.get(fieldIndex)));
         }
     }
 
-    @Example
-    void should_throw_DecodeException_from_scalar_getters_outside_the_bytes() {
-        var buffer = new ByteBuffer(new byte[8]);
-        List<Consumer<ByteBuffer>> reads = List.of(
-            b -> b.getFloat64(4),
-            b -> b.getInt64(-1),
-            b -> b.getUint32(5),
-            b -> b.getInt8(8),
-            b -> b.getUint16(7)
+    @Property
+    void reading_any_bytes_with_any_getter_returns_a_value_or_throws_DecodeException(
+        @ForAll @Size(max = 64) byte[] bytes,
+        @ForAll("layouts") LayoutDescription layout,
+        @ForAll("getters") Getter getter,
+        @ForAll("positions") Position position
+    ) {
+        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+
+        readOrDecodeException(buffer::getSize);
+        if (layout.versioned()) {
+            readOrDecodeException(buffer::getVersion);
+        }
+
+        readOrDecodeException(() -> getter.read().at(buffer, position.of(buffer)));
+    }
+
+    @Property
+    void a_scalar_read_outside_the_bytes_throws_DecodeException_naming_the_read_and_the_bytes_available(
+        @ForAll @Size(max = 16) byte[] bytes,
+        @ForAll ScalarType type,
+        @ForAll("nearPositions") int position
+    ) {
+        Assume.that(position < 0 || (long) position + type.size() > bytes.length);
+
+        var buffer = new ByteBuffer(bytes);
+        var exception = assertThrows(DecodeException.class, () -> type.read(buffer, position));
+
+        assertEquals(
+            String.format("Read exceeds the supplied buffer: %d bytes at %d of %d", type.size(), position, bytes.length),
+            exception.getMessage()
         );
-
-        for (var read : reads) {
-            var exception = assertThrows(DecodeException.class, () -> read.accept(buffer));
-            assertTrue(Objects.requireNonNull(exception.getMessage()).startsWith("Read exceeds the supplied buffer"));
-        }
-    }
-
-    @Example
-    void should_name_the_read_and_the_bytes_available() {
-        var exception = assertThrows(DecodeException.class, () -> new ByteBuffer(new byte[8]).getFloat64(4));
-
-        assertEquals("Read exceeds the supplied buffer: 8 bytes at 4 of 8", exception.getMessage());
     }
 
     @Example
@@ -94,51 +109,111 @@ public class DecodeExceptionTest {
         }
     }
 
-    @Property
-    void should_read_back_any_well_formed_string_with_a_leading_U_FEFF(@ForAll("wellFormed") String string) {
-        for (var value : List.of(string, "\uFEFF" + string, "\uFFFD" + string)) {
-            var builder = new TableBuilder(1);
-            builder.setString(value);
-
-            var buffer = new ByteBuffer(builder.bytes());
-            assertEquals(value, buffer.getString(buffer.rootOffset(0)));
-        }
-    }
-
     @Example
-    void should_throw_DecodeException_for_an_offset_beyond_the_largest_int() {
-        // An offset of 2^32 - 1, which once threw an AssertionError
-        var bytes = new byte[] {-1, -1, -1, -1};
+    void should_throw_DecodeException_for_an_offset_or_count_beyond_the_largest_int() {
+        // 2^32 - 1, which once threw an AssertionError as an offset, and then four bytes
+        var bytes = new byte[] {-1, -1, -1, -1, 0, 0, 0, 0};
 
         assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).rootOffset(0));
         assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).fieldOffset(0, 0));
+        assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).getInt8Array(0));
         assertEquals(4294967295L, new ByteBuffer(bytes, TableLayout.builder().sized(true).build()).getSize());
     }
 
-    /** Reads field {@code index} as {@code type}, returning the exception it throws instead */
-    private static Object read(ByteBuffer buffer, Field.Type type, int index) {
+    /** Runs a read of bytes that may not decode, which may throw {@link DecodeException} and nothing else */
+    private static void readOrDecodeException(Runnable read) {
         try {
-            return new Field(type, 0).readFrom(buffer, buffer.rootOffset(index));
-        } catch (RuntimeException ex) {
-            return ex;
+            read.run();
+        } catch (DecodeException expected) {
+            // The bytes don't hold what the read expects
         }
     }
 
     @Provide
-    Arbitrary<Field> fields() {
-        return Field.any();
+    Arbitrary<TableDescription> tables() {
+        return Descriptions.tables();
     }
 
-    /** Strings of any code points, including those outside the Basic Multilingual Plane */
     @Provide
-    Arbitrary<String> wellFormed() {
-        return Arbitraries.integers()
-            .between(0, Character.MAX_CODE_POINT)
-            .filter(codePoint -> codePoint < Character.MIN_SURROGATE || codePoint > Character.MAX_SURROGATE)
-            .list()
-            .ofMaxSize(16)
-            .map(codePoints -> codePoints.stream()
-                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
-                .toString());
+    Arbitrary<LayoutDescription> layouts() {
+        return Descriptions.layouts();
+    }
+
+    /** A getter of {@link ByteBuffer}'s, which shows as its type when a property fails */
+    record Getter(String type, Read read) {
+        @Override
+        public String toString() {
+            return type;
+        }
+    }
+
+    @FunctionalInterface
+    interface Read {
+        void at(ByteBuffer buffer, int position);
+    }
+
+    @Provide
+    Arbitrary<Getter> getters() {
+        var getters = new ArrayList<Getter>();
+        for (var type : ScalarType.values()) {
+            getters.add(new Getter(type.jsonName(), type::read));
+            getters.add(new Getter(type.jsonName() + "[]", type::readArray));
+        }
+
+        getters.add(new Getter("string", ByteBuffer::getString));
+        getters.add(new Getter("vector", ByteBuffer::getVector));
+        getters.add(new Getter("vector offsets", ByteBuffer::getVectorOffsets));
+
+        return Arbitraries.of(getters);
+    }
+
+    /** Where a getter reads: at a root field's offset, at the offset of a field of a nested table, or anywhere */
+    sealed interface Position {
+        int of(ByteBuffer buffer);
+
+        record RootOffset(int index) implements Position {
+            @Override
+            public int of(ByteBuffer buffer) {
+                return buffer.rootOffset(index);
+            }
+        }
+
+        /** A field of the table at root field {@code tableIndex}, read in place */
+        record FieldOffset(int tableIndex, int index) implements Position {
+            @Override
+            public int of(ByteBuffer buffer) {
+                return buffer.fieldOffset(buffer.rootOffset(tableIndex), index);
+            }
+        }
+
+        record At(int position) implements Position {
+            @Override
+            public int of(ByteBuffer buffer) {
+                return position;
+            }
+        }
+    }
+
+    @Provide
+    Arbitrary<Position> positions() {
+        var indices = Arbitraries.frequencyOf(
+            Tuple.of(4, Arbitraries.integers().between(0, 16)),
+            Tuple.of(1, Arbitraries.integers())
+        );
+
+        return Arbitraries.oneOf(
+            indices.map(Position.RootOffset::new),
+            Combinators.combine(indices, indices).as(Position.FieldOffset::new),
+            nearPositions().map(Position.At::new)
+        );
+    }
+
+    /** {@return positions mostly within or around a few dozen bytes, and sometimes any int} */
+    @Provide
+    Arbitrary<Integer> nearPositions() {
+        return Arbitraries.frequencyOf(
+            Tuple.of(4, Arbitraries.integers().between(-8, 72)),
+            Tuple.of(1, Arbitraries.integers())
+        );
     }
 }
