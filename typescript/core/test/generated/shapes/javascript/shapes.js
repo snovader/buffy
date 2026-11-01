@@ -418,6 +418,7 @@ export class Sample {
      */
     static serialize(fields) {
         const writer = Sample.#writer;
+        writer.reset();
         writer.setUint32(fields.key);
         writer.setFloat32(fields.a);
         writer.setFloat32(fields.b);

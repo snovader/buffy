@@ -108,6 +108,21 @@ it.prop([fc.array(FIELD_PAIRS, { maxLength: 8 })])(
     }
 );
 
+it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 })])(
+    'should write the next struct from the start after reset() discards an unfinished one',
+    pairs => {
+        const firsts = pairs.map(([first]) => first);
+        const seconds = pairs.map(([, second]) => second);
+        const writer = new StructWriter(new Uint8Array(sizeOf(firsts)));
+
+        writeStruct(writer, firsts.slice(0, -1));
+        writer.reset();
+        writeStruct(writer, seconds);
+
+        expect(writer.bytes()).toStrictEqual(littleEndian(seconds));
+    }
+);
+
 function writeStruct(writer: StructWriter, fields: Field[]): void {
     for (const { setter, value } of fields) {
         (writer[setter] as (value: number | bigint) => void).call(writer, value);

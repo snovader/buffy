@@ -368,6 +368,9 @@ impl Generator<'_> {
             self.annotation("Uint8Array")
         ));
         writer.line(format!("const writer = {name}.#writer;"));
+        // The writer is shared, and a previous call whose value threw, such
+        // as a number for an int64, left it within that struct
+        writer.line("writer.reset();");
         for field in &definition.fields {
             let FieldType::Scalar(scalar) = field.field_type else {
                 unreachable!("structs hold scalars only")

@@ -6,7 +6,7 @@ from unittest.mock import patch
 from hypothesis import given
 from hypothesis.strategies import integers
 
-from buffy_core import SIZEOF_32, ByteBuffer, TableBuilder
+from buffy_core import SIZEOF_8, SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
@@ -44,7 +44,7 @@ class TestByteBuffer(unittest.TestCase):
         self.assertIsNot(read.obj, serialized)
 
     def test_writes_nothing_past_the_supplied_bytes(self) -> None:
-        backing = bytearray(32)
+        backing = bytearray(b"\xaa" * 32)
         buffer = ByteBuffer(memoryview(backing)[:12])
 
         writes = [
@@ -64,27 +64,55 @@ class TestByteBuffer(unittest.TestCase):
         with self.assertRaises(ValueError):
             buffer.set_float64(1.5)
 
-        self.assertEqual(backing, bytearray(32))
+        self.assertEqual(backing, bytes(8) + b"\xaa" * 24)
 
-    def test_rejects_a_value_that_doesnt_fit_its_type_and_writes_nothing(self) -> None:
-        backing = bytearray(8)
-        buffer = ByteBuffer(backing)
-
-        for write, value in [
-            (buffer.set_uint8, 256),
-            (buffer.set_int16, -(2**15) - 1),
-            (buffer.set_uint64, -1),
+    def test_rejects_a_value_that_doesnt_fit_its_slot_and_keeps_its_position(
+        self,
+    ) -> None:
+        # CPython's struct zeroes a slot before it checks the value, so only
+        # the bytes after the slot are left as they were
+        for write, value, size in [
+            ("set_uint8", 256, 1),
+            ("set_int16", -(2**15) - 1, 2),
+            ("set_uint32", 2**32, 4),
+            ("set_uint64", -1, 8),
+            ("set_float32", 1e300, 4),
+            ("set_float32", -1e300, 4),
+            ("set_offset", 2**32, 4),
         ]:
-            with self.subTest(write=write.__name__, value=value):
-                with self.assertRaises(ValueError):
-                    write(value)
-                self.assertEqual(backing, bytearray(8))
+            with self.subTest(write=write, value=value):
+                backing = bytearray(b"\xaa" * 12)
+                buffer = ByteBuffer(backing)
 
-        for value in [1e300, -1e300]:
-            with self.subTest(write="set_float32", value=value):
                 with self.assertRaises(ValueError):
-                    buffer.set_float32(value)
-                self.assertEqual(backing, bytearray(8))
+                    getattr(buffer, write)(value)
+                buffer.set_uint8(1)
+
+                self.assertEqual(backing[0], 1)
+                self.assertEqual(backing[size:], b"\xaa" * (12 - size))
+
+    def test_rejects_a_count_or_length_too_large_for_its_slot_and_writes_nothing(
+        self,
+    ) -> None:
+        backing = bytearray(b"\xaa" * 600)
+        buffer = ByteBuffer(backing, TableLayout(offset_size=SIZEOF_8))
+
+        writes = [
+            lambda: buffer.set_uint8_array(bytes(256)),
+            lambda: buffer.set_int16_array(array("h", range(256))),
+            lambda: buffer.set_string(bytes(256)),
+            lambda: buffer.set_vector([bytes(1), bytes(256)]),
+            lambda: buffer.set_vector([b""] * 256),
+        ]
+
+        for write in writes:
+            with self.subTest():
+                with self.assertRaises(ValueError):
+                    write()
+                self.assertEqual(backing, b"\xaa" * 600)
+
+        buffer.set_vector([bytes(1), bytes(255)])
+        self.assertEqual(backing[:4], b"\x02\x01\x00\xff")
 
     def test_writes_padding_as_zeros(self) -> None:
         backing = bytearray(b"\xff" * 4)
