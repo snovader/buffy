@@ -2,9 +2,10 @@
 //! and tables are classes that read fields lazily from their bytes, and are
 //! written from interfaces of their fields. Structs are read eagerly.
 
-use super::writer::{CodeWriter, Expr, Style, call, camel_case, comment_text, doc_comment, text};
+use super::writer::{CodeWriter, Expr, Style, call, comment_text, doc_comment, text};
 use super::{GeneratedFile, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
 const RUNTIME: &str = "@buffy/core";

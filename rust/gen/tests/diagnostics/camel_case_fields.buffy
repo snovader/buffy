@@ -1,0 +1,24 @@
+message Sample {
+    a_1: uint8;
+    a1: uint8;
+    vector2d: float32;
+    vector_2d: float32;
+    x_1_2: uint8;
+    x12: uint8;
+    x1_2: uint8;
+    // `aB` and `ab` in camelCase, which differ
+    a_b: uint8;
+    ab: uint8;
+}
+
+/// Each definition names its own fields
+table Pair {
+    a1: uint8;
+    second: uint8;
+}
+
+/// A field that isn't snake_case has that error only
+table Other {
+    A1: uint8;
+    a1: uint8;
+}

@@ -5,6 +5,7 @@ mod diagnostic;
 mod generate;
 mod lexer;
 mod model;
+mod naming;
 mod parser;
 #[cfg(target_family = "wasm")]
 mod wasm;
