@@ -9,6 +9,7 @@ decode error. That makes "one format, several implementations" a checked claim.
 | Implementation | Test                                                   |
 | -------------- | ------------------------------------------------------ |
 | TypeScript     | `typescript/core/test/conformance/conformance.test.ts` |
+| Python         | `python/core/tests/test_conformance.py`                |
 
 Each language's CI runs its test when this directory changes.
 

@@ -1,0 +1,46 @@
+[tool.uv.workspace]
+members = ["core"]
+
+[dependency-groups]
+dev = ["hypothesis>=6.170.12", "ruff>=0.17.3", "ty>=0.0.92"]
+
+[tool.ty.src]
+include = ["core/src", "core/tests"]
+
+[tool.ty.rules]
+missing-override-decorator = "error"
+missing-type-argument = "error"
+blanket-ignore-comment = "error"
+dynamic-function-decorator-return = "error"
+disjoint-cast = "error"
+unsound-yield = "error"
+possibly-unresolved-reference = "error"
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+redundant-condition-strict = "error"
+
+[tool.ruff]
+extend-exclude = ["dist"]
+# The workspace root has no requires-python of its own to infer these from
+src = ["core/src", "core"]
+target-version = "py314"
+
+[tool.ruff.lint]
+extend-select = [
+  "ANN001",
+  "ANN002",
+  "ANN003",
+  "ANN201",
+  "ANN202",
+  "ANN204",
+  "ANN205",
+  "ANN206",
+]
+ignore = ["RUF022"]
+
+[tool.ruff.format]
+docstring-code-format = false
+line-ending = "lf"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true

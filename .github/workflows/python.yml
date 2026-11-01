@@ -1,0 +1,94 @@
+name: Python
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/python.yml"
+      - "conformance/**"
+      - "python/**"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/python.yml"
+      - "conformance/**"
+      - "python/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      - name: Run format check
+        run: uv run --locked ruff format --check
+
+      - name: Run lint check
+        run: uv run --locked ruff check
+
+      - name: Run type check
+        run: uv run --locked ty check
+
+  test:
+    name: Test (Python ${{ matrix.python_version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: python
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: ["3.14", "3.15"]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python_version }}
+          working-directory: python
+
+      - name: Run tests
+        run: uv run --locked python -m unittest discover -s core/tests -t core
+
+  dependabot:
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'}}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          PR_HEAD_SHA: ${{github.event.pull_request.head.sha}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
