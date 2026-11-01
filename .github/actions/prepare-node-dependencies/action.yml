@@ -1,0 +1,51 @@
+name: "Prepare Node Dependencies"
+description: "Set up Node.js and install dependencies using the project package cache"
+
+inputs:
+  working-directory:
+    description: "Yarn project directory relative to the repository root"
+    default: "typescript"
+  node-version:
+    description: "The Node.js version to use"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare environment
+      uses: ./.github/actions/prepare-node-environment
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Identify dependency platform
+      id: platform
+      shell: bash
+      run: |
+        node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+        const { platform, arch } = process;
+        const glibc = process.report.getReport().header.glibcVersionRuntime;
+        const libc = platform === 'linux' ? (glibc ? 'glibc' : 'musl') : 'none';
+        console.log(`id=${platform}-${arch}-${libc}`);
+        NODE
+
+    - name: Restore Yarn packages
+      id: yarn-cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ inputs.working-directory }}/.yarn/cache
+        key: yarn-packages-v1-${{ inputs.working-directory }}-${{ steps.platform.outputs.id }}-${{ hashFiles(format('{0}/.yarnrc.yml', inputs.working-directory), format('{0}/.yarn/releases/**', inputs.working-directory)) }}-${{ hashFiles(format('{0}/yarn.lock', inputs.working-directory)) }}
+        restore-keys: |
+          yarn-packages-v1-${{ inputs.working-directory }}-${{ steps.platform.outputs.id }}-${{ hashFiles(format('{0}/.yarnrc.yml', inputs.working-directory), format('{0}/.yarn/releases/**', inputs.working-directory)) }}-
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: yarn install --immutable --inline-builds
+
+    # Save before checks so test or audit failures don't discard downloaded packages.
+    - name: Save Yarn packages
+      if: steps.yarn-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ inputs.working-directory }}/.yarn/cache
+        key: ${{ steps.yarn-cache.outputs.cache-primary-key }}

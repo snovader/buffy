@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "disableReferencedProjectLoad": true
+    },
+    "files": [],
+    "references": [
+        { "path": "./tsconfig.json" },
+        { "path": "./core" },
+        { "path": "./core/test" },
+        { "path": "./core/test/conformance" }
+    ]
+}
