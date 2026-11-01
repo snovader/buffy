@@ -1,7 +1,10 @@
 import { expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder } from '@buffy/core';
-import { getSerializable, setSerializable, typedArrays } from './serializable.ts';
+import { ByteBuffer } from '@buffy/core';
+import { ARRAY_FIELDS, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
+import { elementTypeOf, type TableDescription } from './conformance/description.ts';
+import { readScalar, readUnsigned } from './conformance/format.ts';
+import { buildTable, ELEMENT_SIZES, readTable } from './conformance/tables.ts';
 
 // Runs buffy as if on a big-endian host. This host is little-endian, so the
 // arrays it writes must come out in reverse byte order per element, which is
@@ -29,18 +32,31 @@ it.prop([fc.array(fc.double()), fc.boolean()])(
     }
 );
 
-it.prop([fc.array(typedArrays, { maxLength: 8 })])(
-    'should read back every array type on a big-endian host',
-    entries => {
-        const builder = new TableBuilder(entries.length);
-        for (const entry of entries) {
-            setSerializable(builder, entry);
-        }
+it.prop([ARRAY_FIELDS])(
+    'should byte-swap the elements of every array type on a big-endian host',
+    field => {
+        const table: TableDescription = {
+            layout: { sized: false, versioned: false, offsetSize: 4 },
+            fields: [field]
+        };
+        const bytes = buildTable(table).bytes();
 
-        const buffer = builder.finalize();
+        // Its lengths are written with DataView, little-endian on any host
+        const position = readUnsigned(bytes, 0, 4);
+        const type = elementTypeOf(field.type);
+        const values = field.value.map((_, index) =>
+            readScalar(bytes, type, position + 4 + index * ELEMENT_SIZES[type], false)
+        );
 
-        for (const [index, [type, values]] of entries.entries()) {
-            expect(getSerializable(buffer, type, index)).toStrictEqual(values);
-        }
+        expect(values).toStrictEqual(field.value);
+    }
+);
+
+it.prop([tables(), SLICES])(
+    'should read back the values of a table built from any description on a big-endian host',
+    (table, slice) => {
+        const bytes = sliceOf(buildTable(table).bytes(), slice);
+
+        expect(readTable(bytes, table)).toStrictEqual(table);
     }
 );

@@ -1,13 +1,32 @@
 import { ByteBuffer, TableBuilder, TableLayout } from '@buffy/core';
 import {
+    type Alignment,
+    elementTypeOf,
     type FieldDescription,
     fromJsonNumber,
+    isArrayField,
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
+    type ScalarType,
     type TableDescription,
+    type TableField,
     toJsonNumber
 } from './description.ts';
+
+/** The byte size of each scalar type, which its arrays are aligned to */
+export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
+    int8: 1,
+    uint8: 1,
+    int16: 2,
+    uint16: 2,
+    int32: 4,
+    uint32: 4,
+    int64: 8,
+    uint64: 8,
+    float32: 4,
+    float64: 8
+};
 
 export function layoutOf({
     sized,
@@ -27,7 +46,8 @@ export function buildTable(table: TableDescription): TableBuilder {
     return builder;
 }
 
-function createBuilder({
+/** Creates the builder of a table, with none of its fields set */
+export function createBuilder({
     layout,
     version,
     fields
@@ -48,7 +68,8 @@ function createBuilder({
     );
 }
 
-function setField(builder: TableBuilder, field: FieldDescription): void {
+/** Sets a field as its description sets it out */
+export function setField(builder: TableBuilder, field: FieldDescription): void {
     switch (field.type) {
         case 'int8':
             builder.setInt8(fromJsonNumber(field.value));
@@ -154,6 +175,54 @@ function toBigInt(value: JsonNumber): bigint {
 }
 
 /**
+ * The alignment that `setTable()` pads a nested table to: the one passed, or
+ * by default for a builder the largest element size of its arrays and the
+ * alignment of its nested tables, or 1 if it has neither, and for bytes 4.
+ */
+export function alignmentOf({ from, alignment, table }: TableField): Alignment {
+    if (alignment !== undefined) {
+        return alignment;
+    }
+
+    if (from === 'bytes') {
+        return 4;
+    }
+
+    let largest: Alignment = 1;
+    for (const field of table.fields) {
+        const fieldAlignment = alignmentWithin(field);
+        if (fieldAlignment > largest) {
+            largest = fieldAlignment;
+        }
+    }
+
+    return largest;
+}
+
+/** The alignment that a field needs from the start of its table */
+function alignmentWithin(field: FieldDescription): Alignment {
+    if (isArrayField(field)) {
+        return ELEMENT_SIZES[elementTypeOf(field.type)];
+    }
+
+    // Scalars, strings and vectors aren't padded
+    return field.type === 'table' ? alignmentOf(field) : 1;
+}
+
+/**
+ * Thrown by {@link TableReader} when bytes read as values that don't match
+ * the shape of a description: a size slot that doesn't hold the table's
+ * length, or a vector of another number of items. Unlike a `DecodeError`, the
+ * bytes were read.
+ */
+export class DescriptionMismatch extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'DescriptionMismatch';
+    }
+}
+
+/**
  * Reads the bytes of a table as descriptions of its fields set them out, and
  * returns those descriptions with the values that were read in place of
  * theirs, so that they equal the descriptions when the bytes hold the values.
@@ -176,14 +245,15 @@ export class TableReader {
      * Reads the header and every field of the table, which must have the
      * reader's layout.
      *
-     * @throws {Error} If the size slot doesn't hold the table's length.
+     * @throws {DescriptionMismatch} If the size slot doesn't hold the table's
+     * length.
      */
     readTable(table: TableDescription): TableDescription {
         const buffer = this.#buffer;
         const { layout } = table;
 
         if (layout.sized && buffer.getSize() !== buffer.bytes().length) {
-            throw new Error(
+            throw new DescriptionMismatch(
                 `The size slot holds ${buffer.getSize()}, but the table has ${buffer.bytes().length} bytes`
             );
         }
@@ -325,11 +395,14 @@ export class TableReader {
         }
     }
 
-    /** @throws {Error} If the vector holds another number of items. */
+    /**
+     * @throws {DescriptionMismatch} If the vector holds another number of
+     * items.
+     */
     #readVector(position: number, items: NestedTable[]): NestedTable[] {
         const offsets = this.#buffer.getVectorOffsets(position);
         if (offsets.length !== items.length) {
-            throw new Error(
+            throw new DescriptionMismatch(
                 `The vector holds ${offsets.length} items rather than ${items.length}`
             );
         }

@@ -5,5 +5,8 @@
     },
     "include": ["."],
     "exclude": ["conformance"],
-    "references": [{ "path": ".." }]
+    "references": [
+        { "path": ".." },
+        { "path": "./conformance" }
+    ]
 }
