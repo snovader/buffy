@@ -59,9 +59,16 @@ export const byteBufferAccess: ItemAccess = {
         const buffer = new ByteBuffer(bytes);
         const offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
+        // The reads are in the loop, as the codec's deserialize() has them:
+        // V8 didn't inline sumTable() here, which then boxed each item's sum
         let sum = 0;
         for (let i = 0; i < offsets.length; i++) {
-            sum += sumTable(buffer, offsets[i]);
+            const item = offsets[i];
+            const pair = buffer.fieldOffset(item, 1);
+            sum +=
+                buffer.getFloat32(buffer.fieldOffset(item, 0)) +
+                buffer.getFloat32(buffer.fieldOffset(pair, 0)) +
+                buffer.getFloat32(buffer.fieldOffset(pair, 1));
         }
 
         return sum;
