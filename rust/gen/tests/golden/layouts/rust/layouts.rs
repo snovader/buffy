@@ -5,7 +5,7 @@ use tafla::{ArrayView, BuildError, ByteBuffer, DecodeError, OffsetSize, TableLay
 /// 8-bit offsets, for tables of up to 255 bytes
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset8<'a> {
@@ -13,33 +13,34 @@ impl<'a> Offset8<'a> {
 
     /// Reads an [`Offset8`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -75,7 +76,7 @@ impl Offset8Fields<'_> {
 /// 8-bit offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8Sized<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset8Sized<'a> {
@@ -85,33 +86,34 @@ impl<'a> Offset8Sized<'a> {
 
     /// Reads an [`Offset8Sized`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -147,7 +149,7 @@ impl Offset8SizedFields<'_> {
 /// 8-bit offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8Versioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset8Versioned<'a> {
@@ -174,31 +176,34 @@ impl<'a> Offset8Versioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -238,7 +243,7 @@ impl Offset8VersionedFields<'_> {
 /// 8-bit offsets, after the table's length and version zero
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8SizedVersioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset8SizedVersioned<'a> {
@@ -266,31 +271,34 @@ impl<'a> Offset8SizedVersioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -330,7 +338,7 @@ impl Offset8SizedVersionedFields<'_> {
 /// 16-bit offsets, for tables of up to 65,535 bytes
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset16<'a> {
@@ -338,33 +346,34 @@ impl<'a> Offset16<'a> {
 
     /// Reads an [`Offset16`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -400,7 +409,7 @@ impl Offset16Fields<'_> {
 /// 16-bit offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16Sized<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset16Sized<'a> {
@@ -410,33 +419,34 @@ impl<'a> Offset16Sized<'a> {
 
     /// Reads an [`Offset16Sized`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -472,7 +482,7 @@ impl Offset16SizedFields<'_> {
 /// 16-bit offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16Versioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset16Versioned<'a> {
@@ -499,31 +509,34 @@ impl<'a> Offset16Versioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -563,7 +576,7 @@ impl Offset16VersionedFields<'_> {
 /// 16-bit offsets, after the table's length and a version
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16SizedVersioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset16SizedVersioned<'a> {
@@ -591,31 +604,34 @@ impl<'a> Offset16SizedVersioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -655,7 +671,7 @@ impl Offset16SizedVersionedFields<'_> {
 /// 32-bit offsets, the default, for tables of up to 4 GiB
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset32<'a> {
@@ -663,33 +679,34 @@ impl<'a> Offset32<'a> {
 
     /// Reads an [`Offset32`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -725,7 +742,7 @@ impl Offset32Fields<'_> {
 /// 32-bit offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32Sized<'a> {
-    buffer: ByteBuffer<'a>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset32Sized<'a> {
@@ -733,33 +750,34 @@ impl<'a> Offset32Sized<'a> {
 
     /// Reads an [`Offset32Sized`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            buffer: ByteBuffer::new(bytes, Self::LAYOUT),
-        }
+        Self { bytes }
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -795,7 +813,7 @@ impl Offset32SizedFields<'_> {
 /// 32-bit offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32Versioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset32Versioned<'a> {
@@ -820,31 +838,34 @@ impl<'a> Offset32Versioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 
@@ -884,7 +905,7 @@ impl Offset32VersionedFields<'_> {
 /// 32-bit offsets, after the table's length and a version
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32SizedVersioned<'a> {
-    buffer: ByteBuffer<'a, true>,
+    bytes: &'a [u8],
 }
 
 impl<'a> Offset32SizedVersioned<'a> {
@@ -909,31 +930,34 @@ impl<'a> Offset32SizedVersioned<'a> {
             });
         }
 
-        Ok(Self { buffer })
+        Ok(Self { bytes })
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn id(&self) -> Result<u32, DecodeError> {
-        let position = self.buffer.root_offset(0)?;
-        self.buffer.get_u32(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(0)?;
+        buffer.get_u32(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn name(&self) -> Result<&'a str, DecodeError> {
-        let position = self.buffer.root_offset(1)?;
-        self.buffer.get_str(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(1)?;
+        buffer.get_str(position)
     }
 
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn values(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
-        let position = self.buffer.root_offset(2)?;
-        self.buffer.get_u16_array(position)
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(2)?;
+        buffer.get_u16_array(position)
     }
 }
 

@@ -195,11 +195,7 @@ impl Generator<'_> {
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug)]");
         writer.open(format!("pub struct {name}<'a> {{"));
-        if versioned {
-            writer.line("buffer: ByteBuffer<'a, true>,");
-        } else {
-            writer.line("buffer: ByteBuffer<'a>,");
-        }
+        writer.line("bytes: &'a [u8],");
         writer.close("}");
         writer.blank();
 
@@ -236,14 +232,12 @@ impl Generator<'_> {
             writer.close("});");
             writer.close("}");
             writer.blank();
-            writer.line("Ok(Self { buffer })");
+            writer.line("Ok(Self { bytes })");
             writer.close("}");
         } else {
             rust_doc(writer, &[format!("Reads {} from `bytes`", article(name))]);
             writer.open("pub const fn new(bytes: &'a [u8]) -> Self {");
-            writer.open("Self {");
-            writer.line("buffer: ByteBuffer::new(bytes, Self::LAYOUT),");
-            writer.close("}");
+            writer.line("Self { bytes }");
             writer.close("}");
         }
 
@@ -257,7 +251,7 @@ impl Generator<'_> {
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug)]");
         writer.open(format!("pub struct {name}<'a> {{"));
-        writer.line("buffer: ByteBuffer<'a>,");
+        writer.line("bytes: &'a [u8],");
         writer.line("position: usize,");
         writer.close("}");
         writer.blank();
@@ -271,10 +265,7 @@ impl Generator<'_> {
             ],
         );
         writer.open("const fn new(bytes: &'a [u8], position: usize) -> Self {");
-        writer.open("Self {");
-        writer.line("buffer: ByteBuffer::new(bytes, TableLayout::DEFAULT),");
-        writer.line("position,");
-        writer.close("}");
+        writer.line("Self { bytes, position }");
         writer.close("}");
 
         self.getters(writer, definition, false);
@@ -730,14 +721,20 @@ impl Generator<'_> {
     }
 
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
+        // Each getter reads with a buffer in the table's layout, a constant,
+        // rather than one that the reader holds, so that its reads compile
+        // for that layout's offset size wherever the reader is passed
+        let buffer = if is_root {
+            "let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);"
+        } else {
+            "let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);"
+        };
+
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if is_root {
-                format!("self.buffer.root_offset({})?", integer(&index))
+                format!("buffer.root_offset({})?", integer(&index))
             } else {
-                format!(
-                    "self.buffer.field_offset(self.position, {})?",
-                    integer(&index)
-                )
+                format!("buffer.field_offset(self.position, {})?", integer(&index))
             };
 
             let mut docs = field.docs.clone();
@@ -751,21 +748,22 @@ impl Generator<'_> {
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
+            writer.line(buffer);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("self.buffer.get_{}(position)", scalar_type(scalar)));
+                    writer.line(format!("buffer.get_{}(position)", scalar_type(scalar)));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "self.buffer.get_{}_array(position)",
+                        "buffer.get_{}_array(position)",
                         scalar_type(scalar)
                     ));
                 }
-                FieldType::String => writer.line("self.buffer.get_str(position)"),
+                FieldType::String => writer.line("buffer.get_str(position)"),
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
-                    let read = format!("{table}::new(self.buffer.bytes(), position)");
+                    let read = format!("{table}::new(self.bytes, position)");
 
                     // rustfmt breaks a call wider than its `fn_call_width`
                     // as `Ok`'s argument
@@ -774,7 +772,7 @@ impl Generator<'_> {
                     } else {
                         writer.line(format!("Ok({table}::new("));
                         writer.indent();
-                        writer.line("self.buffer.bytes(),");
+                        writer.line("self.bytes,");
                         writer.line("position,");
                         writer.dedent();
                         writer.line("))");
@@ -783,7 +781,7 @@ impl Generator<'_> {
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     writer.line(format!(
-                        "let bytes = self.buffer.get_struct(position, {structure}::SIZE)?;"
+                        "let bytes = buffer.get_struct(position, {structure}::SIZE)?;"
                     ));
                     writer.blank();
                     writer.line(format!("{structure}::read(bytes)"));
@@ -794,7 +792,7 @@ impl Generator<'_> {
                         &STYLE,
                         "let bytes = ",
                         &call(
-                            "self.buffer.get_struct_array",
+                            "buffer.get_struct_array",
                             vec![text("position"), text(format!("{structure}::SIZE"))],
                         ),
                         "?;",
@@ -808,7 +806,7 @@ impl Generator<'_> {
                 }
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
-                    writer.line("let vector = self.buffer.get_vector(position)?;");
+                    writer.line("let vector = buffer.get_vector(position)?;");
                     // Collecting into a `Result` would grow the items from
                     // nothing, since its size hint starts at zero
                     writer.line("let mut items = Vec::with_capacity(vector.len());");
@@ -826,15 +824,16 @@ impl Generator<'_> {
                 field.field_type,
                 FieldType::Vector(_) | FieldType::StructArray(_)
             ) {
-                self.view_getter(writer, field, &offset);
+                self.view_getter(writer, field, buffer, &offset);
             }
         }
     }
 
     /// The getter of a view of a vector or an array of structs, which reads
     /// each item when it's asked for, rather than all of them as the
-    /// field's own getter does
-    fn view_getter(&self, writer: &mut CodeWriter, field: &Field, offset: &str) {
+    /// field's own getter does. It finds the field as the field's getter
+    /// does, with `buffer`'s line and the `offset` it reads.
+    fn view_getter(&self, writer: &mut CodeWriter, field: &Field, buffer: &str, offset: &str) {
         let (view, errors) = match field.field_type {
             FieldType::Vector(index) => (
                 format!("{}Vector", self.schema.definition(index).name),
@@ -865,11 +864,12 @@ impl Generator<'_> {
             &["&self"],
             &format!("Result<{view}<'a>, DecodeError>"),
         );
+        writer.line(buffer);
         writer.line(format!("let position = {offset};"));
         match field.field_type {
             FieldType::Vector(_) => {
                 writer.open(format!("Ok({view} {{"));
-                writer.line("vector: self.buffer.get_vector(position)?,");
+                writer.line("vector: buffer.get_vector(position)?,");
                 writer.close("})");
             }
             FieldType::StructArray(index) => {
@@ -878,7 +878,7 @@ impl Generator<'_> {
                     &STYLE,
                     "let bytes = ",
                     &call(
-                        "self.buffer.get_struct_array",
+                        "buffer.get_struct_array",
                         vec![text("position"), text(format!("{structure}::SIZE"))],
                     ),
                     "?;",
