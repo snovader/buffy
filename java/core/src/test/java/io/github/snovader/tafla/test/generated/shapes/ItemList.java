@@ -28,9 +28,10 @@ public final class ItemList {
 
         var writer = sizer.writer();
         var vector0 = writer.setVector(0, fields.items().size());
-        for (int i = 0; i < fields.items().size(); i++) {
-            Item.write(writer, fields.items().get(i));
-            writer.setItemEnd(vector0, i);
+        var written0 = 0;
+        for (var item : fields.items()) {
+            Item.write(writer, item);
+            writer.setItemEnd(vector0, written0++);
         }
 
         return writer.bytes();

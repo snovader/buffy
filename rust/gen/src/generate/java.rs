@@ -605,10 +605,11 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
                 continue;
             }
             FieldType::Vector(table_index) => {
-                // The vector's local is named after the field's index, since
+                // The vector's locals are named after the field's index, since
                 // its name may be a keyword or another local's
                 let table = &schema.definition(table_index).name;
                 let vector = format!("vector{index}");
+                let written = format!("written{index}");
                 writer.statement(
                     &STYLE,
                     &format!("var {vector} = "),
@@ -618,9 +619,12 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
                     ),
                     ";",
                 );
-                writer.open(format!("for (int i = 0; i < {value}.size(); i++) {{"));
-                writer.line(format!("{table}.write(writer, {value}.get(i));"));
-                writer.line(format!("writer.setItemEnd({vector}, i);"));
+                // Iterated rather than indexed, since get() of a List without
+                // random access, such as a LinkedList, walks the list
+                writer.line(format!("var {written} = 0;"));
+                writer.open(format!("for (var item : {value}) {{"));
+                writer.line(format!("{table}.write(writer, item);"));
+                writer.line(format!("writer.setItemEnd({vector}, {written}++);"));
                 writer.close("}");
                 continue;
             }

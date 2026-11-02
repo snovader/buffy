@@ -49,9 +49,10 @@ public final class Tree {
         var parent = writer.startTable(2);
         writer.setInt32(0, fields.value());
         var vector1 = writer.setVector(1, fields.children().size());
-        for (int i = 0; i < fields.children().size(); i++) {
-            Tree.write(writer, fields.children().get(i));
-            writer.setItemEnd(vector1, i);
+        var written1 = 0;
+        for (var item : fields.children()) {
+            Tree.write(writer, item);
+            writer.setItemEnd(vector1, written1++);
         }
         writer.endTable(parent);
     }

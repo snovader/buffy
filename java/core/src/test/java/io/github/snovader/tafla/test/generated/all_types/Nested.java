@@ -34,9 +34,10 @@ public final class Nested {
         writer.setTable(1, Outer.ALIGNMENT);
         Outer.write(writer, fields.outer());
         var vector2 = writer.setVector(2, fields.trees().size());
-        for (int i = 0; i < fields.trees().size(); i++) {
-            Tree.write(writer, fields.trees().get(i));
-            writer.setItemEnd(vector2, i);
+        var written2 = 0;
+        for (var item : fields.trees()) {
+            Tree.write(writer, item);
+            writer.setItemEnd(vector2, written2++);
         }
 
         return writer.bytes();
