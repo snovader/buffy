@@ -15,6 +15,7 @@ public final class Codecs {
     public static List<Codec> all() {
         return List.of(
             TaflaCodec.create(),
+            TaflaGenCodec.create(),
             FlatBuffersCodec.create(),
             ProtobufCodec.create(),
             MessagePackCodec.create()

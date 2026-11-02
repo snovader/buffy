@@ -7,7 +7,7 @@ import org.openjdk.jmh.annotations.*;
 /** The record: two float64s, an int64 and a 16-byte string */
 @State(Scope.Benchmark)
 public class RecordBenchmark {
-    @Param({"tafla", "flatbuffers", "protobuf", "msgpack"})
+    @Param({"tafla", "tafla-gen", "flatbuffers", "protobuf", "msgpack"})
     public String codec;
 
     // Fields rather than constants, so that the JIT can't fold the input into the code

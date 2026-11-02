@@ -1,0 +1,123 @@
+from collections.abc import Buffer
+
+from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
+from tafla_benchmarks.generated.tafla.workloads import (
+    Document,
+    ItemFields,
+    ItemList,
+    Record,
+    Sample,
+    Triple,
+    Triples,
+)
+from tafla_benchmarks.workloads import (
+    DocumentInput,
+    DocumentOutput,
+    ItemInput,
+    ListInput,
+    RecordInput,
+    SampleInput,
+)
+
+
+def serialize_record(input: RecordInput) -> memoryview:
+    return Record.serialize(x=input.x, y=input.y, id=input.id, name=input.name)
+
+
+def deserialize_record(data: Buffer) -> RecordInput:
+    record = Record(data)
+
+    return RecordInput(record.x(), record.y(), record.id(), record.name())
+
+
+def serialize_document(input: DocumentInput) -> memoryview:
+    return Document.serialize(
+        x=input.x,
+        y=input.y,
+        name=input.name,
+        columns={"base": input.base, "keys": input.keys, "a": input.a, "b": input.b},
+    )
+
+
+def deserialize_document(data: Buffer) -> DocumentOutput:
+    document = Document(data)
+    columns = document.columns()
+
+    return DocumentOutput(
+        document.x(),
+        document.y(),
+        document.name(),
+        columns.base(),
+        columns.keys(),
+        columns.a(),
+        columns.b(),
+    )
+
+
+def sum_a(data: Buffer) -> float:
+    """Sums the elements of the column's view, as the builder codec does"""
+    a = Document(data).columns().a()
+
+    total = 0.0
+    for i in range(len(a)):
+        total += a[i]
+
+    return total
+
+
+def serialize_list(input: ListInput) -> memoryview:
+    return ItemList.serialize(items=[_item_fields(item) for item in input.items])
+
+
+def _item_fields(item: ItemInput) -> ItemFields:
+    return {"value": item.value, "pair": {"first": item.first, "second": item.second}}
+
+
+def deserialize_list(data: Buffer) -> ListInput:
+    items: list[ItemInput] = []
+    for item in ItemList(data).items():
+        pair = item.pair()
+        items.append(ItemInput(item.value(), pair.first(), pair.second()))
+
+    return ListInput(items)
+
+
+def serialize_structs(input: ListInput) -> memoryview:
+    triples = [Triple(item.value, item.first, item.second) for item in input.items]
+
+    return Triples.serialize(items=triples)
+
+
+def deserialize_structs(data: Buffer) -> ListInput:
+    triples = Triples(data).items()
+
+    return ListInput([ItemInput(t.value, t.first, t.second) for t in triples])
+
+
+def serialize_sample(input: SampleInput) -> bytes:
+    return Sample(input.key, input.a, input.b).serialize()
+
+
+def deserialize_sample(data: Buffer) -> SampleInput:
+    sample = Sample.read(data)
+
+    return SampleInput(sample.key, sample.a, sample.b)
+
+
+TAFLA_GEN = Codec(
+    name="tafla-gen",
+    record=Workload(serialize_record, deserialize_record),
+    document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
+    list=Workload(serialize_list, deserialize_list),
+    structs=Workload(serialize_structs, deserialize_structs),
+    sample=Workload(serialize_sample, deserialize_sample),
+)
+"""The code that tafla-gen generates from ``generated/workloads.tafla``, which
+appends each message's fields to a ``TableWriter`` in one call, rather than
+nesting ``TableBuilder`` instances, and reads them with the generated getters.
+
+The generated code writes from a ``TypedDict`` of each table's fields and frozen
+dataclasses of the structs, which ``serialize()`` creates from the workloads'
+inputs in each call, as the protobuf codec creates its messages. Reading
+creates the workloads' dataclasses from the generated readers' values, after
+the generated readers create the structs' own."""

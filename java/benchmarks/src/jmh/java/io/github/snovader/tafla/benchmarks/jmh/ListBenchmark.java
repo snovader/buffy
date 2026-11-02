@@ -7,7 +7,7 @@ import org.openjdk.jmh.annotations.*;
 /** A vector of 100 nested tables, each a float32 and a nested table of two float32s */
 @State(Scope.Benchmark)
 public class ListBenchmark {
-    @Param({"tafla", "flatbuffers", "protobuf", "msgpack"})
+    @Param({"tafla", "tafla-gen", "flatbuffers", "protobuf", "msgpack"})
     public String codec;
 
     private ListInput input;

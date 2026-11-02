@@ -56,6 +56,7 @@ what it does with a truncated document, as the TypeScript comparison does.
 | Library                                                       | Why it's comparable                                                                                                                                            |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | tafla (`:core`)                                               | The reference that the others are compared with.                                                                                                               |
+| tafla-gen's code                                              | tafla's tables, written and read by the code that tafla-gen generates.                                                                                        |
 | `com.google.flatbuffers:flatbuffers-java` 25.2.10             | Zero-copy tables with offsets and vectors, like tafla.                                                                                                         |
 | `com.google.protobuf:protobuf-java` 4.36.2                    | The most used schema-based codec, with packed repeated floats.                                                                                                 |
 | `org.msgpack:msgpack-core` 0.9.12                             | MessagePack's Java implementation: a schemaless format, whose tables are maps with their keys.                                                                 |
@@ -69,6 +70,19 @@ comparison uses its counterpart:
   by element. The array of structs is written into a `byte[]` through a
   little-endian `VarHandle` and set with `setStructArray()`, and read from
   `getStructArray()`'s little-endian view, as tafla-gen's code does.
+- **tafla-gen** is the code that tafla-gen generates from
+  `src/main/tafla/workloads.tafla`, in the package
+  `io.github.snovader.tafla.benchmarks.generated.tafla`. A message's
+  `serialize()` counts the table's length with a `TableSizer`, and then
+  writes every field, nested tables included, into an array of that length
+  with a `TableWriter`. Its readers read each field with a getter, and its
+  getters of arrays return copies, so summing a column copies it first. It
+  takes the workloads' records, as the other codecs do, so it creates the
+  generated `Fields` records, and the `Triple` and `Sample` records, from them
+  in each call, as the protobuf codec builds its messages, and creates the
+  workloads' records from the generated readers. Every suite has a copy of the
+  schema; after changing them, regenerate the code as `rust/gen/README.md`
+  describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, and creates vectors element by element with the generated
   methods. Float columns are copied out of `aAsByteBuffer()`'s little-endian
@@ -123,6 +137,11 @@ of 1 s, with a fixed 2 GiB heap.
   tafla's, as the TypeScript comparison reports the fastest round, since load
   from other processes only slows iterations. JMH's results, with every
   iteration, are saved in `build/results/jmh/results.json`.
+- JMH's GC profiler counts the bytes that each operation allocates, from the
+  bytes that the JVM reports the benchmark's thread allocated over each
+  iteration, after escape analysis has removed the allocations that don't
+  escape. The `jmh` task prints their mean over the measured iterations,
+  `gc.alloc.rate.norm`, in a second table.
 
 Unlike the TypeScript harness, JMH doesn't interleave the variants: it runs
 one fork after another, so a burst of load can slow one codec's forks and not
@@ -138,17 +157,16 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 31 minutes. `--jmhArgs` passes JMH's own options,
+The full run takes about 40 minutes. `--jmhArgs` passes JMH's own options,
 which override those in `build.gradle.kts`: a regular expression selects
-benchmarks, `-p` sets a parameter, and `-prof gc` adds the bytes allocated per
-operation.
+benchmarks, and `-p` sets a parameter.
 
 ```sh
 ./gradlew :benchmarks:jmh --jmhArgs="Document -p codec=tafla"
 ```
 
 A quick run of one fork, with one warm-up and one measured iteration of
-100 ms, checks that every benchmark works in about 25 seconds. CI runs it after
+100 ms, checks that every benchmark works in about 30 seconds. CI runs it after
 the round-trip test, on Java 25. Its numbers mean little.
 
 ```sh
@@ -161,13 +179,13 @@ The benchmarks are checked with core's Error Prone and NullAway settings,
 except for:
 
 - The `generated` packages: protoc's messages, sbe-tool's encoder and decoder,
-  and the FlatBuffers classes in flatc's shape. Their style is their
-  generators', and a generator's update can change it: protoc's messages raise
-  51 Error Prone warnings, such as reference equality and unused variables,
-  and flatc's shape raises 5, for its parenthesized returns and a class named
-  `Record`, which `-Werror` would fail on. sbe-tool's code passes, but is
-  excluded for the same reason. None of it is null-marked, so NullAway skips it
-  too.
+  the FlatBuffers classes in flatc's shape, and tafla-gen's classes. Their
+  style is their generators', and a generator's update can change it: protoc's
+  messages raise 51 Error Prone warnings, such as reference equality and
+  unused variables, and flatc's shape raises 5, for its parenthesized returns
+  and a class named `Record`, which `-Werror` would fail on. sbe-tool's code
+  passes, but is excluded for the same reason, and tafla-gen's declares a
+  `Record` too. None of it is null-marked, so NullAway skips it too.
 - JMH's generated harness, which is compiled without Error Prone.
 
 NullAway is told that JMH sets `@Param` fields and calls `@Setup` methods
@@ -259,12 +277,89 @@ run's.
 - protobuf and msgpack write and parse each struct's fields: 0.7 to 0.9 µs to
   write and 1.6 to 2.5 µs to read.
 
+tafla-gen's codec was added after those runs, and timed on 2026-11-02 in a
+full run of every codec, with JMH's GC profiler, which took 38 minutes. Other
+processes, a development server and a compiler among them for part of the
+run, kept the 1-minute load average between 1.5 and 18.7, with a median of
+3.1. JMH's mean was within 5% of the fastest iteration for 49 of the 74
+benchmarks, and at most 48% above it, for msgpack's write of the large
+document. The other libraries' fastest iterations were within 14% of the runs
+above, with a median difference of 2.3%, and the documents' reads within 9%.
+tafla's builders wrote the record, the small document and the vector 8% to
+13% faster than in the runs above, which measured an earlier version of the
+runtime. A full run earlier that day, before the runtime encoded strings of 64
+characters or more with `String.getBytes`, gave fastest iterations within 4%
+of these for tafla and tafla-gen, and the same allocations.
+
+Fastest iteration in µs per operation, and tafla-gen's ratio to tafla's:
+
+| Benchmark                                          |  tafla |      tafla-gen |
+| -------------------------------------------------- | -----: | -------------: |
+| record: serialize                                  | 0.0415 | 0.0176 (0.42×) |
+| record: deserialize                                | 0.0143 | 0.0146 (1.03×) |
+| document of 100 rows: serialize                    |  0.156 | 0.0827 (0.53×) |
+| document of 100 rows: deserialize                  | 0.0743 | 0.0748 (1.01×) |
+| document of 100 rows: sum a column per element     | 0.0441 | 0.0594 (1.35×) |
+| document of 100,000 rows: serialize                |   41.3 |   42.2 (1.02×) |
+| document of 100,000 rows: deserialize              |   48.1 |   48.3 (1.00×) |
+| document of 100,000 rows: sum a column per element |   89.9 |  101.7 (1.13×) |
+| vector of 100 nested tables: serialize             |  6.073 |  0.889 (0.15×) |
+| vector of 100 nested tables: deserialize           |  0.533 |  1.179 (2.21×) |
+| array of 100 structs: serialize                    |  0.132 |  0.378 (2.86×) |
+| array of 100 structs: deserialize                  |  0.200 |  0.519 (2.59×) |
+| fixed-size record: serialize                       | 0.0022 | 0.0021 (0.97×) |
+| fixed-size record: deserialize                     | 0.0024 | 0.0018 (0.76×) |
+
+Bytes allocated per operation, the mean of the measured iterations:
+
+| Benchmark                                          |     tafla | tafla-gen | flatbuffers |  protobuf |   msgpack |   sbe |
+| -------------------------------------------------- | --------: | --------: | ----------: | --------: | --------: | ----: |
+| record: serialize                                  |       400 |        80 |       1,360 |       136 |       335 |       |
+| record: deserialize                                |        96 |        96 |         144 |        96 |       320 |       |
+| document of 100 rows: serialize                    |     1,928 |     1,312 |       4,736 |     6,328 |     3,908 |       |
+| document of 100 rows: deserialize                  |     1,760 |     1,760 |       1,808 |     4,595 |     2,128 |       |
+| document of 100 rows: sum a column per element     |         0 |       416 |           0 |     2,872 |       320 |       |
+| document of 100,000 rows: serialize                | 1,200,728 | 1,200,112 |   5,394,470 | 5,954,414 | 3,013,988 |       |
+| document of 100,000 rows: deserialize              | 1,600,160 | 1,600,160 |   1,600,208 | 6,367,043 | 1,600,536 |       |
+| document of 100,000 rows: sum a column per element |       105 |   400,121 |         121 | 4,766,943 |       324 |       |
+| vector of 100 nested tables: serialize             |    39,184 |     8,464 |      10,816 |    16,800 |    14,920 |       |
+| vector of 100 nested tables: deserialize           |     3,272 |     6,424 |       2,856 |    26,517 |    17,352 |       |
+| array of 100 structs: serialize                    |     2,512 |     5,256 |       4,624 |     7,736 |     3,740 | 1,232 |
+| array of 100 structs: deserialize                  |     2,856 |     5,672 |       2,856 |    13,701 |     2,888 | 2,856 |
+| fixed-size record: serialize                       |        32 |        32 |       1,320 |        32 |       208 |    40 |
+| fixed-size record: deserialize                     |        32 |        32 |          32 |        53 |       208 |    32 |
+
+- tafla-gen writes the vector of 100 nested tables in 0.89 µs, against 6.07 µs
+  with tafla's builders, allocating 8.5 KB against 39 KB. By their sizes,
+  about 5 KB of that are the 200 generated `Fields` records and their list,
+  which the codec creates from the workload's items, and 3.2 KB the table. It
+  writes the record and the small document twice as fast, in 18 and 83 ns
+  against 42 and 156 ns, allocating only the table's bytes.
+- The large document takes 42.2 µs against 41.3 µs, both copying the columns'
+  1.2 MB into the table.
+- The array of structs takes 0.378 µs against 0.132 µs, and allocates 5.3 KB
+  against 2.5 KB. The codec creates a `Triple` record for each item, and the
+  generated code writes them into an array of their own before copying it
+  into the table.
+- The generated readers read the record and the documents within 3% of the
+  hand-written reads, but the column's getter returns a copy, so summing it
+  copies the floats first: 59 ns against 44 ns for 100 rows, and 101.7 µs
+  against 89.9 µs, with 400 KB, for 100,000. The reader of the vector creates
+  an `Item` and a `Pair` for each item, and the reader of the array a `Triple`
+  for each struct, before the codec creates the workload's records: 1.18 µs
+  against 0.533 µs, and 0.519 µs against 0.200 µs, with twice the bytes.
+- tafla-gen writes and reads the fixed-size record through `VarHandle`s in
+  2.1 and 1.8 ns, against 2.2 and 2.4 ns with `ByteBuffer`'s setters and
+  getters. Both allocate only the 12-byte array, or the workload's record,
+  32 bytes, so escape analysis removes the generated `Sample` record.
+
 `./gradlew :benchmarks:encodingReport` printed:
 
 ```
 Encoded size (bytes)
                         record     doc 100  doc 100000      vector     structs       fixed
   tafla                     60        1296     1200096        3208        1208          12
+  tafla-gen                 60        1296     1200096        3208        1208          12
   flatbuffers               72        1328     1200128        2832        1224          32
   protobuf                  47        1243     1187503        1900        1700          16
   msgpack                   53        1573     1499239        3510        1604          24
@@ -273,6 +368,8 @@ Encoded size (bytes)
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  threw DecodeException: Read exceeds the supplied buffer: 400000 bytes at
   tafla                 24 B  threw DecodeException: Read exceeds the supplied buffer: 8 bytes at 24 of
+  tafla-gen         600048 B  threw DecodeException: Read exceeds the supplied buffer: 400000 bytes at
+  tafla-gen             24 B  threw DecodeException: Read exceeds the supplied buffer: 8 bytes at 24 of
   flatbuffers       600064 B  threw IndexOutOfBoundsException
   flatbuffers           24 B  threw IndexOutOfBoundsException
   protobuf          593751 B  threw InvalidProtocolBufferException: While parsing a protocol message, the input ended

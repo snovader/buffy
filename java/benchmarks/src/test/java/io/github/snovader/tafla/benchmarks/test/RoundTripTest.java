@@ -72,6 +72,22 @@ public class RoundTripTest {
     }
 
     @Example
+    void should_write_the_builders_tables_from_generated_code() {
+        var built = TaflaCodec.create();
+        var generated = TaflaGenCodec.create();
+        var list = Workloads.listInput(Workloads.LIST_ITEMS);
+
+        assertArrayEquals(built.record().serialize(Workloads.RECORD), generated.record().serialize(Workloads.RECORD));
+        for (var rows : Workloads.DOCUMENT_ROWS) {
+            var document = Workloads.documentInput(rows);
+            assertArrayEquals(built.document().serialize(document), generated.document().serialize(document));
+        }
+        assertArrayEquals(built.list().serialize(list), generated.list().serialize(list));
+        assertArrayEquals(built.structs().serialize(list), generated.structs().serialize(list));
+        assertArrayEquals(built.sample().serialize(Workloads.SAMPLE), generated.sample().serialize(Workloads.SAMPLE));
+    }
+
+    @Example
     void should_fail_the_check_of_a_codec_that_loses_signed_zero() {
         var input = new SampleInput(1, -0.0f, 1);
         var lossy = new Workload<SampleInput>() {

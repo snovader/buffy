@@ -26,8 +26,8 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
 /// `to_le_bytes()` and read with `ByteBuffer`'s getters, and an array of
-/// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen generates
-/// a struct's code.
+/// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen's code
+/// writes and reads an array of them.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 
@@ -113,8 +113,8 @@ impl DocumentWorkload for Tafla {
 impl Workload<ListShape> for Tafla {
     type Bytes = Vec<u8>;
 
-    /// Nests each item from its builder, collected first as tafla-gen's code
-    /// collects them, since creating a builder can fail
+    /// Nests each item from its builder, collected first, since creating a
+    /// builder can fail
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
         let items = input
             .items

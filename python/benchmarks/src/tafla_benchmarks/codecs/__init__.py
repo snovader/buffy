@@ -7,9 +7,10 @@ from tafla_benchmarks.codecs.msgpack import MSGPACK
 from tafla_benchmarks.codecs.protobuf import PROTOBUF
 from tafla_benchmarks.codecs.struct_sample import STRUCT_SAMPLE
 from tafla_benchmarks.codecs.tafla import TAFLA
+from tafla_benchmarks.codecs.tafla_gen import TAFLA_GEN
 from tafla_benchmarks.workloads import SampleInput
 
-CODECS: tuple[Codec, ...] = (TAFLA, FLATBUFFERS, PROTOBUF, MSGPACK)
+CODECS: tuple[Codec, ...] = (TAFLA, TAFLA_GEN, FLATBUFFERS, PROTOBUF, MSGPACK)
 
 STRUCT = "struct"
 """The name of the standard library's encoding of the fixed-size record"""
@@ -24,6 +25,7 @@ def samples() -> dict[str, Workload[SampleInput, SampleInput]]:
 
 __all__ = [
     "TAFLA",
+    "TAFLA_GEN",
     "CODECS",
     "Codec",
     "DocumentWorkload",

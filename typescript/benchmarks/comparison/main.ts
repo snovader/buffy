@@ -1,4 +1,5 @@
 import { tafla } from './codecs/tafla.ts';
+import { taflaGen } from './codecs/taflaGen.ts';
 import { flatbuffers } from './codecs/flatbuffers.ts';
 import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
@@ -8,10 +9,10 @@ const args = process.argv.slice(2);
 const rounds = Number(option('--rounds') ?? 31);
 
 console.log(
-    `Node ${process.version}, V8 ${process.versions.v8}; minimum of ${rounds} interleaved rounds`
+    `Node ${process.version}, V8 ${process.versions.v8}; minimum of ${rounds} interleaved rounds, and bytes allocated on V8's heap per call`
 );
 
-runSuite([tafla, flatbuffers, protobufjs, msgpackr], {
+runSuite([tafla, taflaGen, flatbuffers, protobufjs, msgpackr], {
     rounds,
     warmupRounds: 10,
     sampleTime: Number(option('--sample-ms') ?? 1),

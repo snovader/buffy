@@ -84,9 +84,10 @@ intent, not a requirement to preserve every detail.
   so that no commit has implementations that disagree.
 - The code that tafla-gen generates from the example schemas in `schemas/`
   lies in each language's test tree, whose checks and tests run it, and is
-  the generator's golden output. Regenerate it rather than edit it, as
-  `rust/gen/README.md` describes; a check or test that it fails is a bug of
-  the generator.
+  the generator's golden output. So is the code that it generates from each
+  comparison suite's `workloads.tafla`, in the suite. Regenerate it rather
+  than edit it, as `rust/gen/README.md` describes; a check or test that it
+  fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
   offset size, vector, builder, and decode error. Make the syntax idiomatic for
   each language.
