@@ -99,6 +99,8 @@ or read its tables, or a target couldn't generate its code:
   offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
   even within another struct. Arrays of strings aren't supported.
+- A struct takes at most 65,536 bytes, since the generated code reads and
+  writes each of its scalars in place.
 
 It doesn't check yet for declarations whose names clash with a target's own,
 such as one named after a class that the generated code imports, like `List`

@@ -1,0 +1,83 @@
+// A struct takes at most 65536 bytes. Each of these structs holds two of the
+// one before, which doubles its size: `S16` takes 65536 bytes, `S17` is the
+// first too large, and the error points at it rather than at the structs
+// that hold it. Their sizes saturate rather than overflow past `S63`.
+
+struct S0 {
+    value: uint8;
+}
+
+struct S1 { left: S0; right: S0; }
+struct S2 { left: S1; right: S1; }
+struct S3 { left: S2; right: S2; }
+struct S4 { left: S3; right: S3; }
+struct S5 { left: S4; right: S4; }
+struct S6 { left: S5; right: S5; }
+struct S7 { left: S6; right: S6; }
+struct S8 { left: S7; right: S7; }
+struct S9 { left: S8; right: S8; }
+struct S10 { left: S9; right: S9; }
+struct S11 { left: S10; right: S10; }
+struct S12 { left: S11; right: S11; }
+struct S13 { left: S12; right: S12; }
+struct S14 { left: S13; right: S13; }
+struct S15 { left: S14; right: S14; }
+struct S16 { left: S15; right: S15; }
+struct S17 { left: S16; right: S16; }
+struct S18 { left: S17; right: S17; }
+struct S19 { left: S18; right: S18; }
+struct S20 { left: S19; right: S19; }
+struct S21 { left: S20; right: S20; }
+struct S22 { left: S21; right: S21; }
+struct S23 { left: S22; right: S22; }
+struct S24 { left: S23; right: S23; }
+struct S25 { left: S24; right: S24; }
+struct S26 { left: S25; right: S25; }
+struct S27 { left: S26; right: S26; }
+struct S28 { left: S27; right: S27; }
+struct S29 { left: S28; right: S28; }
+struct S30 { left: S29; right: S29; }
+struct S31 { left: S30; right: S30; }
+struct S32 { left: S31; right: S31; }
+struct S33 { left: S32; right: S32; }
+struct S34 { left: S33; right: S33; }
+struct S35 { left: S34; right: S34; }
+struct S36 { left: S35; right: S35; }
+struct S37 { left: S36; right: S36; }
+struct S38 { left: S37; right: S37; }
+struct S39 { left: S38; right: S38; }
+struct S40 { left: S39; right: S39; }
+struct S41 { left: S40; right: S40; }
+struct S42 { left: S41; right: S41; }
+struct S43 { left: S42; right: S42; }
+struct S44 { left: S43; right: S43; }
+struct S45 { left: S44; right: S44; }
+struct S46 { left: S45; right: S45; }
+struct S47 { left: S46; right: S46; }
+struct S48 { left: S47; right: S47; }
+struct S49 { left: S48; right: S48; }
+struct S50 { left: S49; right: S49; }
+struct S51 { left: S50; right: S50; }
+struct S52 { left: S51; right: S51; }
+struct S53 { left: S52; right: S52; }
+struct S54 { left: S53; right: S53; }
+struct S55 { left: S54; right: S54; }
+struct S56 { left: S55; right: S55; }
+struct S57 { left: S56; right: S56; }
+struct S58 { left: S57; right: S57; }
+struct S59 { left: S58; right: S58; }
+struct S60 { left: S59; right: S59; }
+struct S61 { left: S60; right: S60; }
+struct S62 { left: S61; right: S61; }
+struct S63 { left: S62; right: S62; }
+struct S64 { left: S63; right: S63; }
+struct S65 { left: S64; right: S64; }
+struct S66 { left: S65; right: S65; }
+struct S67 { left: S66; right: S66; }
+struct S68 { left: S67; right: S67; }
+struct S69 { left: S68; right: S68; }
+
+struct Holder {
+    value: uint8;
+    large: S17;
+}

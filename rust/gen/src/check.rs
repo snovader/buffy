@@ -4,7 +4,9 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 use crate::diagnostic::Diagnostic;
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema, StructLayout,
+};
 use crate::naming::camel_case;
 use crate::parser::{Attribute, Declaration, FieldDeclaration, Keyword, Name};
 
@@ -13,7 +15,7 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
     let mut errors = Vec::new();
     let indices = index_names(declarations, &mut errors);
 
-    let definitions: Vec<Definition> = declarations
+    let mut definitions: Vec<Definition> = declarations
         .iter()
         .map(|declaration| check_declaration(declaration, declarations, &indices, &mut errors))
         .collect();
@@ -21,6 +23,11 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
         check_nested_offsets(&definitions, declarations, &mut errors);
+    }
+
+    // Every struct has a size once none contains itself
+    if errors.is_empty() {
+        measure_structs(&mut definitions, declarations, &mut errors);
     }
 
     if errors.is_empty() {
@@ -80,7 +87,11 @@ fn check_declaration(
             if declaration.keyword == Keyword::Table {
                 Kind::Table
             } else {
-                Kind::Struct
+                // Measured by measure_structs() once every struct is resolved
+                Kind::Struct(StructLayout {
+                    size: 0,
+                    alignment: 1,
+                })
             }
         }
     };
@@ -103,7 +114,7 @@ fn check_declaration(
 
     for field in &declaration.fields {
         if let Some(field_type) = resolve_type(field, declarations, indices, errors) {
-            if kind == Kind::Struct
+            if matches!(kind, Kind::Struct(_))
                 && !matches!(field_type, FieldType::Scalar(_) | FieldType::Struct(_))
             {
                 errors.push(Diagnostic::new(
@@ -348,7 +359,7 @@ fn check_cycles(
 
         while let Some(index) = stack.pop() {
             if index == start {
-                let help = if definition.kind == Kind::Struct {
+                let help = if definition.is_struct() {
                     "a struct can't contain itself, even within another struct"
                 } else {
                     "only a vector can nest a table in itself"
@@ -367,6 +378,87 @@ fn check_cycles(
             }
         }
     }
+}
+
+/// The most bytes that a struct takes. The generated code reads and writes
+/// each of a struct's scalars in place, and a schema of a few lines could
+/// otherwise declare a struct of any size, by nesting structs in pairs.
+const MAX_STRUCT_SIZE: usize = 65_536;
+
+/// Measures each struct's size and alignment once, from those of the structs
+/// in it, and rejects structs larger than [`MAX_STRUCT_SIZE`]
+fn measure_structs(
+    definitions: &mut [Definition],
+    declarations: &[Declaration],
+    errors: &mut Vec<Diagnostic>,
+) {
+    let mut layouts = vec![None; definitions.len()];
+    for (index, definition) in definitions.iter().enumerate() {
+        if definition.is_struct() {
+            measure_struct(index, definitions, &mut layouts);
+        }
+    }
+
+    let too_large = |index: usize| {
+        layouts[index].is_some_and(|layout: StructLayout| layout.size > MAX_STRUCT_SIZE)
+    };
+    for (index, definition) in definitions.iter().enumerate() {
+        // The error points at the structs that grow too large, rather than
+        // at every struct that holds one of them
+        let holds_too_large = definition
+            .fields
+            .iter()
+            .any(|field| matches!(field.field_type, FieldType::Struct(inner) if too_large(inner)));
+        if too_large(index) && !holds_too_large {
+            errors.push(
+                Diagnostic::new(
+                    format!("`{}` is too large for a struct", definition.name),
+                    declarations[index].name.span,
+                )
+                .with_help(format!("structs take at most {MAX_STRUCT_SIZE} bytes")),
+            );
+        }
+    }
+
+    for (definition, layout) in definitions.iter_mut().zip(layouts) {
+        if let Some(layout) = layout {
+            definition.kind = Kind::Struct(layout);
+        }
+    }
+}
+
+/// The layout of the struct at `index`, kept in `layouts` once measured, so
+/// that a struct nested in several others is measured once. Its size
+/// saturates rather than overflowing, since a few lines can double it many
+/// times over.
+fn measure_struct(
+    index: usize,
+    definitions: &[Definition],
+    layouts: &mut [Option<StructLayout>],
+) -> StructLayout {
+    if let Some(layout) = layouts[index] {
+        return layout;
+    }
+
+    let mut layout = StructLayout {
+        size: 0,
+        alignment: 1,
+    };
+    for field in &definitions[index].fields {
+        let (size, alignment) = match field.field_type {
+            FieldType::Scalar(scalar) => (usize::from(scalar.size()), scalar.size()),
+            FieldType::Struct(inner) => {
+                let inner = measure_struct(inner, definitions, layouts);
+                (inner.size, inner.alignment)
+            }
+            _ => unreachable!("structs hold scalars and structs only"),
+        };
+        layout.size = layout.size.saturating_add(size);
+        layout.alignment = layout.alignment.max(alignment);
+    }
+
+    layouts[index] = Some(layout);
+    layout
 }
 
 /// Rejects tables nested in messages with narrower offsets, since readers
