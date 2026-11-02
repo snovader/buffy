@@ -14,6 +14,8 @@ from `python/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as each
@@ -44,7 +46,7 @@ what it does with a truncated document, as the TypeScript comparison does.
   `struct` for such records, which is compared too.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
-  has only a call per element.
+  has only a call per element, which is all it has for a vector of structs.
 - msgpack's columns are extension types of their arrays' bytes, which this
   suite defines, as msgpackr's typed arrays are msgpackr's own.
 - flatbuffers' latest Python release is 25.12.19, where the TypeScript
@@ -69,23 +71,32 @@ comparison uses its counterpart:
 - **tafla** nests tables from their builders and reads columns as views of the
   bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
-  as tafla's documentation advises over a getter call per element.
+  as tafla's documentation advises over a getter call per element. The array
+  of structs is packed into a `bytearray` and unpacked from
+  `get_struct_array()`'s view with a precompiled `Struct("<fff")`, as
+  tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
   with the generated accessors. Columns are written with
   `CreateNumpyVector()`, from numpy arrays that view the `array`s or convert
   the lists, and read with the generated `AsNumpy()` accessors, which view the
-  bytes. The modules in `generated/flatbuffers/` are written by hand in the
-  shape that `flatc --python` generates from `generated/workloads.fbs`, with
-  only what the benchmarks use, since the FlatBuffers project doesn't publish
-  flatc on PyPI, where uv installs tools from. As in flatc's, an accessor of a
-  nested table imports the table's class on every call.
+  bytes. A vector of structs, which has no numpy accessors, is started, filled
+  with `CreateTriple()` from its last item to its first, and ended, and its
+  structs are read one at a time. The modules in `generated/flatbuffers/` are
+  written by hand in the shape that `flatc --python` generates from
+  `generated/workloads.fbs`, with only what the benchmarks use, since the
+  FlatBuffers project doesn't publish flatc on PyPI, where uv installs tools
+  from. As in flatc's, an accessor of a nested table or of a struct in a vector
+  imports its class on every call.
 - **protobuf** builds messages from keyword arguments and parses them with
   `FromString()`. Nested messages are built in place, as protobuf's tutorial
   builds them: passing a nested message to its parent's constructor copies it,
   which made writing the vector of nested tables 2.6 times slower and the
   large document 13% slower. Repeated fields are extended from the columns,
-  which converts them element by element.
+  which converts them element by element. protobuf has no structs, so the
+  array of them is a repeated message of the three floats, which protobuf
+  writes as fixed32s; packed repeated floats would make a column of each field,
+  which the documents time already.
 - **MessagePack** packs a table as a map with its keys, and a document as one
   map without a nested one for its columns, as msgpackr packs them. Floats pack
   as float64s, as msgpack packs Python's floats and msgpackr packs numbers. One
@@ -94,7 +105,9 @@ comparison uses its counterpart:
   as msgpack's documentation packs an `array`, and lists are converted to
   arrays first. The extension hook returns a memoryview of the bytes that the
   unpacker copied out, which took half the time of copying them again into an
-  `array` for 100,000 rows.
+  `array` for 100,000 rows. The array of structs packs each struct, and the
+  table that holds them, as an array of its fields in order, without their
+  keys, as rmp-serde's `to_vec()` packs them.
 - **struct** packs and unpacks the fixed-size record with one precompiled
   `Struct("<Iff")`.
 
@@ -141,7 +154,7 @@ done
 uv run --python 3.14+gil python -m tafla_benchmarks.report results.json
 ```
 
-The full run takes about 18 minutes. `--append` adds to an existing file, so
+The full run takes about 20 minutes. `--append` adds to an existing file, so
 remove the last run's `results.json` first. `--filter <regex>` runs only the
 groups whose name matches, and `--reverse` runs each group's codecs in reverse
 order. pyperf's own options apply too, and its commands read the results:
@@ -149,7 +162,7 @@ order. pyperf's own options apply too, and its commands read the results:
 example.
 
 A quick run of one worker per benchmark, which calls each operation once,
-checks that every benchmark works in about 10 seconds, most of which its 58
+checks that every benchmark works in about 13 seconds, most of which its 66
 workers spend starting and importing numpy. CI runs it after the round-trip
 test, on Python 3.14. Its numbers mean little.
 
@@ -266,16 +279,37 @@ Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
 tables, for example.
 
+The array of 100 structs was added after that run, and timed on the same day
+with the vector of nested tables, in their groups alone: the full run's four
+runs with `--filter 'structs|nested'`. It took 5 minutes, while another session
+ran benchmarks, which kept the 1-minute load average between 2.7 and 3.5, with
+a median of 3.2. pyperf's mean was within 4% of the fastest value for all 16
+benchmarks, and the vector's fastest values were within 6% of the full run's.
+
+| Benchmark                                | tafla |    flatbuffers |     protobuf |       msgpack |
+| ---------------------------------------- | ----: | -------------: | -----------: | ------------: |
+| vector of 100 nested tables: serialize   | 264.8 |  541.7 (2.05×) | 42.5 (0.16×) |  21.5 (0.08×) |
+| vector of 100 nested tables: deserialize |  87.7 |  656.6 (7.49×) | 40.6 (0.46×) |  31.2 (0.36×) |
+| array of 100 structs: serialize          | 9.852 | 114.5 (11.63×) | 29.2 (2.97×) | 9.412 (0.96×) |
+| array of 100 structs: deserialize        |  14.9 | 247.7 (16.66×) | 28.9 (1.94×) |  17.1 (1.15×) |
+
+- tafla writes the 100 structs in 9.9 µs, against 265 µs for the same items as
+  nested tables, packing them with one `Struct` call each, and reads them in
+  15 µs, against 88 µs, 6.5 µs of which creates the 100 dataclasses. msgpack,
+  in C, takes 9.4 µs and 17 µs, and protobuf 29 µs each way.
+- FlatBuffers creates and reads each struct with pure-Python calls, in 115 µs
+  and 248 µs.
+
 `python -m tafla_benchmarks.encoding` printed:
 
 ```
 Encoded size (bytes)
-                        record     doc 100  doc 100000      vector       fixed
-  tafla                     60        1296     1200096        3208          12
-  flatbuffers               72        1328     1200128        2832          32
-  protobuf                  47        1243     1187503        1900          16
-  msgpack                   53        1276     1200082        4710          32
-  struct                                                                    12
+                        record     doc 100  doc 100000      vector     structs       fixed
+  tafla                     60        1296     1200096        3208        1208          12
+  flatbuffers               72        1328     1200128        2832        1224          32
+  protobuf                  47        1243     1187503        1900        1700          16
+  msgpack                   53        1276     1200082        4710        2804          32
+  struct                                                                                12
 
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
@@ -290,5 +324,6 @@ Truncated document of 100000 rows: deserialize()
 
 Every library rejects the truncated document. FlatBuffers' Python runtime reads
 through `struct`, whose range checks raise `struct.error`. msgpack packs the
-floats of the vector and the fixed-size record as float64s, so its vector is
-the largest.
+floats of the vector, the array of structs and the fixed-size record as
+float64s, so its vector is the largest, and its array of structs, at 2,804
+bytes, more than twice the size of tafla's 1,208.

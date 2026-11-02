@@ -26,12 +26,16 @@ const { root } = protobuf.parse(`
     message Item { float value = 1; Pair pair = 2; }
     message List { repeated Item items = 1; }
 
+    message Triple { float value = 1; float first = 2; float second = 3; }
+    message Triples { repeated Triple items = 1; }
+
     message Sample { uint32 key = 1; float a = 2; float b = 3; }
 `);
 
 const RecordMessage = root.lookupType('Record');
 const DocumentMessage = root.lookupType('Document');
 const ListMessage = root.lookupType('List');
+const TriplesMessage = root.lookupType('Triples');
 const SampleMessage = root.lookupType('Sample');
 
 /** The shape protobufjs decodes an int64 into, since `long` is installed */
@@ -64,6 +68,10 @@ interface DecodedItem {
  * same code as a static module for that. Repeated fields decode into
  * `number[]`, which `deserialize()` converts to typed arrays. It encodes a
  * bigint int64 as 0, so int64s are passed as numbers.
+ *
+ * protobuf has no structs, so an array of them is a repeated message of the
+ * three floats, whose fields protobuf writes as fixed32s. Packed repeated
+ * floats would be a column for each field, which the documents time already.
  */
 export const protobufjs: Codec = {
     name: 'protobufjs',
@@ -146,6 +154,24 @@ export const protobufjs: Codec = {
                     value,
                     first: pair.first,
                     second: pair.second
+                }))
+            };
+        }
+    },
+    structs: {
+        serialize(input) {
+            return TriplesMessage.encode(input).finish();
+        },
+        deserialize(bytes) {
+            const { items } = TriplesMessage.decode(bytes) as unknown as {
+                items: ItemInput[];
+            };
+
+            return {
+                items: items.map(({ value, first, second }) => ({
+                    value,
+                    first,
+                    second
                 }))
             };
         }

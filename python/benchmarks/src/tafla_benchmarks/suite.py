@@ -65,6 +65,11 @@ def groups() -> list[Group]:
             partial(list_input, LIST_ITEMS),
         ),
         *_round_trip_groups(
+            f"array of {LIST_ITEMS} structs",
+            [(c.name, c.structs) for c in CODECS],
+            partial(list_input, LIST_ITEMS),
+        ),
+        *_round_trip_groups(
             "fixed-size record", list(samples().items()), lambda: SAMPLE
         ),
         *(_document_lists_group(rows) for rows in DOCUMENT_ROWS),

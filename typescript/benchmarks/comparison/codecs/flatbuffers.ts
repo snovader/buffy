@@ -6,14 +6,18 @@ import {
     List,
     Pair,
     Record,
-    Sample
+    Sample,
+    Triple,
+    Triples
 } from '../generated/flatbuffers.ts';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
 import type { Codec } from './codec.ts';
 
 /**
  * flatc's generated code, used as its documentation shows: a builder of the
- * default size, vectors created element by element, and `xArray()` views.
+ * default size, vectors created element by element, and `xArray()` views. A
+ * vector of structs is started, filled with `createTriple()` from its last
+ * item to its first, and ended.
  */
 export const flatbuffers: Codec = {
     name: 'flatbuffers',
@@ -119,6 +123,39 @@ export const flatbuffers: Codec = {
                     value: item.value(),
                     first: pair.first(),
                     second: pair.second()
+                };
+            }
+
+            return { items };
+        }
+    },
+    structs: {
+        serialize({ items }) {
+            const builder = new Builder();
+
+            // Builders write back to front, so the last item is written first
+            Triples.startItemsVector(builder, items.length);
+            for (let i = items.length - 1; i >= 0; i--) {
+                const { value, first, second } = items[i];
+                Triple.createTriple(builder, value, first, second);
+            }
+            const vector = builder.endVector();
+
+            builder.finish(Triples.createTriples(builder, vector));
+
+            return builder.asUint8Array();
+        },
+        deserialize(bytes) {
+            const triples = Triples.getRootAsTriples(new ByteBuffer(bytes));
+
+            const items = new Array<ItemInput>(triples.itemsLength());
+            for (let i = 0; i < items.length; i++) {
+                const triple = triples.items(i)!;
+
+                items[i] = {
+                    value: triple.value(),
+                    first: triple.first(),
+                    second: triple.second()
                 };
             }
 

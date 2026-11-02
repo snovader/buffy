@@ -46,9 +46,9 @@ protobuf {
 }
 
 val generateSbe = tasks.register<JavaExec>("generateSbe") {
-    description = "Generates SBE's encoders and decoders for the fixed-size record."
+    description = "Generates SBE's encoders and decoders for the fixed-size record and the array of structs."
 
-    val schema = layout.projectDirectory.file("src/main/sbe/sample.xml")
+    val schema = layout.projectDirectory.file("src/main/sbe/workloads.xml")
     val outputDir = layout.buildDirectory.dir("generated/sources/sbe/main/java")
     inputs.file(schema)
     outputs.dir(outputDir)

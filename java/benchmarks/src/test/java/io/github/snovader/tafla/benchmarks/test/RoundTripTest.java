@@ -24,6 +24,11 @@ public class RoundTripTest {
     }
 
     @Provide
+    Arbitrary<String> structsCodecs() {
+        return Arbitraries.of(List.copyOf(Codecs.structs().keySet()));
+    }
+
+    @Provide
     Arbitrary<Integer> documentRows() {
         return Arbitraries.of(Workloads.DOCUMENT_ROWS);
     }
@@ -54,6 +59,11 @@ public class RoundTripTest {
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void should_read_back_the_vector_of_nested_tables(@ForAll("codecs") Codec codec) {
         assertReadBack(codec.list(), Workloads.listInput(Workloads.LIST_ITEMS));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_the_array_of_structs(@ForAll("structsCodecs") String codec) {
+        assertReadBack(Codecs.structs(codec), Workloads.listInput(Workloads.LIST_ITEMS));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)

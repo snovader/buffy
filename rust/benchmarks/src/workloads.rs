@@ -2,7 +2,7 @@
 //!
 //! The shapes are sized to bracket how tafla is used: small tables of scalars
 //! and a string, documents whose header nests a table of numeric columns,
-//! vectors of small nested tables, and fixed-size records. The values come
+//! vectors of small nested tables, arrays of structs, and fixed-size records. The values come
 //! from a port of the TypeScript comparison's seeded generator, so that the
 //! languages' numbers compare.
 //!
@@ -67,7 +67,7 @@ pub struct Document<'a> {
 }
 
 /// A table of a float32 and a nested table of two float32s, `first` and
-/// `second`
+/// `second`, or a struct of the three float32s
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize)]
 pub struct Item {
     pub value: f32,
@@ -75,7 +75,7 @@ pub struct Item {
     pub second: f32,
 }
 
-/// A table holding a vector of item tables
+/// A table holding a vector of item tables, or an array of item structs
 #[derive(Clone, Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize)]
 pub struct List {
     pub items: Vec<Item>,
@@ -109,8 +109,11 @@ pub enum RecordShape {}
 /// The shape of [`Document`]
 pub enum DocumentShape {}
 
-/// The shape of [`List`]
+/// The shape of [`List`], whose items are nested tables
 pub enum ListShape {}
+
+/// The shape of [`List`], whose items are structs
+pub enum StructsShape {}
 
 /// The shape of [`Sample`]
 pub enum SampleShape {}
@@ -135,6 +138,15 @@ impl Shape for DocumentShape {
 
 impl Shape for ListShape {
     const NAME: &'static str = "vector of nested tables";
+    type Value<'a> = List;
+
+    fn same(left: &List, right: &List) -> bool {
+        left == right
+    }
+}
+
+impl Shape for StructsShape {
+    const NAME: &'static str = "array of structs";
     type Value<'a> = List;
 
     fn same(left: &List, right: &List) -> bool {

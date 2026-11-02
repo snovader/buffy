@@ -4,9 +4,9 @@ import java.util.*;
 
 /**
  * Generic table shapes, sized to bracket how tafla is used: small tables of scalars and a string,
- * documents whose header nests a table of numeric columns, vectors of small nested tables, and
- * fixed-size records. The values are the TypeScript comparison's, from the same seeded generator,
- * so that the languages' numbers compare.
+ * documents whose header nests a table of numeric columns, vectors of small nested tables, arrays of
+ * structs, and fixed-size records. The values are the TypeScript comparison's, from the same seeded
+ * generator, so that the languages' numbers compare.
  */
 public final class Workloads {
     /** Rows per document: a small one and a large one */

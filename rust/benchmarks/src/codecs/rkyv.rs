@@ -6,7 +6,7 @@ use rkyv::util::AlignedVec;
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::workloads::{
     ArchivedDocument, ArchivedList, ArchivedRecord, ArchivedSample, Document, DocumentShape, Item,
-    List, ListShape, Record, RecordShape, Sample, SampleShape, sum_column,
+    List, ListShape, Record, RecordShape, Sample, SampleShape, StructsShape, sum_column,
 };
 
 /// rkyv, which archives the workloads' own types through their derives.
@@ -18,6 +18,9 @@ use crate::workloads::{
 /// Archived numbers are little-endian wrappers, whose `to_native()` reads
 /// them. Strings are read in place, and columns are copied into `Vec`s
 /// through `to_native()`, since rkyv has no slices of native numbers.
+///
+/// rkyv archives a `Vec` of a struct inline, as an array of structs, so the
+/// vector of nested tables and the array of structs are the same archive.
 #[derive(Clone, Copy, Debug)]
 pub struct Rkyv;
 
@@ -81,19 +84,19 @@ impl Workload<ListShape> for Rkyv {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
-        let list = rkyv::access::<ArchivedList, rancor::Error>(bytes)?;
+        read_list(bytes)
+    }
+}
 
-        let items = list
-            .items
-            .iter()
-            .map(|item| Item {
-                value: item.value.to_native(),
-                first: item.first.to_native(),
-                second: item.second.to_native(),
-            })
-            .collect();
+impl Workload<StructsShape> for Rkyv {
+    type Bytes = AlignedVec;
 
-        Ok(List { items })
+    fn serialize(self, input: &List) -> Result<AlignedVec, Error> {
+        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        read_list(bytes)
     }
 }
 
@@ -113,4 +116,20 @@ impl Workload<SampleShape> for Rkyv {
             b: sample.b.to_native(),
         })
     }
+}
+
+fn read_list(bytes: &[u8]) -> Result<List, Error> {
+    let list = rkyv::access::<ArchivedList, rancor::Error>(bytes)?;
+
+    let items = list
+        .items
+        .iter()
+        .map(|item| Item {
+            value: item.value.to_native(),
+            first: item.first.to_native(),
+            second: item.second.to_native(),
+        })
+        .collect();
+
+    Ok(List { items })
 }
