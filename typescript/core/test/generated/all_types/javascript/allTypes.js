@@ -308,6 +308,17 @@ export class Nested {
 
         return items;
     }
+
+    /**
+     * A vector of tables that hold vectors of themselves
+     *
+     * Views the items of `trees()`, reading each one when it's asked for
+     *
+     * @returns {TreeVector}
+     */
+    treesView() {
+        return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
+    }
 }
 
 /**
@@ -564,6 +575,18 @@ export class Tree {
 
         return items;
     }
+
+    /**
+     * Views the items of `children()`, reading each one when it's asked for
+     *
+     * @returns {TreeVector}
+     */
+    childrenView() {
+        return new TreeVector(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
 }
 
 /**
@@ -573,6 +596,49 @@ export class Tree {
  * @property {number} value
  * @property {readonly TreeFields[]} children
  */
+
+/** A vector of `Tree`s, which reads each item when it's asked for */
+export class TreeVector {
+    /** @type {ByteBuffer} */
+    #buffer;
+    /** @type {number} */
+    #position;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the vector's count lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Tree}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index) {
+        return new Tree(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
+}
 
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 export class Keywords {
@@ -815,6 +881,17 @@ export class Structs {
         return items;
     }
 
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * Views the items of `documented()`, reading each one when it's asked for
+     *
+     * @returns {DocumentedArray}
+     */
+    documentedView() {
+        return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
+    }
+
     /** @returns {Segment} A struct of structs */
     segment() {
         return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
@@ -833,6 +910,15 @@ export class Structs {
         }
 
         return items;
+    }
+
+    /**
+     * Views the items of `segments()`, reading each one when it's asked for
+     *
+     * @returns {SegmentArray}
+     */
+    segmentsView() {
+        return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
     }
 
     /**
@@ -938,6 +1024,18 @@ export class Path {
 
         return items;
     }
+
+    /**
+     * Views the items of `points()`, reading each one when it's asked for
+     *
+     * @returns {PointArray}
+     */
+    pointsView() {
+        return new PointArray(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
 }
 
 /**
@@ -1041,6 +1139,48 @@ export class Segment {
  * @property {PointFields} end
  */
 
+/** An array of `Segment`s, which reads each struct when it's asked for */
+export class SegmentArray {
+    /** @type {Uint8Array} */
+    #bytes;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#bytes = buffer.getStructArray(position, Segment.SIZE);
+        this.#length = this.#bytes.length / Segment.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Segment}
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index) {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Segment(this.#bytes, index * Segment.SIZE);
+    }
+}
+
 export class Point {
     /** The byte length of a `Point` */
     static SIZE = 8;
@@ -1132,6 +1272,48 @@ export class Point {
  * @property {number} x
  * @property {number} y
  */
+
+/** An array of `Point`s, which reads each struct when it's asked for */
+export class PointArray {
+    /** @type {Uint8Array} */
+    #bytes;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#bytes = buffer.getStructArray(position, Point.SIZE);
+        this.#length = this.#bytes.length / Point.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index) {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Point(this.#bytes, index * Point.SIZE);
+    }
+}
 
 /** A struct of every scalar type, at fixed offsets without padding */
 export class Packed {
@@ -1419,3 +1601,45 @@ export class Documented {
  * @property {number} two A field's documentation, of two lines
  * @property {number} undocumented
  */
+
+/** An array of `Documented`s, which reads each struct when it's asked for */
+export class DocumentedArray {
+    /** @type {Uint8Array} */
+    #bytes;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#bytes = buffer.getStructArray(position, Documented.SIZE);
+        this.#length = this.#bytes.length / Documented.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Documented}
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index) {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Documented(this.#bytes, index * Documented.SIZE);
+    }
+}

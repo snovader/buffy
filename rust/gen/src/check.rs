@@ -131,6 +131,8 @@ fn check_declaration(
         }
     }
 
+    check_view_names(declaration, &fields, errors);
+
     Definition {
         name: declaration.name.text.clone(),
         docs: declaration.docs.clone(),
@@ -187,6 +189,41 @@ fn check_field_names(declaration: &Declaration, errors: &mut Vec<Diagnostic>) {
                 )
                 .with_help("TypeScript, JavaScript and Java name fields in camelCase"),
             ),
+        }
+    }
+}
+
+/// Checks that no field takes the name of the view of a vector or an array
+/// of structs, `<name>_view`, which the generated code reads it lazily with,
+/// in `camelCase` too, as [`check_field_names()`] compares names
+fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Vec<Diagnostic>) {
+    for field in fields {
+        if !matches!(
+            field.field_type,
+            FieldType::Vector(_) | FieldType::StructArray(_)
+        ) {
+            continue;
+        }
+
+        let view = format!("{}View", camel_case(&field.name));
+        let clashes = declaration
+            .fields
+            .iter()
+            .filter(|other| is_snake_case(&other.name.text) && camel_case(&other.name.text) == view);
+        for other in clashes {
+            errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` clashes with the view of `{}`",
+                        other.name.text, field.name
+                    ),
+                    other.name.span,
+                )
+                .with_help(format!(
+                    "the generated code reads `{}` lazily with `{}_view()`, or `{view}()` in camelCase",
+                    field.name, field.name
+                )),
+            );
         }
     }
 }

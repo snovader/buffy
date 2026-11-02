@@ -4,7 +4,7 @@
 
 use super::writer::{CodeWriter, Expr, Style, call, comment_text, doc_comment, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -48,7 +48,7 @@ pub fn generate(
     writer.blank();
     generator.imports(&mut writer, runtime);
 
-    for definition in &schema.definitions {
+    for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blank();
         match definition.kind {
             Kind::Message(layout) => generator.message(&mut writer, definition, layout),
@@ -57,6 +57,15 @@ pub fn generate(
         }
         writer.blank();
         generator.fields_type(&mut writer, definition);
+
+        if schema.is_item(index) {
+            writer.blank();
+            if matches!(definition.kind, Kind::Struct(_)) {
+                generator.struct_array_view(&mut writer, definition);
+            } else {
+                generator.vector_view(&mut writer, definition);
+            }
+        }
     }
 
     let extension = if typed { "ts" } else { "js" };
@@ -604,6 +613,171 @@ impl Generator<'_> {
         writer.close("}");
     }
 
+    /// The view of a vector of a table, which reads each item when it's
+    /// asked for, from the item's end and the end of the item before it
+    fn vector_view(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let table = &definition.name;
+
+        writer.lines(&doc_comment(&[format!(
+            "A vector of `{table}`s, which reads each item when it's asked for"
+        )]));
+        writer.open(format!("export class {table}Vector {{"));
+        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "position", "number");
+        self.private_field(writer, "length", "number");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &["Views the vector at `position`, as its parent's getter finds it".to_owned()],
+            &[
+                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {number} position".to_owned(),
+                "@throws {DecodeError} If the vector's count lies outside the bytes.".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "constructor(buffer{}, position{}) {{",
+            self.annotation("ByteBuffer"),
+            self.annotation("number")
+        ));
+        writer.line("this.#buffer = buffer;");
+        writer.line("this.#position = position;");
+        writer.line("this.#length = buffer.getVectorLength(position);");
+        writer.close("}");
+        writer.blank();
+
+        self.view_length(writer, "The number of items");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &["Reads item `index`, without reading the others".to_owned()],
+            &[
+                "@param {number} index".to_owned(),
+                format!("@returns {{{table}}}"),
+                "@throws {RangeError} If the vector has no item `index`.".to_owned(),
+                "@throws {DecodeError} If the item lies outside the bytes.".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "get(index{}){} {{",
+            self.annotation("number"),
+            self.annotation(table)
+        ));
+        let offset = call(
+            "this.#buffer.getVectorOffset",
+            vec![text("this.#position"), text("index")],
+        );
+        writer.statement(
+            &STYLE,
+            "return ",
+            &call(format!("new {table}"), vec![text("this.#buffer"), offset]),
+            ";",
+        );
+        writer.close("}");
+        writer.close("}");
+    }
+
+    /// The view of an array of a struct, which reads each struct when it's
+    /// asked for, from a view of their bytes
+    fn struct_array_view(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let structure = &definition.name;
+
+        writer.lines(&doc_comment(&[format!(
+            "An array of `{structure}`s, which reads each struct when it's asked for"
+        )]));
+        writer.open(format!("export class {structure}Array {{"));
+        self.private_field(writer, "bytes", "Uint8Array");
+        self.private_field(writer, "length", "number");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &["Views the array at `position`, as its parent's getter finds it".to_owned()],
+            &[
+                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {number} position".to_owned(),
+                "@throws {DecodeError} If the array lies outside the bytes.".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "constructor(buffer{}, position{}) {{",
+            self.annotation("ByteBuffer"),
+            self.annotation("number")
+        ));
+        writer.statement(
+            &STYLE,
+            "this.#bytes = ",
+            &call(
+                "buffer.getStructArray",
+                vec![text("position"), text(format!("{structure}.SIZE"))],
+            ),
+            ";",
+        );
+        writer.line(format!(
+            "this.#length = this.#bytes.length / {structure}.SIZE;"
+        ));
+        writer.close("}");
+        writer.blank();
+
+        self.view_length(writer, "The number of structs");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &["Reads struct `index`".to_owned()],
+            &[
+                "@param {number} index".to_owned(),
+                format!("@returns {{{structure}}}"),
+                "@throws {RangeError} If the array has no struct `index`.".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "get(index{}){} {{",
+            self.annotation("number"),
+            self.annotation(structure)
+        ));
+        writer.open(
+            "if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {",
+        );
+        writer.statement(
+            &STYLE,
+            "throw ",
+            &call(
+                "new RangeError",
+                vec![text(
+                    "`Struct ${index} is outside the array of ${this.#length}`",
+                )],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.blank();
+        writer.statement(
+            &STYLE,
+            "return ",
+            &call(
+                format!("new {structure}"),
+                vec![
+                    text("this.#bytes"),
+                    text(format!("index * {structure}.SIZE")),
+                ],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.close("}");
+    }
+
+    /// A view's `length()`, which it read when it was made
+    fn view_length(&self, writer: &mut CodeWriter, summary: &str) {
+        self.getter_doc(writer, &[summary.to_owned()], "number");
+        writer.open(format!("length(){} {{", self.annotation("number")));
+        writer.line("return this.#length;");
+        writer.close("}");
+    }
+
     /// The interface, or `JSDoc` typedef, of the values that write a definition
     fn fields_type(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = format!("{}Fields", definition.name);
@@ -783,6 +957,8 @@ impl Generator<'_> {
             };
             let return_type = value_type(field.field_type, self.schema);
             let field_name = identifier(&field.name);
+            // A view of a vector or an array of structs follows its getter
+            let view = view_type(field.field_type, self.schema).map(|view| (view, offset.clone()));
 
             writer.blank();
             self.getter_doc(writer, &field.docs, &return_type);
@@ -866,7 +1042,46 @@ impl Generator<'_> {
             }
 
             writer.close("}");
+
+            if let Some((view, offset)) = view {
+                self.view_getter(writer, field, &field_name, &view, offset);
+            }
         }
+    }
+
+    /// The getter of a view of a vector or an array of structs, which reads
+    /// each item when it's asked for, rather than all of them as the
+    /// field's own getter does
+    fn view_getter(
+        &self,
+        writer: &mut CodeWriter,
+        field: &Field,
+        field_name: &str,
+        view: &str,
+        offset: Expr,
+    ) {
+        let mut docs = field.docs.clone();
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(format!(
+            "Views the items of `{field_name}()`, reading each one when it's asked for"
+        ));
+
+        writer.blank();
+        self.getter_doc(writer, &docs, view);
+        writer.open(format!(
+            "{}View(){} {{",
+            camel_case(&field.name),
+            self.annotation(view)
+        ));
+        writer.statement(
+            &STYLE,
+            "return ",
+            &call(format!("new {view}"), vec![text("this.#buffer"), offset]),
+            ";",
+        );
+        writer.close("}");
     }
 
     /// The body of a getter of an array of structs, which reads each struct
@@ -1026,6 +1241,16 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::StructArray(index) | FieldType::Vector(index) => {
             format!("{}[]", schema.definition(index).name)
         }
+    }
+}
+
+/// The view of a vector or an array of structs, which their view getters
+/// return
+fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
+    match field_type {
+        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
+        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
+        _ => None,
     }
 }
 

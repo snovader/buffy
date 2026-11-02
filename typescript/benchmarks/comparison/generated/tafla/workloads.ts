@@ -257,6 +257,11 @@ export class ItemList {
 
         return items;
     }
+
+    /** Views the items of `items()`, reading each one when it's asked for */
+    itemsView(): ItemVector {
+        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+    }
 }
 
 /** The fields of a `ItemList`, to write */
@@ -323,6 +328,42 @@ export class Item {
 export interface ItemFields {
     value: number;
     pair: PairFields;
+}
+
+/** A vector of `Item`s, which reads each item when it's asked for */
+export class ItemVector {
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+    readonly #length: number;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the vector's count lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** The number of items */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index: number): Item {
+        return new Item(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
 }
 
 export class Pair {
@@ -425,6 +466,11 @@ export class Triples {
 
         return items;
     }
+
+    /** Views the items of `items()`, reading each one when it's asked for */
+    itemsView(): TripleArray {
+        return new TripleArray(this.#buffer, this.#buffer.rootOffset(0));
+    }
 }
 
 /** The fields of a `Triples`, to write */
@@ -503,6 +549,42 @@ export interface TripleFields {
     value: number;
     first: number;
     second: number;
+}
+
+/** An array of `Triple`s, which reads each struct when it's asked for */
+export class TripleArray {
+    readonly #bytes: Uint8Array;
+    readonly #length: number;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#bytes = buffer.getStructArray(position, Triple.SIZE);
+        this.#length = this.#bytes.length / Triple.SIZE;
+    }
+
+    /** The number of structs */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index: number): Triple {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Triple(this.#bytes, index * Triple.SIZE);
+    }
 }
 
 /** A fixed-size record of a uint32 and two float32s */

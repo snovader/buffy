@@ -1,0 +1,17 @@
+error: `items_view` clashes with the view of `items`
+ --> view_names.tafla:5:5
+  |
+5 |     items_view: uint8;
+  |     ^^^^^^^^^^ the generated code reads `items` lazily with `items_view()`, or `itemsView()` in camelCase
+
+error: `a1_view` clashes with the view of `a_1`
+ --> view_names.tafla:8:5
+  |
+8 |     a1_view: uint8;
+  |     ^^^^^^^ the generated code reads `a_1` lazily with `a_1_view()`, or `a1View()` in camelCase
+
+error: `children_view` clashes with the view of `children`
+  --> view_names.tafla:16:5
+   |
+16 |     children_view: [Item];
+   |     ^^^^^^^^^^^^^ the generated code reads `children` lazily with `children_view()`, or `childrenView()` in camelCase

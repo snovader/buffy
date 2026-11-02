@@ -259,6 +259,11 @@ export class ItemList {
 
         return items;
     }
+
+    /** Views the items of `items()`, reading each one when it's asked for */
+    itemsView(): ItemVector {
+        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+    }
 }
 
 /** The fields of a `ItemList`, to write */
@@ -324,6 +329,42 @@ export class Item {
 export interface ItemFields {
     value: number;
     pair: PairFields;
+}
+
+/** A vector of `Item`s, which reads each item when it's asked for */
+export class ItemVector {
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+    readonly #length: number;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the vector's count lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** The number of items */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index: number): Item {
+        return new Item(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
 }
 
 /** Two values of an item */

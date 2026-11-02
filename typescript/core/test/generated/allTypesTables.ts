@@ -66,6 +66,12 @@ type Path = typescript.Path | javascript.Path;
 type Segment = typescript.Segment | javascript.Segment;
 type Point = typescript.Point | javascript.Point;
 
+/** A view of a vector or an array of structs, in either language */
+interface View<T> {
+    length(): number;
+    get(index: number): T;
+}
+
 /** The scalar types in the order of the fields of `Scalars`, `Arrays` and `Packed` */
 const SCALAR_TYPES = [
     'int8',
@@ -172,6 +178,49 @@ function readPath(path: Path): PathFields {
         start: readPoint(path.start()),
         points: path.points().map(readPoint)
     };
+}
+
+// Reading the vectors and arrays of structs through their views instead, from
+// the last item to the first, as a reader that skips items would
+
+export function readNestedViews(nested: Nested): NestedFields {
+    return {
+        label: nested.label(),
+        outer: readOuter(nested.outer()),
+        trees: readView(nested.treesView(), readTreeViews)
+    };
+}
+
+function readTreeViews(tree: Tree): TreeFields {
+    return {
+        value: tree.value(),
+        children: readView(tree.childrenView(), readTreeViews)
+    };
+}
+
+export function readStructsViews(structs: Structs): StructsFields {
+    const path = structs.path();
+
+    return {
+        packed: readScalars(structs.packed()),
+        documented: readView(structs.documentedView(), readDocumented),
+        segment: readSegment(structs.segment()),
+        segments: readView(structs.segmentsView(), readSegment),
+        path: {
+            start: readPoint(path.start()),
+            points: readView(path.pointsView(), readPoint)
+        }
+    };
+}
+
+/** Reads a view's items from the last to the first, into an array in order */
+function readView<T, F>(view: View<T>, read: (item: T) => F): F[] {
+    const items = new Array<F>(view.length());
+    for (let i = items.length - 1; i >= 0; i--) {
+        items[i] = read(view.get(i));
+    }
+
+    return items;
 }
 
 function readSegment(segment: Segment): SegmentFields {
