@@ -398,3 +398,41 @@ Every library rejects the truncated document. FlatBuffers' Java runtime reads
 through a `java.nio.ByteBuffer`, whose range checks throw. The array of
 structs takes 1,208 bytes in tafla, 1,212 in SBE, whose message and group
 headers take 12, and 1,224 in FlatBuffers.
+
+### Reading items through views
+
+One run of `ItemAccessBenchmark` on 2026-11-02 on the same machine and JDK, of
+`./gradlew :benchmarks:jmh --jmhArgs="ItemAccess"`. It took 8 minutes. It
+started as another process's burst of load ended, at a 1-minute load average
+of 4.9, which was 2.8 when the Python suite started after it. JMH's mean was within 5%
+of the fastest iteration for 14 of the 16 benchmarks, and at most 6.1% above
+it.
+
+Fastest iteration in µs per operation, and its ratio to `ByteBuffer`'s by
+hand:
+
+| Benchmark                    |  tafla |      tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ---------------------------- | -----: | -------------: | -------------: | -----------------: |
+| ItemAccess: vectorLastItem   | 0.0062 | 0.394 (63.99×) | 0.0061 (1.00×) |     0.0062 (1.00×) |
+| ItemAccess: vectorEveryItem  |  0.397 |  0.885 (2.23×) |  0.518 (1.30×) |      0.519 (1.31×) |
+| ItemAccess: structsLastItem  | 0.0034 | 0.189 (55.76×) | 0.0042 (1.23×) |     0.0042 (1.23×) |
+| ItemAccess: structsEveryItem | 0.0664 |  0.242 (3.65×) | 0.0701 (1.06×) |     0.0699 (1.05×) |
+
+Bytes allocated per operation:
+
+| Benchmark                    | tafla | tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ---------------------------- | ----: | --------: | -------------: | -----------------: |
+| ItemAccess: vectorLastItem   |     0 |     3,568 |              0 |                  0 |
+| ItemAccess: vectorEveryItem  |   416 |     3,568 |              0 |                  0 |
+| ItemAccess: structsLastItem  |     0 |     2,816 |              0 |                  0 |
+| ItemAccess: structsEveryItem |     0 |     2,816 |              0 |                  0 |
+
+- The views read the vector's last item as fast as `ByteBuffer` by hand,
+  0.0061 µs against 0.0062 µs, and the array's in 0.0042 µs against
+  0.0034 µs, 64 and 45 times faster than the getters, which read all 100
+  items first.
+- Through the views, nothing is allocated: C2's escape analysis removes each
+  item's reader or record, which a view returns to the loop rather than
+  stores, as the getters do in their `List` or array. Summing the vector takes
+  0.52 µs against 0.89 µs through the getter and 0.40 µs by hand, and the
+  array 0.070 µs against 0.242 µs and 0.066 µs.

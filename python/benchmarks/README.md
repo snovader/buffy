@@ -452,3 +452,40 @@ through `struct`, whose range checks raise `struct.error`. msgpack packs the
 floats of the vector, the array of structs and the fixed-size record as
 float64s, so its vector is the largest, and its array of structs, at 2,804
 bytes, more than twice the size of tafla's 1,208.
+
+### Reading items through views
+
+Four runs of the four groups that read tafla's items, on 2026-11-02 on the
+same machine and Python, alternating their order as above, with
+`--filter item`. Other processes kept the 1-minute load average between 1.7
+and 3.8, with a median of 2.5. pyperf's mean was within 5% of the fastest value
+for 14 of the 16 benchmarks, and at most 11% above it.
+
+Fastest value in µs, and its ratio to `ByteBuffer`'s by hand:
+
+| Benchmark                                       | tafla |     tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | ------------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item | 1.629 |  13.5 (8.28×) |  2.006 (1.23×) |      2.008 (1.23×) |
+| vector of 100 nested tables: sum every item     |  83.5 | 102.5 (1.23×) |  102.1 (1.22×) |      102.8 (1.23×) |
+| array of 100 structs: read the last item        | 0.812 | 33.0 (40.67×) |  1.310 (1.61×) |      1.315 (1.62×) |
+| array of 100 structs: sum every item            | 8.583 |  35.9 (4.18×) |   35.6 (4.15×) |       35.7 (4.16×) |
+
+The most bytes that a call held at once, as tracemalloc traces them:
+
+| Benchmark                                       | tafla | tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | --------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item |   356 |     6,628 |            424 |                424 |
+| vector of 100 nested tables: sum every item     | 1,453 |     6,628 |          1,741 |              1,741 |
+| array of 100 structs: read the last item        |   504 |    11,936 |            592 |                592 |
+| array of 100 structs: sum every item            |   632 |    11,936 |            696 |                696 |
+
+- The views read the last item 6.7 times faster than the getters for the
+  vector, 2.0 µs against 13.5 µs, and 25 times faster for the array, 1.3 µs
+  against 33.0 µs: the getters create a reader or a `Triple` for each of the
+  100 items first. `ByteBuffer` by hand takes 1.6 µs and 0.8 µs.
+- Iterating over every item takes as long as through the getters, 102.1 µs
+  against 102.5 µs for the vector and 35.6 µs against 35.9 µs for the array,
+  since CPython creates each item's reader or `Triple` either way. The views
+  save the list of them, so a call holds 1.7 KB at most against 6.6 KB for
+  the vector, and 0.7 KB against 11.9 KB for the array. Reading the floats by
+  hand takes 83.5 µs and 8.6 µs.

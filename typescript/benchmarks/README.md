@@ -206,3 +206,46 @@ Bytes allocated on V8's heap per call, which leave out the contents of
   each struct, from which the codec creates the workload's items. Reading the
   vector takes 3.0 µs against 1.9 µs, and the array 2.3 µs against 1.0 µs,
   allocating about twice the heap bytes.
+
+#### Reading items through views
+
+One run of the four groups that read tafla's items, on 2026-11-02 on the same
+machine, with Node 27.0.0 (an alpha, with V8 15.6), of
+`yarn bench:compare --filter item --rounds 61 --sample-ms 5`. Other processes
+kept the 1-minute load average at 1.9. A second run, with V8's young
+generation fixed at 64 MiB by `--min-semi-space-size=64
+--max-semi-space-size=64`, gave times within 5% of these, but for the views'
+sum of the array of structs: 1.20 µs rather than 1.33 µs. V8 resizes its young
+generation as a process allocates, which moved that sum between 1.1 and 4.8
+µs from one process to another while the views were designed.
+
+Fastest call in µs, and its ratio to `ByteBuffer`'s by hand:
+
+| Benchmark                                       | tafla |      tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | -------------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item | 0.091 | 1.147 (12.56×) |  0.092 (1.00×) |      0.092 (1.00×) |
+| vector of 100 nested tables: sum every item     | 1.677 |  1.939 (1.16×) |  1.966 (1.17×) |      1.990 (1.19×) |
+| array of 100 structs: read the last item        | 0.103 | 1.268 (12.36×) |  0.115 (1.12×) |      0.115 (1.12×) |
+| array of 100 structs: sum every item            | 0.782 |  1.611 (2.06×) |  1.334 (1.71×) |      1.314 (1.68×) |
+
+Bytes allocated on V8's heap per call:
+
+| Benchmark                                       | tafla | tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | --------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item |   208 |     5,322 |            328 |                328 |
+| vector of 100 nested tables: sum every item     |   440 |     5,322 |          4,289 |              4,289 |
+| array of 100 structs: read the last item        |   328 |    10,807 |            496 |                496 |
+| array of 100 structs: sum every item            |   328 |    10,809 |         10,001 |             10,001 |
+
+- The views read the last item without reading the others, as `ByteBuffer`
+  does by hand: 0.092 µs against 0.091 µs for the vector, and 0.115 µs
+  against 0.103 µs for the array, 12 times faster than the getters, which
+  read all 100 items first.
+- Summing every item of the vector through its view takes as long as through
+  the getter, 1.97 µs against 1.94 µs, about the A/A pair's spread of 1.2%:
+  both create an `Item` and a `Pair` for each item, which V8 doesn't remove,
+  and the view saves only the array of them, 1 KB of the 5.3 KB. The reads by
+  hand take 1.68 µs.
+- Summing the array of structs through its view takes 1.33 µs against
+  1.61 µs, 17% less, though it creates a `Triple` for each struct as the
+  getter does. `readFloat32()` by hand takes 0.78 µs.
