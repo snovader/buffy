@@ -200,6 +200,57 @@ describe('versions', () => {
     });
 });
 
+describe('counts and sizes', () => {
+    // Negative, fractional and non-finite numbers, and integers past those
+    // that a double holds exactly
+    const invalidCounts = fc.double().filter(count => !(Number.isSafeInteger(count) && count >= 0));
+
+    it.prop([invalidCounts])(
+        'should reject a number of fields that is not a non-negative integer, as TableBuilder does',
+        fields => {
+            const error = new RangeError(`A count must be a non-negative integer, not ${fields}`);
+
+            expect(() => new TableBuilder(fields)).toThrow(error);
+            expect(() => new TableSizer(fields)).toThrow(error);
+        }
+    );
+
+    it.prop([invalidCounts])(
+        'should reject a count that is not a non-negative integer, and leave the sizer and writer as they were',
+        count => {
+            const sizer = new TableSizer(2);
+            expect(() => sizer.addUint16Array(count)).toThrow(RangeError);
+            expect(() => sizer.addStructArray(count, 2, 2)).toThrow(RangeError);
+            expect(() => sizer.addVector(count)).toThrow(RangeError);
+            expect(() => sizer.startTable(count)).toThrow(RangeError);
+            sizer.addUint16Array(1);
+            sizer.addVector(0);
+
+            const writer = sizer.writer();
+            expect(() => writer.setVector(1, count)).toThrow(RangeError);
+            expect(() => writer.startTable(count)).toThrow(RangeError);
+            writer.setUint16Array(0, [7]);
+            writer.setVector(1, 0);
+
+            const builder = new TableBuilder(2);
+            builder.setUint16Array([7]);
+            builder.setVector([]);
+            expect(writer.bytes()).toStrictEqual(builder.bytes());
+        }
+    );
+
+    it.each([0, -2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'should reject a struct of %s bytes',
+        size => {
+            const sizer = new TableSizer(1);
+            const error = new RangeError(`A struct's size must be a positive integer, not ${size}`);
+
+            expect(() => sizer.addStruct(size)).toThrow(error);
+            expect(() => sizer.addStructArray(1, size, 1)).toThrow(error);
+        }
+    );
+});
+
 describe('fields that differ from those sized', () => {
     it('should throw RangeError for a string longer than the one sized', () => {
         const sizer = new TableSizer(1);

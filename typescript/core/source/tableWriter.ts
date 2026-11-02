@@ -1,5 +1,5 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
-import { structCount } from './byteBuffer.ts';
+import { assertStructSize, structCount } from './byteBuffer.ts';
 import {
     setFloat32Elements,
     setFloat64Elements,
@@ -13,7 +13,7 @@ import {
     setUint64Elements
 } from './elements.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
-import { headerLength, maxLength, TableLayout } from './layout.ts';
+import { assertCount, headerLength, maxLength, TableLayout } from './layout.ts';
 import type { AddressableSpace, ElementSize } from './types.ts';
 
 /**
@@ -49,9 +49,9 @@ export class TableSizer {
      * required when the layout is versioned.
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
-     * @throws {RangeError} If `version` isn't an integer that fits in the
-     * layout's offset size, or the header alone is longer than the layout
-     * addresses.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
+     * isn't an integer that fits in the layout's offset size, or the header
+     * alone is longer than the layout addresses.
      */
     constructor(fields: number, layout?: TableLayout<false>);
     constructor(fields: number, layout: TableLayout<true>, version: number);
@@ -113,8 +113,11 @@ export class TableSizer {
      * after its parent's `addTable()` or `addVector()`.
      *
      * @returns The parent's start, which `endTable()` takes back.
+     * @throws {RangeError} If `fields` isn't a non-negative integer.
      */
     startTable(fields: number): number {
+        assertCount(fields);
+
         const parent = this.#table;
         this.#table = this.#position;
         this.#position += fields * this.#size;
@@ -167,44 +170,47 @@ export class TableSizer {
         this.#position += SIZEOF_64;
     }
 
+    // The array adders take the count of the elements, and throw a RangeError
+    // for one that isn't a non-negative integer
+
     addInt8Array(count: number): void {
-        this.#addArray(count * SIZEOF_8, SIZEOF_8);
+        this.#addArray(count, SIZEOF_8, SIZEOF_8);
     }
 
     addUint8Array(count: number): void {
-        this.#addArray(count * SIZEOF_8, SIZEOF_8);
+        this.#addArray(count, SIZEOF_8, SIZEOF_8);
     }
 
     addInt16Array(count: number): void {
-        this.#addArray(count * SIZEOF_16, SIZEOF_16);
+        this.#addArray(count, SIZEOF_16, SIZEOF_16);
     }
 
     addUint16Array(count: number): void {
-        this.#addArray(count * SIZEOF_16, SIZEOF_16);
+        this.#addArray(count, SIZEOF_16, SIZEOF_16);
     }
 
     addInt32Array(count: number): void {
-        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32, SIZEOF_32);
     }
 
     addUint32Array(count: number): void {
-        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32, SIZEOF_32);
     }
 
     addInt64Array(count: number): void {
-        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64, SIZEOF_64);
     }
 
     addUint64Array(count: number): void {
-        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64, SIZEOF_64);
     }
 
     addFloat32Array(count: number): void {
-        this.#addArray(count * SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32, SIZEOF_32);
     }
 
     addFloat64Array(count: number): void {
-        this.#addArray(count * SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64, SIZEOF_64);
     }
 
     /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
@@ -212,17 +218,26 @@ export class TableSizer {
         this.#position += this.#size + utf8Length(string);
     }
 
-    /** Adds a struct of `size` bytes */
+    /**
+     * Adds a struct of `size` bytes
+     *
+     * @throws {RangeError} If `size` isn't a positive integer.
+     */
     addStruct(size: number): void {
+        assertStructSize(size);
         this.#position += size;
     }
 
     /**
      * Adds `count` structs of `size` bytes, padded so that they start at a
      * multiple of `alignment` from the start of the table
+     *
+     * @throws {RangeError} If `count` isn't a non-negative integer, or `size`
+     * a positive one.
      */
     addStructArray(count: number, size: number, alignment: ElementSize): void {
-        this.#addArray(count * size, alignment);
+        assertStructSize(size);
+        this.#addArray(count, size, alignment);
     }
 
     /**
@@ -236,16 +251,24 @@ export class TableSizer {
     /**
      * Adds a vector of `count` tables, whose fields then follow, each
      * between `startTable()` and `endTable()`
+     *
+     * @throws {RangeError} If `count` isn't a non-negative integer.
      */
     addVector(count: number): void {
+        assertCount(count);
         this.#position += (count + 1) * this.#size;
     }
 
-    /** Pads the array so that its elements, after the count, are aligned */
-    #addArray(byteLength: number, alignment: ElementSize): void {
+    /**
+     * Adds an array of `count` elements of `size` bytes, padded so that they
+     * are aligned after the count
+     */
+    #addArray(count: number, size: number, alignment: ElementSize): void {
+        assertCount(count);
+
         const start = this.#position + this.#size;
         this.#position =
-            start + padding(start - this.#table, alignment) + byteLength;
+            start + padding(start - this.#table, alignment) + count * size;
     }
 }
 
@@ -262,6 +285,11 @@ export class TableSizer {
  * each followed by `setItemEnd()`, which writes where it ends. Arrays and
  * nested tables are padded as `TableBuilder` pads them, so the two write the
  * same bytes for the same fields.
+ *
+ * Counts that aren't non-negative integers throw a `RangeError`, before the
+ * writer moves. The index of each field and the item of each end must be
+ * their own: another writes the offset or end into another slot of the
+ * bytes.
  *
  * Typed arrays of a field's element type are copied as bytes; any other
  * array-like, such as a `number[]` or a typed array of another type, is
@@ -294,8 +322,9 @@ export class TableWriter {
      *
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
-     * @throws {RangeError} If `version` doesn't fit in the layout's offset
-     * size, or `bytes` are longer than the layout addresses.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
+     * doesn't fit in the layout's offset size, or `bytes` are longer than the
+     * layout addresses.
      */
     constructor(bytes: Uint8Array, fields: number, layout?: TableLayout<false>);
     constructor(
@@ -356,8 +385,11 @@ export class TableWriter {
      * after its parent's `setTable()` or `setVector()`.
      *
      * @returns The parent's start, which `endTable()` takes back.
+     * @throws {RangeError} If `fields` isn't a non-negative integer.
      */
     startTable(fields: number): number {
+        assertCount(fields);
+
         const parent = this.#table;
         this.#table = this.#position;
         this.#slots = this.#position;
@@ -598,8 +630,10 @@ export class TableWriter {
      * `setItemEnd()`.
      *
      * @returns The vector's position, which `setItemEnd()` takes.
+     * @throws {RangeError} If `count` isn't a non-negative integer.
      */
     setVector(index: number, count: number): number {
+        assertCount(count);
         this.#setOffset(index);
 
         const vector = this.#position;

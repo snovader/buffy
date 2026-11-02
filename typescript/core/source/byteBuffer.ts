@@ -881,7 +881,7 @@ export function structCount(byteLength: number, size: number): number {
     return byteLength / size;
 }
 
-function assertStructSize(size: number): void {
+export function assertStructSize(size: number): void {
     if (!(Number.isInteger(size) && size > 0)) {
         throw new RangeError(
             `A struct's size must be a positive integer, not ${size}`

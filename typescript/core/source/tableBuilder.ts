@@ -85,9 +85,9 @@ export class TableBuilder {
      * before reading any field.
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
-     * @throws {RangeError} If `version` isn't an integer that fits in the
-     * layout's offset size, or the header alone is longer than the layout
-     * addresses.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
+     * isn't an integer that fits in the layout's offset size, or the header
+     * alone is longer than the layout addresses.
      */
     constructor(fields: number, layout?: TableLayout<false>);
     constructor(fields: number, layout: TableLayout<true>, version: number);

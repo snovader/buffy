@@ -83,15 +83,16 @@ export class TableLayout<Versioned extends boolean = boolean> {
  *
  * @throws {TypeError} If `version` is given for a layout without a version
  * slot, or missing for one with it.
- * @throws {RangeError} If `version` isn't an integer that fits in the
- * layout's offset size, or the header alone is longer than the layout
- * addresses.
+ * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
+ * isn't an integer that fits in the layout's offset size, or the header
+ * alone is longer than the layout addresses.
  */
 export function headerLength(
     fields: number,
     layout: TableLayout,
     version: number | undefined
 ): number {
+    assertCount(fields);
     const size = layout.offsetSize();
 
     if (layout.versioned() !== (version !== undefined)) {
@@ -132,6 +133,20 @@ export function maxLength(size: AddressableSpace): number {
 
         case SIZEOF_32:
             return 0xffff_ffff;
+    }
+}
+
+/**
+ * Checks that `count`, of a table's fields, an array's elements or a vector's
+ * items, is a non-negative integer, which a table can be written with
+ *
+ * @throws {RangeError} If it isn't.
+ */
+export function assertCount(count: number): void {
+    if (!(Number.isSafeInteger(count) && count >= 0)) {
+        throw new RangeError(
+            `A count must be a non-negative integer, not ${count}`
+        );
     }
 }
 
