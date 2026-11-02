@@ -55,9 +55,20 @@ public record Documented(short one, int two, long undocumented) {
     /**
      * Reads a {@code Documented} at {@code offset} in a little-endian view, such as of an array of them
      *
-     * @throws IndexOutOfBoundsException if the view ends before it does
+     * @throws DecodeException if the view ends before it does
      */
     public static Documented read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
         return new Documented(
             (short) Byte.toUnsignedInt(view.get(offset)),
             Short.toUnsignedInt(view.getShort(offset + 1)),
