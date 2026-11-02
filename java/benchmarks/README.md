@@ -32,6 +32,22 @@ nested tables, `StructsBenchmark` for the array of structs and
 `./gradlew :benchmarks:encodingReport` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 
+`ItemAccessBenchmark` times only tafla's bytes of the vector of nested tables
+and of the array of structs, read in three ways: the last item alone, which a
+reader can find without reading the others, and every item. Each way sums the
+three float32s of the items it reads as doubles, rather than creating objects
+of its own, and `ItemAccesses` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
+  the last item or `getVectorOffsets()` of every item, and `getStructArray()`'s
+  view with `getFloat()`.
+- **tafla-gen** reads with the generated getters, `items()`, which read every
+  item into a `List` or an array first.
+- **tafla-gen view** reads with the generated views, `itemsView()`, lazy
+  `List`s whose `get(i)` reads one item, in a loop of `get(i)` for every item.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  JMH's noise.
+
 ### What differs from TypeScript
 
 - There are no `number[]` inputs. Java's arrays are typed, and its closest

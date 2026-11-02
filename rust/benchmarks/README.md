@@ -26,6 +26,23 @@ each document is also summed through each crate's per-element accessor.
 values, which `tests/workloads.rs` checks against values that the TypeScript
 generator printed.
 
+Four more groups time only tafla's bytes of the vector of nested tables and
+of the array of structs, read in three ways: **read the last item**, which a
+reader can find without reading the others, and **sum every item**. Each way
+sums the three float32s of the items it reads as `f64`s, rather than
+collecting items of its own, and `item_access.rs` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `Vector::get()` of the
+  last item or the `Vector`'s iterator, and `get_struct_array()`'s bytes with
+  `as_chunks()`.
+- **tafla-gen** reads with the generated getters, `items()`, which collect
+  the vector's items into a `Vec` first, and iterate over the array's
+  structs, whose `last()` the compiler finds without reading the others.
+- **tafla-gen view** reads with the generated views, `items_view()`, whose
+  `get(i)` reads one item and whose `iter()` reads every item.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  Criterion's noise.
+
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
 sizes and what it does with a truncated document, as the TypeScript comparison
 does, and `cargo run --release -p tafla-benchmarks --bin allocation` prints

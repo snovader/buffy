@@ -28,6 +28,23 @@ library's per-element accessor. `workloads.py` ports the TypeScript generator,
 so the inputs are the same values, which `tests/test_workloads.py` checks
 against values that the TypeScript generator printed.
 
+Four more groups time only tafla's bytes of the vector of nested tables and
+of the array of structs, read in three ways: **read the last item**, which a
+reader can find without reading the others, and **sum every item**. Each way
+sums the three float32s of the items it reads, rather than creating objects
+of its own, and `item_access.py` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `get_vector_offset()`
+  of the last item or `get_vector_offsets()` of every item, and
+  `get_struct_array()` with `Struct("<fff")`.
+- **tafla-gen** reads with the generated getters, `items()`, which read every
+  item into a list first, a `Triple` for each struct.
+- **tafla-gen view** reads with the generated views, `items_view()`: `[-1]`
+  reads the last item alone, and `for` iterates over every item, creating its
+  reader or `Triple` as it reaches it.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  the harness's noise.
+
 `python -m tafla_benchmarks.encoding` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does, and
 `python -m tafla_benchmarks.allocation` prints the memory that each

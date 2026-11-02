@@ -44,6 +44,22 @@ tafla is timed twice, and both write the same bytes:
 Every language's suite has a copy of the schema. After changing them,
 regenerate the code as `rust/gen/README.md` describes.
 
+Four more groups time only tafla's bytes of the vector of nested tables and
+of the array of structs, read in three ways: **read the last item**, which a
+reader can find without reading the others, and **sum every item**. Each way
+sums the three float32s of the items it reads, rather than creating objects
+of its own, and `comparison/itemAccess.ts` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
+  the last item or `getVectorOffsets()` of every item, and `getStructArray()`
+  with `readFloat32()`.
+- **tafla-gen** reads with the generated getters, `items()`, which read every
+  item into an array first.
+- **tafla-gen view** reads with the generated views, `itemsView()`, whose
+  `get(i)` reads one item, in a loop of `get(i)` for every item.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  the harness's noise.
+
 Each library writes the array of structs in its own fixed-size encoding:
 FlatBuffers as a vector of structs, protobuf as a repeated message of the three
 floats, which it writes as fixed32s, and msgpackr as an array of each struct's
