@@ -7,7 +7,7 @@ import org.openjdk.jmh.annotations.*;
 /** The fixed-size record: a uint32 and two float32s, which SBE encodes too */
 @State(Scope.Benchmark)
 public class SampleBenchmark {
-    @Param({"tafla", "flatbuffers", "protobuf", "msgpack", "sbe"})
+    @Param({"tafla", "tafla-gen", "flatbuffers", "protobuf", "msgpack", "sbe"})
     public String codec;
 
     private SampleInput input;

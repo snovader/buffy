@@ -143,16 +143,23 @@ function printMeasurements(
     const [reference] = measurements;
 
     print(`\n${name}`);
-    for (const { name: variant, microseconds } of measurements) {
+    for (const { name: variant, microseconds, heapBytes } of measurements) {
         const ratio = microseconds / reference.microseconds;
         print(
-            `  ${variant.padEnd(16)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}×`
+            `  ${variant.padEnd(16)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}× ${formatBytes(heapBytes).padStart(12)}`
         );
     }
 }
 
 function formatMicroseconds(microseconds: number): string {
     return microseconds.toFixed(microseconds < 10 ? 3 : 1);
+}
+
+/** Bytes allocated on V8's heap per call, rounded to whole bytes */
+function formatBytes(bytes: number | undefined): string {
+    return bytes === undefined
+        ? ''
+        : `${Math.max(0, Math.round(bytes)).toLocaleString('en-US')} B`;
 }
 
 function printSizes(

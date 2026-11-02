@@ -144,6 +144,10 @@ jmh {
     // sun.misc.Unsafe's memory access, which JDK 24 and later warn about.
     jvmArgs = listOf("-Xms2g", "-Xmx2g", "--sun-misc-unsafe-memory-access=allow") + agronaJvmArgs
 
+    // JMH's GC profiler, which counts the bytes that each operation allocates from the thread's
+    // allocated bytes, beside its time
+    profilers = listOf("gc")
+
     resultFormat = "JSON"
     resultsFile = layout.buildDirectory.file("results/jmh/results.json")
 }
@@ -157,13 +161,15 @@ tasks.named("jmh") {
 
 /**
  * Prints a table of each benchmark's fastest iteration, and its ratio to tafla's, from JMH's JSON
- * results: a row per benchmark and parameters other than the codec, and a column per codec.
+ * results, and then a table of the bytes that each operation allocated, as the GC profiler counts
+ * them: a row per benchmark and parameters other than the codec, and a column per codec.
  */
 fun printFastestIterations(results: File) {
     @Suppress("UNCHECKED_CAST")
     val runs = groovy.json.JsonSlurper().parse(results) as List<Map<String, Any>>
 
-    val rows = linkedMapOf<String, MutableMap<String, Double>>()
+    val times = linkedMapOf<String, MutableMap<String, Double>>()
+    val allocations = linkedMapOf<String, MutableMap<String, Double>>()
     var unit = ""
     for (run in runs) {
         @Suppress("UNCHECKED_CAST")
@@ -172,33 +178,52 @@ fun printFastestIterations(results: File) {
         val metric = run["primaryMetric"] as Map<String, Any>
         @Suppress("UNCHECKED_CAST")
         val percentiles = metric["scorePercentiles"] as Map<String, Number>
+        @Suppress("UNCHECKED_CAST")
+        val secondary = run["secondaryMetrics"] as Map<String, Map<String, Any>>
 
         val benchmark = run["benchmark"].toString().substringAfterLast(".jmh.").replace("Benchmark.", ": ")
         val others = params.filterKeys { it != "codec" }.map { (name, value) -> "$name=$value" }
         val row = (listOf(benchmark) + others).joinToString(" ")
+        val codec = params.getValue("codec")
 
-        rows.getOrPut(row) { linkedMapOf() }[params.getValue("codec")] = percentiles.getValue("0.0").toDouble()
+        times.getOrPut(row) { linkedMapOf() }[codec] = percentiles.getValue("0.0").toDouble()
         unit = metric["scoreUnit"].toString()
+
+        val allocated = secondary["gc.alloc.rate.norm"]?.get("score") as Number?
+        if (allocated != null) {
+            allocations.getOrPut(row) { linkedMapOf() }[codec] = allocated.toDouble()
+        }
     }
 
+    fun time(value: Double): String = when {
+        value < 0.1 -> "%.4f"
+        value < 10 -> "%.3f"
+        else -> "%.1f"
+    }.format(Locale.ROOT, value)
+
+    printTable("Fastest iteration in $unit", times, ::time)
+    if (allocations.isNotEmpty()) {
+        printTable("Bytes allocated per operation, the mean of the measured iterations", allocations) {
+            "%,.0f".format(Locale.ROOT, it)
+        }
+    }
+}
+
+/** Prints a table of a value per benchmark and codec, with its ratio to the first codec's */
+fun printTable(title: String, rows: Map<String, Map<String, Double>>, format: (Double) -> String) {
     val codecs = rows.values.flatMap { it.keys }.distinct()
     val width = rows.keys.maxOf { it.length }
-    fun format(time: Double): String = when {
-        time < 0.1 -> "%.4f"
-        time < 10 -> "%.3f"
-        else -> "%.1f"
-    }.format(Locale.ROOT, time)
 
-    println("\nFastest iteration in $unit, and its ratio to ${codecs.first()}'s\n")
+    println("\n$title, and its ratio to ${codecs.first()}'s\n")
     println("| ${"Benchmark".padEnd(width)} | ${codecs.joinToString(" | ") { it.padStart(16) }} |")
     println("| ${"-".repeat(width)} | ${codecs.joinToString(" | ") { "-".repeat(15) + ":" }} |")
-    for ((row, times) in rows) {
-        val reference = times.getValue(codecs.first())
+    for ((row, values) in rows) {
+        val reference = values.getValue(codecs.first())
         val cells = codecs.map { codec ->
-            val time = times[codec] ?: return@map ""
-            val ratio = "%.2f".format(Locale.ROOT, time / reference)
+            val value = values[codec] ?: return@map ""
+            val ratio = if (reference == 0.0) "-" else "%.2f".format(Locale.ROOT, value / reference)
 
-            if (codec == codecs.first()) format(time) else "${format(time)} ($ratio×)"
+            if (codec == codecs.first()) format(value) else "${format(value)} ($ratio×)"
         }
         println("| ${row.padEnd(width)} | ${cells.joinToString(" | ") { it.padStart(16) }} |")
     }

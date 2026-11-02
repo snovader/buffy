@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Any, override
 
 from tafla_benchmarks.check import RoundTripError, comparable, serialize_checked
-from tafla_benchmarks.codecs import CODECS, Workload, samples
+from tafla_benchmarks.codecs import CODECS, TAFLA, TAFLA_GEN, Workload, samples
 from tafla_benchmarks.workloads import (
     DOCUMENT_ROWS,
     LIST_ITEMS,
@@ -77,6 +77,30 @@ class TestRoundTrips(unittest.TestCase):
         for name, workload in samples().items():
             with self.subTest(name):
                 self.assert_reads_back(workload, SAMPLE)
+
+    def test_generated_code_writes_the_builders_tables(self) -> None:
+        vector = list_input(LIST_ITEMS)
+        documents = [
+            input
+            for document in self.documents
+            for input in (document, document_lists(document))
+        ]
+        cases: list[tuple[str, Workload[Any, Any], Workload[Any, Any], object]] = [
+            ("record", TAFLA.record, TAFLA_GEN.record, RECORD),
+            *(
+                ("document", TAFLA.document, TAFLA_GEN.document, document)
+                for document in documents
+            ),
+            ("vector", TAFLA.list, TAFLA_GEN.list, vector),
+            ("structs", TAFLA.structs, TAFLA_GEN.structs, vector),
+            ("sample", TAFLA.sample, TAFLA_GEN.sample, SAMPLE),
+        ]
+
+        for name, built, generated, input in cases:
+            with self.subTest(name):
+                self.assertEqual(
+                    bytes(generated.serialize(input)), bytes(built.serialize(input))
+                )
 
     def test_fails_the_check_of_a_codec_that_loses_signed_zero(self) -> None:
         input = SampleInput(key=1, a=-0.0, b=1.0)

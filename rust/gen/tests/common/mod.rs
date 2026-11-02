@@ -124,6 +124,73 @@ impl Golden {
     }
 }
 
+/// A comparison suite's schema of its workloads, and the directory under
+/// which its codec's generated code lies, both relative to the repository
+pub struct BenchmarkSchema {
+    pub target: &'static str,
+    pub schema: &'static str,
+    pub directory: &'static str,
+    /// The package of the Java classes, which are in its directory under
+    /// `directory`
+    pub package: Option<&'static str>,
+}
+
+/// Every suite's schema, which are copies of one schema, since the suites
+/// run the same workloads. Each directory holds the generated code and
+/// nothing else.
+pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 4] = [
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/comparison/workloads.tafla",
+        directory: "typescript/benchmarks/comparison/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "python",
+        schema: "python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla",
+        directory: "python/benchmarks/src/tafla_benchmarks/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/workloads.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.tafla"),
+    },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/workloads.tafla",
+        directory: "rust/benchmarks/src/codecs/tafla_gen",
+        package: None,
+    },
+];
+
+impl BenchmarkSchema {
+    pub fn source(&self) -> String {
+        read(&Path::new(REPOSITORY).join(self.schema))
+    }
+
+    pub fn golden(&self) -> Golden {
+        let Some(package) = self.package else {
+            return Golden {
+                directory: Path::new(REPOSITORY).join(self.directory),
+                options: Options::default(),
+                prefix: String::new(),
+            };
+        };
+
+        let prefix = format!("{}/", package.replace('.', "/"));
+        Golden {
+            directory: Path::new(REPOSITORY).join(self.directory).join(&prefix),
+            options: Options {
+                runtime: None,
+                package: Some(package.parse().unwrap()),
+            },
+            prefix,
+        }
+    }
+}
+
 pub fn update() -> bool {
     std::env::var_os("TAFLA_GEN_UPDATE").is_some_and(|value| value == "1")
 }
