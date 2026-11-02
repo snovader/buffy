@@ -41,7 +41,7 @@ def main() -> None:
         print(f"\n{group.name}")
         for variant in group.variants:
             peak = peak_bytes(variant.prepare())
-            print(f"  {variant.codec:<16} {peak:>12,} B")
+            print(f"  {variant.codec:<18} {peak:>12,} B")
 
 
 def peak_bytes(call: Call[Any]) -> int:

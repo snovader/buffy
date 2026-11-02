@@ -2,7 +2,7 @@
 can't time a codec that skips or corrupts part of the work"""
 
 from array import array
-from collections.abc import Buffer, Iterable
+from collections.abc import Buffer, Callable, Iterable
 from functools import singledispatch
 from struct import Struct
 
@@ -42,6 +42,17 @@ def serialize_checked[I, O](workload: Workload[I, O], input: I) -> Buffer:
         )
 
     return data
+
+
+def check_sum(read: Callable[[Buffer], float], data: Buffer, expected: float) -> None:
+    """Checks that a read of the list's items sums their float32s as expected,
+    by the bits of the sum.
+
+    Raises ``RoundTripError`` if it doesn't.
+    """
+    actual = read(data)
+    if _float_bits(actual) != _float_bits(expected):
+        raise RoundTripError(f"{read!r} summed {actual}, not {expected}")
 
 
 @singledispatch

@@ -9,12 +9,14 @@ from typing import Any, override
 
 from tafla_benchmarks.check import RoundTripError, comparable, serialize_checked
 from tafla_benchmarks.codecs import CODECS, TAFLA, TAFLA_GEN, Workload, samples
+from tafla_benchmarks.item_access import ACCESSES, ItemBytes, sum_item, write_items
 from tafla_benchmarks.workloads import (
     DOCUMENT_ROWS,
     LIST_ITEMS,
     RECORD,
     SAMPLE,
     DocumentInput,
+    ListInput,
     SampleInput,
     document_input,
     document_lists,
@@ -102,6 +104,21 @@ class TestRoundTrips(unittest.TestCase):
                     bytes(generated.serialize(input)), bytes(built.serialize(input))
                 )
 
+    def test_every_access_reads_the_items_of_tafla_and_tafla_gen(self) -> None:
+        input = list_input(LIST_ITEMS)
+        last = sum_item(input.items[-1])
+        every = 0.0
+        for item in input.items:
+            every += sum_item(item)
+
+        for data in (write_items(input), _items_by_tafla(input)):
+            for access in ACCESSES:
+                with self.subTest(access.name):
+                    self.assertEqual(access.last_table(data.tables), last)
+                    self.assertEqual(access.every_table(data.tables), every)
+                    self.assertEqual(access.last_struct(data.structs), last)
+                    self.assertEqual(access.every_struct(data.structs), every)
+
     def test_fails_the_check_of_a_codec_that_loses_signed_zero(self) -> None:
         input = SampleInput(key=1, a=-0.0, b=1.0)
         lossy = Workload(_serialize_nothing, _deserialize_positive_zero)
@@ -115,6 +132,11 @@ class TestRoundTrips(unittest.TestCase):
         unsigned = replace(document, a=[0.0, *document.a[1:]])
 
         self.assertNotEqual(comparable(signed), comparable(unsigned))
+
+
+def _items_by_tafla(input: ListInput) -> ItemBytes:
+    """The list as the tafla codec writes it, by hand"""
+    return ItemBytes(TAFLA.list.serialize(input), TAFLA.structs.serialize(input))
 
 
 def _serialize_nothing(sample: SampleInput) -> Buffer:
