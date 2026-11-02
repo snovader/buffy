@@ -1,5 +1,9 @@
 package io.github.snovader.tafla;
 
+import org.jspecify.annotations.*;
+
+import java.util.*;
+
 /**
  * Counts the bytes of a table, so that a {@link TableWriter} can write it into bytes of exactly
  * that length. It's for code that knows a table's fields before it writes them, such as the code
@@ -38,6 +42,13 @@ public final class TableSizer {
     private long position;
     /** The start of the table being sized, which arrays are aligned from */
     private long table = 0;
+    /** The long strings added, in order, with their bytes, which the writer copies */
+    private @Nullable List<EncodedString> encodedStrings;
+
+    /** A string of at least {@link Utf8#SHORT_LENGTH} {@code char}s, with its UTF-8 bytes */
+    // Never compared or hashed, so its array's identity doesn't matter
+    @SuppressWarnings("ArrayRecordComponent")
+    record EncodedString(String string, byte[] utf8) {}
 
     /** Sizes a table of {@link TableLayout#DEFAULT} */
     public TableSizer(int fields) {
@@ -100,7 +111,9 @@ public final class TableSizer {
      *     than a Java array can be
      */
     public TableWriter writer() {
-        return new TableWriter(new byte[byteLength()], fields, layout, version);
+        var strings = encodedStrings == null ? List.<EncodedString>of() : encodedStrings;
+
+        return new TableWriter(new byte[byteLength()], fields, layout, version, strings);
     }
 
     /**
@@ -208,9 +221,22 @@ public final class TableSizer {
         addArray(count, Double.BYTES, Double.BYTES);
     }
 
-    /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
+    /**
+     * Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD. A long string is encoded
+     * here, and its writer copies those bytes when it's given the same string.
+     */
     public void addString(String string) {
-        position += offsetSize + Utf8.length(string);
+        if (string.length() < Utf8.SHORT_LENGTH) {
+            position += offsetSize + Utf8.length(string);
+            return;
+        }
+
+        var utf8 = Utf8.encode(string);
+        if (encodedStrings == null) {
+            encodedStrings = new ArrayList<>();
+        }
+        encodedStrings.add(new EncodedString(string, utf8));
+        position += offsetSize + utf8.length;
     }
 
     /**

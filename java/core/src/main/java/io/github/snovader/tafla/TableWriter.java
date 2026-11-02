@@ -1,5 +1,7 @@
 package io.github.snovader.tafla;
 
+import java.util.*;
+
 /**
  * Writes a table forward into bytes of exactly its length, which a {@link TableSizer} counted,
  * without recording its fields first as {@link TableBuilder} does. Its writer comes from
@@ -33,13 +35,25 @@ public final class TableWriter {
     private int table = 0;
     /** The position of that table's first offset, after the root's header */
     private int slots;
+    /** The long strings that the sizer encoded, in order */
+    private final List<TableSizer.EncodedString> encodedStrings;
+    /** The index in them of the next long string */
+    private int nextEncodedString = 0;
 
     /**
      * Writes the header of a table of {@code fields} fields into {@code bytes}, which are new, and
-     * as long as the table, as {@link TableSizer#writer()} makes them after checking the header
+     * as long as the table, as {@link TableSizer#writer()} makes them after checking the header,
+     * with the long strings that the sizer encoded
      */
-    TableWriter(byte[] bytes, int fields, TableLayout layout, long version) {
+    TableWriter(
+        byte[] bytes,
+        int fields,
+        TableLayout layout,
+        long version,
+        List<TableSizer.EncodedString> encodedStrings
+    ) {
         this.bytes = bytes;
+        this.encodedStrings = encodedStrings;
         this.offsetSize = layout.offsetSize().valueOf();
         this.headerSize = layout.headerSize();
         this.slots = headerSize;
@@ -213,12 +227,23 @@ public final class TableWriter {
         position += values.length * Double.BYTES;
     }
 
-    /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
+    /**
+     * Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD. A long string is
+     * copied from the bytes that the sizer encoded, if it's the string that the sizer added.
+     */
     public void setString(int index, String string) {
         setOffset(index);
 
         var start = position + offsetSize;
-        var length = Utf8.encodeInto(string, bytes, start);
+        int length;
+        if (string.length() < Utf8.SHORT_LENGTH) {
+            length = Utf8.encodeInto(string, bytes, start);
+        } else {
+            var utf8 = encodingOf(string);
+            System.arraycopy(utf8, 0, bytes, start, utf8.length);
+            length = utf8.length;
+        }
+
         setLength(position, length);
         position = start + length;
     }
@@ -284,6 +309,22 @@ public final class TableWriter {
     /** Writes the end of item {@code item} of the vector, which was just written */
     public void setItemEnd(int vector, int item) {
         setLength(vector + (item + 1) * offsetSize, position - vector);
+    }
+
+    /**
+     * {@return the UTF-8 bytes of the next long string}, which the sizer encoded if it added the
+     * same string
+     */
+    private byte[] encodingOf(String string) {
+        var index = nextEncodedString++;
+        if (index < encodedStrings.size()) {
+            var encoded = encodedStrings.get(index);
+            if (encoded.string().equals(string)) {
+                return encoded.utf8();
+            }
+        }
+
+        return Utf8.encode(string);
     }
 
     /** Pads the array so that its elements, after the count, are aligned, and writes the count */

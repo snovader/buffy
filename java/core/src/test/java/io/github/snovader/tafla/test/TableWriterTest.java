@@ -73,6 +73,53 @@ public class TableWriterTest {
         assertArrayEquals(Tables.build(table).bytes(), Tables.write(table), string::toString);
     }
 
+    @Property
+    void strings_in_nested_tables_and_vector_items_are_written_in_order_as_TableBuilder_writes_them(
+        @ForAll("utf16Strings") String first,
+        @ForAll("utf16Strings") String nested,
+        @ForAll @Size(max = 3) List<@From("utf16Strings") String> items
+    ) {
+        var layout = LayoutDescription.headerless(AddressableSpace.SIZEOF_32);
+        Function<String, TableDescription> tableOf = string ->
+            new TableDescription(layout, OptionalLong.empty(), List.of(new StringField(string)));
+        var vector = items.stream().map(item -> new NestedTable(Source.BUILDER, tableOf.apply(item))).toList();
+        var table = new TableDescription(
+            layout,
+            OptionalLong.empty(),
+            List.of(
+                new StringField(first),
+                new TableField(Source.BUILDER, tableOf.apply(nested), OptionalInt.empty()),
+                new VectorField(vector)
+            )
+        );
+
+        assertArrayEquals(Tables.build(table).bytes(), Tables.write(table));
+    }
+
+    @Property
+    void a_string_other_than_the_one_sized_is_written_as_itself_when_it_fills_the_sized_bytes(
+        @ForAll("utf16Strings") String sized
+    ) {
+        // The same units in reverse, which take as many bytes unless lone surrogates pair up
+        var written = new StringBuilder(sized).reverse().toString();
+        var sizer = new TableSizer(1);
+        sizer.addString(sized);
+        var writer = sizer.writer();
+        var builder = new TableBuilder(1);
+        builder.setString(written);
+        var expected = builder.bytes();
+
+        if (expected.length == sizer.byteLength()) {
+            writer.setString(0, written);
+            assertArrayEquals(expected, writer.bytes());
+        } else {
+            assertThrows(RuntimeException.class, () -> {
+                writer.setString(0, written);
+                writer.bytes();
+            });
+        }
+    }
+
     // Tables longer than their offsets address
 
     @Property
@@ -272,7 +319,9 @@ public class TableWriterTest {
 
     /**
      * {@return strings of any UTF-16 code units}: ASCII, the rest of the Basic Multilingual Plane,
-     * and surrogates, which pair up or stand alone
+     * and surrogates, which pair up or stand alone, and strings of ASCII alone, which Java stores
+     * as Latin-1. They're up to 128 units long, past the length from which the sizer encodes a
+     * string rather than counting it.
      */
     @Provide
     Arbitrary<String> utf16Strings() {
@@ -283,7 +332,10 @@ public class TableWriterTest {
             Tuple.of(1, Arbitraries.chars().range(Character.MIN_LOW_SURROGATE, Character.MAX_LOW_SURROGATE))
         );
 
-        return units.list().ofMaxSize(16).map(TableWriterTest::stringOf);
+        return Arbitraries.oneOf(
+            units.list().ofMaxSize(128).map(TableWriterTest::stringOf),
+            Arbitraries.strings().ascii().ofMaxLength(128)
+        );
     }
 
     private static String stringOf(List<Character> units) {

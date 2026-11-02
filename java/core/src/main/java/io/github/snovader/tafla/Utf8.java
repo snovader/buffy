@@ -9,13 +9,31 @@ final class Utf8 {
     private Utf8() {}
 
     /**
+     * Strings of fewer {@code char}s than this are sized and written a {@code char} at a time, in
+     * place, without allocating. Longer ones are encoded once, with {@link String#getBytes}, which
+     * the JDK vectorizes, and copied. On JDK 26, writing a {@code Point} whose string had 64 ASCII
+     * {@code char}s took 35 ns a {@code char} at a time and 26 ns encoded once, and 4,096 took
+     * 1,950 ns and 280 ns; 32 took 21 ns and 24 ns, with 200 more bytes allocated.
+     */
+    static final int SHORT_LENGTH = 64;
+
+    /**
      * Encodes {@code string}, with lone surrogates replaced by U+FFFD, as TypeScript's
      * {@code TextEncoder} replaces them. {@link String#getBytes} would write each as {@code '?'}.
      */
     static byte[] encode(String string) {
+        // Only a lone surrogate needs replacing; getBytes encodes a pair as its code point. In a
+        // string of Latin-1, whose chars can't be surrogates, the JIT drops this loop.
         for (int i = 0; i < string.length(); i++) {
-            if (Character.isSurrogate(string.charAt(i))) {
-                return replaceLoneSurrogates(string).getBytes(StandardCharsets.UTF_8);
+            var unit = string.charAt(i);
+            if (!Character.isSurrogate(unit)) {
+                continue;
+            }
+
+            if (Character.isHighSurrogate(unit) && isLowSurrogateAt(string, i + 1)) {
+                i++;
+            } else {
+                return encodeReplacingLoneSurrogates(string);
             }
         }
 
@@ -114,17 +132,20 @@ final class Utf8 {
         return decoder.decode(java.nio.ByteBuffer.wrap(bytes, offset, length)).toString();
     }
 
-    /** A surrogate without its pair is a code point of its own, in the surrogates' range */
-    private static String replaceLoneSurrogates(String string) {
-        var wellFormed = new StringBuilder(string.length());
-        string.codePoints().forEach(codePoint -> wellFormed.appendCodePoint(
-            isSurrogate(codePoint) ? REPLACEMENT_CHARACTER : codePoint
-        ));
+    /**
+     * Encodes a string with a lone surrogate a {@code char} at a time, into bytes of its length
+     *
+     * @throws OutOfMemoryError if it's longer than a Java array can be, as getBytes throws it
+     */
+    private static byte[] encodeReplacingLoneSurrogates(String string) {
+        var length = length(string);
+        if (length > Integer.MAX_VALUE) {
+            throw new OutOfMemoryError("A string of " + length + " bytes is longer than an array can be");
+        }
 
-        return wellFormed.toString();
-    }
+        var bytes = new byte[(int) length];
+        encodeInto(string, bytes, 0);
 
-    private static boolean isSurrogate(int codePoint) {
-        return codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE;
+        return bytes;
     }
 }
