@@ -369,8 +369,10 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it.
 - `tests/properties.rs`: any input parses or fails with errors that render,
-  any schema that the checker accepts generates code for every target, and
-  the command writes and prints what the library generates and finds.
+  any schema that the checker accepts generates code for every target,
+  structs that contain themselves or take more than 65,536 bytes fail with
+  errors that point at them, and the command writes and prints what the
+  library generates and finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command and the library's
   options.
 - `tests/members.rs`: fields named after the generated code's members take a
