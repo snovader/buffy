@@ -2,9 +2,16 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 public final class Path {
+    /**
+     * The alignment that a parent pads a {@code Path} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 4;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -14,15 +21,30 @@ public final class Path {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds a {@code Path} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(2);
-        builder.setStruct(fields.start().serialize());
-        builder.setStructArray(Point.serializeArray(fields.points()), Point.SIZE, Point.ALIGNMENT);
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(2);
+        sizer.addStruct(Point.SIZE);
+        sizer.addStructArray(fields.points().length, Point.SIZE, Point.ALIGNMENT);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a {@code Path} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(2);
+        writer.setStruct(0, fields.start().serialize());
+        writer.setStructArray(
+            1,
+            Point.serializeArray(fields.points()),
+            Point.SIZE,
+            Point.ALIGNMENT
+        );
+        writer.endTable(parent);
     }
 
     public Point start() {

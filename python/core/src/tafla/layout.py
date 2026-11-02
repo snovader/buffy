@@ -95,3 +95,43 @@ class TableLayout[Versioned: bool = bool]:
 
 
 TableLayout.DEFAULT = TableLayout()
+
+
+# The longest table that offsets and lengths of each size address
+MAX_LENGTHS: dict[AddressableSpace, int] = {
+    SIZEOF_8: 0xFF,
+    SIZEOF_16: 0xFFFF,
+    SIZEOF_32: 0xFFFF_FFFF,
+}
+
+
+def header_length(fields: int, layout: TableLayout, version: int | None) -> int:
+    """Returns the byte length of the header of a table of ``fields`` fields in
+    ``layout``, whose writer puts ``version`` in the header.
+
+    Raises ``TypeError`` if ``version`` is given for a layout without a version
+    slot, or missing for one with it. Raises ``ValueError`` if ``version``
+    doesn't fit in the layout's offset size, or the header alone is longer than
+    the layout addresses.
+    """
+    size = layout.offset_size()
+    max_length = MAX_LENGTHS[size]
+    versioned = layout.versioned()
+
+    if versioned != (version is not None):
+        raise TypeError(
+            "A versioned layout needs a version"
+            if versioned
+            else "The layout has no version slot"
+        )
+
+    if version is not None and not 0 <= version <= max_length:
+        raise ValueError(f"Version {version} doesn't fit in a {size}-byte slot")
+
+    length = layout.header_size() + fields * size
+    if length > max_length:
+        raise ValueError(
+            f"A header of {fields} fields doesn't fit in {size}-byte offsets"
+        )
+
+    return length

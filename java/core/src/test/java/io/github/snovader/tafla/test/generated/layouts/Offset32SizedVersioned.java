@@ -3,8 +3,8 @@ package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.DecodeException;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** 32-bit offsets, after the table's length and a version */
 public final class Offset32SizedVersioned {
@@ -32,12 +32,17 @@ public final class Offset32SizedVersioned {
 
     /** Writes an {@code Offset32SizedVersioned} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(3, LAYOUT, FORMAT_VERSION);
-        builder.setUint32(fields.id());
-        builder.setString(fields.name());
-        builder.setUint16Array(fields.values());
+        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        sizer.addUint32();
+        sizer.addString(fields.name());
+        sizer.addUint16Array(fields.values().length);
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setUint32(0, fields.id());
+        writer.setString(1, fields.name());
+        writer.setUint16Array(2, fields.values());
+
+        return writer.bytes();
     }
 
     public long id() {

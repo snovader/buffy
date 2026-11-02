@@ -5,12 +5,23 @@ import {
     SIZEOF_32,
     SIZEOF_64
 } from './constants.ts';
-import { toUint8Array } from './converters.ts';
 import { decode } from './encoding.ts';
-import { byteOrderSwap, byteOrderSwapped } from './endianness.ts';
+import {
+    setFloat32Elements,
+    setFloat64Elements,
+    setInt8Elements,
+    setInt16Elements,
+    setInt32Elements,
+    setInt64Elements,
+    setUint8Elements,
+    setUint16Elements,
+    setUint32Elements,
+    setUint64Elements
+} from './elements.ts';
+import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
 import { TableLayout } from './layout.ts';
-import type { AddressableSpace, ElementSize, TypedArray } from './types.ts';
+import type { AddressableSpace, ElementSize } from './types.ts';
 
 /**
  * Reads and writes within the supplied byte slice, in the table layout it was
@@ -512,23 +523,23 @@ export class ByteBuffer {
      */
     setInt8Array(values: ArrayLike<number> | Int8Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_8);
+        this.#startArray(length, SIZEOF_8);
 
-        new Int8Array(this.#bytes.buffer, byteOffset, length).set(values);
-        this.#position += length;
+        setInt8Elements(this.#bytes, this.#position, values);
+        this.#position += length * SIZEOF_8;
     }
 
     /**
-     * Writes the length and then the elements. A `Uint8Array` is copied as
+     * Writes the length and then the elements. An `Uint8Array` is copied as
      * bytes; any other array-like is converted as `new Uint8Array(values)`
      * would.
      */
     setUint8Array(values: ArrayLike<number> | Uint8Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_8);
+        this.#startArray(length, SIZEOF_8);
 
-        new Uint8Array(this.#bytes.buffer, byteOffset, length).set(values);
-        this.#position += length;
+        setUint8Elements(this.#bytes, this.#position, values);
+        this.#position += length * SIZEOF_8;
     }
 
     /**
@@ -538,36 +549,22 @@ export class ByteBuffer {
      */
     setInt16Array(values: ArrayLike<number> | Int16Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_16);
+        this.#startArray(length, SIZEOF_16);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
-            new Int16Array(this.#bytes.buffer, byteOffset, length).set(values);
-        } else {
-            this.#copyElements(
-                values instanceof Int16Array ? values : new Int16Array(values)
-            );
-        }
-
+        setInt16Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_16;
     }
 
     /**
-     * Writes the length and then the elements. A `Uint16Array` is copied as
+     * Writes the length and then the elements. An `Uint16Array` is copied as
      * bytes; any other array-like is converted as `new Uint16Array(values)`
      * would.
      */
     setUint16Array(values: ArrayLike<number> | Uint16Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_16);
+        this.#startArray(length, SIZEOF_16);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
-            new Uint16Array(this.#bytes.buffer, byteOffset, length).set(values);
-        } else {
-            this.#copyElements(
-                values instanceof Uint16Array ? values : new Uint16Array(values)
-            );
-        }
-
+        setUint16Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_16;
     }
 
@@ -578,36 +575,22 @@ export class ByteBuffer {
      */
     setInt32Array(values: ArrayLike<number> | Int32Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_32);
+        this.#startArray(length, SIZEOF_32);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-            new Int32Array(this.#bytes.buffer, byteOffset, length).set(values);
-        } else {
-            this.#copyElements(
-                values instanceof Int32Array ? values : new Int32Array(values)
-            );
-        }
-
+        setInt32Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_32;
     }
 
     /**
-     * Writes the length and then the elements. A `Uint32Array` is copied as
+     * Writes the length and then the elements. An `Uint32Array` is copied as
      * bytes; any other array-like is converted as `new Uint32Array(values)`
      * would.
      */
     setUint32Array(values: ArrayLike<number> | Uint32Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_32);
+        this.#startArray(length, SIZEOF_32);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-            new Uint32Array(this.#bytes.buffer, byteOffset, length).set(values);
-        } else {
-            this.#copyElements(
-                values instanceof Uint32Array ? values : new Uint32Array(values)
-            );
-        }
-
+        setUint32Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_32;
     }
 
@@ -618,20 +601,9 @@ export class ByteBuffer {
      */
     setInt64Array(values: ArrayLike<bigint> | BigInt64Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_64);
+        this.#startArray(length, SIZEOF_64);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-            new BigInt64Array(this.#bytes.buffer, byteOffset, length).set(
-                values
-            );
-        } else {
-            this.#copyElements(
-                values instanceof BigInt64Array
-                    ? values
-                    : new BigInt64Array(values)
-            );
-        }
-
+        setInt64Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_64;
     }
 
@@ -642,20 +614,9 @@ export class ByteBuffer {
      */
     setUint64Array(values: ArrayLike<bigint> | BigUint64Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_64);
+        this.#startArray(length, SIZEOF_64);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-            new BigUint64Array(this.#bytes.buffer, byteOffset, length).set(
-                values
-            );
-        } else {
-            this.#copyElements(
-                values instanceof BigUint64Array
-                    ? values
-                    : new BigUint64Array(values)
-            );
-        }
-
+        setUint64Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_64;
     }
 
@@ -666,20 +627,9 @@ export class ByteBuffer {
      */
     setFloat32Array(values: ArrayLike<number> | Float32Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_32);
+        this.#startArray(length, SIZEOF_32);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-            new Float32Array(this.#bytes.buffer, byteOffset, length).set(
-                values
-            );
-        } else {
-            this.#copyElements(
-                values instanceof Float32Array
-                    ? values
-                    : new Float32Array(values)
-            );
-        }
-
+        setFloat32Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_32;
     }
 
@@ -690,20 +640,9 @@ export class ByteBuffer {
      */
     setFloat64Array(values: ArrayLike<number> | Float64Array): void {
         const length = values.length;
-        const byteOffset = this.#startArray(length, SIZEOF_64);
+        this.#startArray(length, SIZEOF_64);
 
-        if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-            new Float64Array(this.#bytes.buffer, byteOffset, length).set(
-                values
-            );
-        } else {
-            this.#copyElements(
-                values instanceof Float64Array
-                    ? values
-                    : new Float64Array(values)
-            );
-        }
-
+        setFloat64Elements(this.#bytes, this.#position, values);
         this.#position += length * SIZEOF_64;
     }
 
@@ -737,42 +676,11 @@ export class ByteBuffer {
 
     /**
      * Checks that `length` elements of `elementSize` bytes fit after their
-     * length prefix, and writes the prefix.
-     *
-     * Every array setter writes through a typed array view of the elements
-     * with `set()`, which converts any array-like in a built-in. A JS loop
-     * instead would share its type feedback between callers: once a loop had
-     * seen typed arrays and JS arrays, writing 27,028 floats from a `number[]`
-     * took 130–180 µs, against 14–20 µs for the built-in.
-     *
-     * @returns The byte offset of the elements in the backing buffer.
+     * length prefix, and writes the prefix
      */
-    #startArray(length: number, elementSize: ElementSize): number {
+    #startArray(length: number, elementSize: ElementSize): void {
         this.#assertWritable(this.#size + length * elementSize);
         this.#setSize(length);
-
-        return this.#bytes.byteOffset + this.#position;
-    }
-
-    /**
-     * Copies the elements' bytes in little-endian order, for a destination
-     * that a view can't start at or a big-endian host.
-     */
-    #copyElements(values: TypedArray): void {
-        const destination = this.#bytes.subarray(
-            this.#position,
-            this.#position + values.byteLength
-        );
-
-        if (IS_LITTLE_ENDIAN) {
-            destination.set(toUint8Array(values));
-        } else {
-            byteOrderSwap(
-                toUint8Array(values),
-                destination,
-                values.BYTES_PER_ELEMENT
-            );
-        }
     }
 
     /** @throws {DecodeError} If the string isn't valid UTF-8. */
@@ -973,7 +881,7 @@ export function structCount(byteLength: number, size: number): number {
     return byteLength / size;
 }
 
-function assertStructSize(size: number): void {
+export function assertStructSize(size: number): void {
     if (!(Number.isInteger(size) && size > 0)) {
         throw new RangeError(
             `A struct's size must be a positive integer, not ${size}`

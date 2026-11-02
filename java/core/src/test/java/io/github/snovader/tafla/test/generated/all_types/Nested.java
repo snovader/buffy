@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,12 +20,27 @@ public final class Nested {
 
     /** Writes a {@code Nested} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(3, LAYOUT);
-        builder.setString(fields.label());
-        builder.setTable(Outer.builder(fields.outer()));
-        builder.setVector(fields.trees().stream().map(Tree::builder).toList());
+        var sizer = new TableSizer(3, LAYOUT);
+        sizer.addString(fields.label());
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer());
+        sizer.addVector(fields.trees().size());
+        for (var item : fields.trees()) {
+            Tree.size(sizer, item);
+        }
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setString(0, fields.label());
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer());
+        var vector2 = writer.setVector(2, fields.trees().size());
+        var written2 = 0;
+        for (var item : fields.trees()) {
+            Tree.write(writer, item);
+            writer.setItemEnd(vector2, written2++);
+        }
+
+        return writer.bytes();
     }
 
     /** A string beside the tables */

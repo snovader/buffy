@@ -967,3 +967,19 @@ proptest! {
         prop_assert_eq!(describe_segment(Segment::from_bytes(&bytes)), describe_segment(segment));
     }
 }
+
+/// A nested table is padded to the largest alignment of its arrays, of
+/// scalars and of structs, and of the tables nested in it, as `TableBuilder`
+/// pads one from its builder. The items of a vector aren't padded, so they
+/// don't count, and a table of none of them is aligned to 1.
+#[test]
+fn tables_are_aligned_to_their_arrays_and_nested_tables() {
+    // An array of float64s, and the table that nests it
+    assert_eq!(InnerFields::ALIGNMENT, Alignment::Eight);
+    assert_eq!(OuterFields::ALIGNMENT, Alignment::Eight);
+    // An array of structs of float32s, after a struct of them
+    assert_eq!(PathFields::ALIGNMENT, Alignment::Four);
+    // A vector of itself, and scalars and a string
+    assert_eq!(TreeFields::ALIGNMENT, Alignment::One);
+    assert_eq!(KeywordsFields::ALIGNMENT, Alignment::One);
+}

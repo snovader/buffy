@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** An array of every scalar type */
 public final class Arrays {
@@ -17,19 +17,31 @@ public final class Arrays {
 
     /** Writes an {@code Arrays} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(10, LAYOUT);
-        builder.setInt8Array(fields.int8());
-        builder.setUint8Array(fields.uint8());
-        builder.setInt16Array(fields.int16());
-        builder.setUint16Array(fields.uint16());
-        builder.setInt32Array(fields.int32());
-        builder.setUint32Array(fields.uint32());
-        builder.setInt64Array(fields.int64());
-        builder.setUint64Array(fields.uint64());
-        builder.setFloat32Array(fields.float32());
-        builder.setFloat64Array(fields.float64());
+        var sizer = new TableSizer(10, LAYOUT);
+        sizer.addInt8Array(fields.int8().length);
+        sizer.addUint8Array(fields.uint8().length);
+        sizer.addInt16Array(fields.int16().length);
+        sizer.addUint16Array(fields.uint16().length);
+        sizer.addInt32Array(fields.int32().length);
+        sizer.addUint32Array(fields.uint32().length);
+        sizer.addInt64Array(fields.int64().length);
+        sizer.addUint64Array(fields.uint64().length);
+        sizer.addFloat32Array(fields.float32().length);
+        sizer.addFloat64Array(fields.float64().length);
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setInt8Array(0, fields.int8());
+        writer.setUint8Array(1, fields.uint8());
+        writer.setInt16Array(2, fields.int16());
+        writer.setUint16Array(3, fields.uint16());
+        writer.setInt32Array(4, fields.int32());
+        writer.setUint32Array(5, fields.uint32());
+        writer.setInt64Array(6, fields.int64());
+        writer.setUint64Array(7, fields.uint64());
+        writer.setFloat32Array(8, fields.float32());
+        writer.setFloat64Array(9, fields.float64());
+
+        return writer.bytes();
     }
 
     public byte[] int8() {

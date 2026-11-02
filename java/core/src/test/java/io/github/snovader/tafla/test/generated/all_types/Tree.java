@@ -2,7 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -12,6 +13,12 @@ import java.util.List;
  * may be empty
  */
 public final class Tree {
+    /**
+     * The alignment that a parent pads a {@code Tree} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 1;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -21,15 +28,33 @@ public final class Tree {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds a {@code Tree} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(2);
-        builder.setInt32(fields.value());
-        builder.setVector(fields.children().stream().map(Tree::builder).toList());
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(2);
+        sizer.addInt32();
+        sizer.addVector(fields.children().size());
+        for (var item : fields.children()) {
+            Tree.size(sizer, item);
+        }
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a {@code Tree} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(2);
+        writer.setInt32(0, fields.value());
+        var vector1 = writer.setVector(1, fields.children().size());
+        var written1 = 0;
+        for (var item : fields.children()) {
+            Tree.write(writer, item);
+            writer.setItemEnd(vector1, written1++);
+        }
+        writer.endTable(parent);
     }
 
     public int value() {

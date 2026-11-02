@@ -11,7 +11,9 @@ import {
     readUint32,
     readUint64,
     TableBuilder,
-    TableLayout
+    TableLayout,
+    TableSizer,
+    type TableWriter
 } from 'tafla';
 import {
     type Alignment,
@@ -195,6 +197,341 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
             builder.setVector(field.items.map(buildNested));
             break;
     }
+}
+
+/**
+ * Sizes and writes a table with `TableSizer` and `TableWriter`, as its
+ * description sets it out. They write tables nested in it in place, so those
+ * must have no header and its offset size, as {@link nestedInPlace} makes
+ * them.
+ */
+export function writeTable(table: TableDescription): Uint8Array {
+    const sizer = createSizer(table);
+    for (const field of table.fields) {
+        addField(sizer, field);
+    }
+
+    const writer = sizer.writer();
+    for (const [index, field] of table.fields.entries()) {
+        writeField(writer, index, field);
+    }
+
+    return writer.bytes();
+}
+
+/**
+ * Returns the description with every table nested in it made one that a
+ * `TableWriter` writes in place: from its builder, without a header, and
+ * with the root's offset size
+ */
+export function nestedInPlace(table: TableDescription): TableDescription {
+    const { offsetSize } = table.layout;
+    const inPlace = (nested: TableDescription): TableDescription => ({
+        layout: { sized: false, versioned: false, offsetSize },
+        fields: nested.fields.map(field)
+    });
+    const field = (description: FieldDescription): FieldDescription => {
+        switch (description.type) {
+            case 'table':
+                return {
+                    ...description,
+                    from: 'builder' as const,
+                    table: inPlace(description.table)
+                };
+
+            case 'vector':
+                return {
+                    ...description,
+                    items: description.items.map(
+                        (item): NestedTable => ({
+                            from: 'builder',
+                            table: inPlace(item.table)
+                        })
+                    )
+                };
+
+            default:
+                return description;
+        }
+    };
+
+    return { ...table, fields: table.fields.map(field) };
+}
+
+function createSizer({
+    layout,
+    version,
+    fields
+}: TableDescription): TableSizer {
+    const { sized, offsetSize } = layout;
+
+    if (layout.versioned) {
+        return new TableSizer(
+            fields.length,
+            TableLayout.create({ sized, versioned: true, offsetSize }),
+            version as number
+        );
+    }
+
+    return new TableSizer(
+        fields.length,
+        TableLayout.create({ sized, offsetSize })
+    );
+}
+
+/** Adds a field to the sizer as its description sets it out */
+function addField(sizer: TableSizer, field: FieldDescription): void {
+    switch (field.type) {
+        case 'int8':
+            sizer.addInt8();
+            break;
+
+        case 'uint8':
+            sizer.addUint8();
+            break;
+
+        case 'int16':
+            sizer.addInt16();
+            break;
+
+        case 'uint16':
+            sizer.addUint16();
+            break;
+
+        case 'int32':
+            sizer.addInt32();
+            break;
+
+        case 'uint32':
+            sizer.addUint32();
+            break;
+
+        case 'int64':
+            sizer.addInt64();
+            break;
+
+        case 'uint64':
+            sizer.addUint64();
+            break;
+
+        case 'float32':
+            sizer.addFloat32();
+            break;
+
+        case 'float64':
+            sizer.addFloat64();
+            break;
+
+        case 'int8[]':
+            sizer.addInt8Array(field.value.length);
+            break;
+
+        case 'uint8[]':
+            sizer.addUint8Array(field.value.length);
+            break;
+
+        case 'int16[]':
+            sizer.addInt16Array(field.value.length);
+            break;
+
+        case 'uint16[]':
+            sizer.addUint16Array(field.value.length);
+            break;
+
+        case 'int32[]':
+            sizer.addInt32Array(field.value.length);
+            break;
+
+        case 'uint32[]':
+            sizer.addUint32Array(field.value.length);
+            break;
+
+        case 'int64[]':
+            sizer.addInt64Array(field.value.length);
+            break;
+
+        case 'uint64[]':
+            sizer.addUint64Array(field.value.length);
+            break;
+
+        case 'float32[]':
+            sizer.addFloat32Array(field.value.length);
+            break;
+
+        case 'float64[]':
+            sizer.addFloat64Array(field.value.length);
+            break;
+
+        case 'string':
+            sizer.addString(field.value);
+            break;
+
+        case 'struct':
+            sizer.addStruct(structSize(field.fields.map(({ type }) => type)));
+            break;
+
+        case 'struct[]':
+            sizer.addStructArray(
+                field.items.length,
+                structSize(field.fields),
+                structAlignment(field.fields)
+            );
+            break;
+
+        case 'table':
+            sizer.addTable(alignmentOf(field));
+            addTable(sizer, field.table);
+            break;
+
+        case 'vector':
+            sizer.addVector(field.items.length);
+            for (const item of field.items) {
+                addTable(sizer, item.table);
+            }
+            break;
+    }
+}
+
+function addTable(sizer: TableSizer, table: TableDescription): void {
+    const parent = sizer.startTable(table.fields.length);
+    for (const field of table.fields) {
+        addField(sizer, field);
+    }
+    sizer.endTable(parent);
+}
+
+/** Writes field `index` as its description sets it out */
+function writeField(
+    writer: TableWriter,
+    index: number,
+    field: FieldDescription
+): void {
+    switch (field.type) {
+        case 'int8':
+            writer.setInt8(index, fromJsonNumber(field.value));
+            break;
+
+        case 'uint8':
+            writer.setUint8(index, fromJsonNumber(field.value));
+            break;
+
+        case 'int16':
+            writer.setInt16(index, fromJsonNumber(field.value));
+            break;
+
+        case 'uint16':
+            writer.setUint16(index, fromJsonNumber(field.value));
+            break;
+
+        case 'int32':
+            writer.setInt32(index, fromJsonNumber(field.value));
+            break;
+
+        case 'uint32':
+            writer.setUint32(index, fromJsonNumber(field.value));
+            break;
+
+        case 'int64':
+            writer.setInt64(index, BigInt(field.value));
+            break;
+
+        case 'uint64':
+            writer.setUint64(index, BigInt(field.value));
+            break;
+
+        case 'float32':
+            writer.setFloat32(index, fromJsonNumber(field.value));
+            break;
+
+        case 'float64':
+            writer.setFloat64(index, fromJsonNumber(field.value));
+            break;
+
+        case 'int8[]':
+            writer.setInt8Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'uint8[]':
+            writer.setUint8Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'int16[]':
+            writer.setInt16Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'uint16[]':
+            writer.setUint16Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'int32[]':
+            writer.setInt32Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'uint32[]':
+            writer.setUint32Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'int64[]':
+            writer.setInt64Array(index, field.value.map(toBigInt));
+            break;
+
+        case 'uint64[]':
+            writer.setUint64Array(index, field.value.map(toBigInt));
+            break;
+
+        case 'float32[]':
+            writer.setFloat32Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'float64[]':
+            writer.setFloat64Array(index, field.value.map(fromJsonNumber));
+            break;
+
+        case 'string':
+            writer.setString(index, field.value);
+            break;
+
+        case 'struct':
+            writer.setStruct(
+                index,
+                packStructs(
+                    field.fields.map(({ type }) => type),
+                    [field.fields.map(({ value }) => value)]
+                )
+            );
+            break;
+
+        case 'struct[]':
+            writer.setStructArray(
+                index,
+                packStructs(field.fields, field.items),
+                structSize(field.fields),
+                structAlignment(field.fields)
+            );
+            break;
+
+        case 'table':
+            writer.setTable(index, alignmentOf(field));
+            writeNested(writer, field.table);
+            break;
+
+        case 'vector': {
+            const vector = writer.setVector(index, field.items.length);
+            for (const [item, { table }] of field.items.entries()) {
+                writeNested(writer, table);
+                writer.setItemEnd(vector, item);
+            }
+            break;
+        }
+    }
+}
+
+function writeNested(writer: TableWriter, table: TableDescription): void {
+    const parent = writer.startTable(table.fields.length);
+    for (const [index, field] of table.fields.entries()) {
+        writeField(writer, index, field);
+    }
+    writer.endTable(parent);
 }
 
 /** The byte length of a struct of scalars of these types */

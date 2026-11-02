@@ -85,8 +85,9 @@ impl Error for DecodeError {
     }
 }
 
-/// Returned when a `TableBuilder` can't build its table, whatever the values'
-/// bytes. A failed setter leaves the builder as it was.
+/// Returned when a `TableBuilder`, or a `TableSizer` and its `TableWriter`,
+/// can't write a table, whatever the values' bytes. A failed setter leaves the
+/// builder as it was.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BuildError {
@@ -101,7 +102,8 @@ pub enum BuildError {
         fields: usize,
         offset_size: OffsetSize,
     },
-    /// A field was set on a table that already holds its `fields` fields
+    /// A field was set on a table that already holds its `fields` fields, or
+    /// written to a `TableWriter` at an index past them
     TooManyFields { fields: usize },
     /// The field at `index` would make the table `length` bytes, longer than
     /// the layout's offsets address
@@ -116,6 +118,10 @@ pub enum BuildError {
     /// The `length` bytes of an array of structs aren't a whole number of
     /// `size`-byte structs, or `size` is 0
     NotWholeStructs { length: usize, size: usize },
+    /// The fields that a `TableWriter` wrote differ from those that its
+    /// `TableSizer` added: they wrote `written` of the table's `length`
+    /// bytes, in all or before the first write that the table doesn't hold
+    NotAsSized { written: usize, length: usize },
 }
 
 impl fmt::Display for BuildError {
@@ -158,6 +164,12 @@ impl fmt::Display for BuildError {
                 write!(
                     f,
                     "{length} bytes aren't a whole number of {size}-byte structs"
+                )
+            }
+            Self::NotAsSized { written, length } => {
+                write!(
+                    f,
+                    "The fields wrote {written} of the table's {length} bytes"
                 )
             }
         }

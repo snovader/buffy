@@ -59,7 +59,7 @@ public class FormatTest {
         var layout = table.layout();
 
         for (int index = 0; index < table.fields().size(); index++) {
-            var alignment = arrayAlignment(table.fields().get(index));
+            var alignment = Tables.arrayAlignment(table.fields().get(index));
             if (alignment.isPresent()) {
                 var elements = rootOffset(bytes, layout, index) + layout.width();
                 assertEquals(0, elements % alignment.getAsInt(), "The elements of field " + index);
@@ -95,7 +95,7 @@ public class FormatTest {
                 var offset = rootOffset(bytes, layout, index);
                 var nested = Tables.build(field.table()).bytes();
 
-                assertEquals(0, offset % alignmentOf(field), "The offset of field " + index);
+                assertEquals(0, offset % Tables.alignmentOf(field), "The offset of field " + index);
                 assertArrayEquals(nested, slice(bytes, offset, nested.length), "The bytes of field " + index);
             }
         }
@@ -155,44 +155,6 @@ public class FormatTest {
     @Provide
     Arbitrary<TableDescription> versionedTables() {
         return Descriptions.tables(LayoutDescription::versioned);
-    }
-
-    /**
-     * {@return the alignment that {@code SPEC.md} gives a nested table}: the one passed to
-     * {@code setTable()}, or by default 4 for bytes, and for a builder the largest alignment of its
-     * arrays, arrays of structs and own nested tables, or 1 if it has none of them
-     */
-    private static int alignmentOf(TableField field) {
-        if (field.alignment().isPresent()) {
-            return field.alignment().getAsInt();
-        }
-
-        if (field.from() == Source.BYTES) {
-            return Integer.BYTES;
-        }
-
-        var alignment = 1;
-        for (var nested : field.table().fields()) {
-            var fieldAlignment = nested instanceof TableField table
-                ? alignmentOf(table)
-                : arrayAlignment(nested).orElse(1);
-            alignment = Math.max(alignment, fieldAlignment);
-        }
-
-        return alignment;
-    }
-
-    /**
-     * {@return the alignment of an array's elements from the start of its table}: the size of a
-     * scalar array's elements, or of the largest scalar of an array's structs, and nothing for a
-     * field of any other type
-     */
-    private static OptionalInt arrayAlignment(FieldDescription field) {
-        return switch (field) {
-            case ArrayField array -> OptionalInt.of(array.type().size());
-            case StructArrayField array -> OptionalInt.of(StructBytes.alignment(array.fields()));
-            default -> OptionalInt.empty();
-        };
     }
 
     /**

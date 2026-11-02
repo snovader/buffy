@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Self, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, TableBuilder, TableLayout
+from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
 
 
 class Scalars:
@@ -21,19 +21,19 @@ class Scalars:
     @classmethod
     def serialize(cls, **fields: Unpack[ScalarsFields]) -> memoryview:
         """Writes a ``Scalars`` with every field"""
-        builder = TableBuilder(10, cls._LAYOUT)
-        builder.set_int8(fields["int8"])
-        builder.set_uint8(fields["uint8"])
-        builder.set_int16(fields["int16"])
-        builder.set_uint16(fields["uint16"])
-        builder.set_int32(fields["int32"])
-        builder.set_uint32(fields["uint32"])
-        builder.set_int64(fields["int64"])
-        builder.set_uint64(fields["uint64"])
-        builder.set_float32(fields["float32"])
-        builder.set_float64(fields["float64"])
+        writer = TableWriter(10, cls._LAYOUT)
+        writer.set_int8(0, fields["int8"])
+        writer.set_uint8(1, fields["uint8"])
+        writer.set_int16(2, fields["int16"])
+        writer.set_uint16(3, fields["uint16"])
+        writer.set_int32(4, fields["int32"])
+        writer.set_uint32(5, fields["uint32"])
+        writer.set_int64(6, fields["int64"])
+        writer.set_uint64(7, fields["uint64"])
+        writer.set_float32(8, fields["float32"])
+        writer.set_float64(9, fields["float64"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def int8(self) -> int:
         return self._buffer.get_int8(self._buffer.root_offset(0))
@@ -94,19 +94,19 @@ class Arrays:
     @classmethod
     def serialize(cls, **fields: Unpack[ArraysFields]) -> memoryview:
         """Writes an ``Arrays`` with every field"""
-        builder = TableBuilder(10, cls._LAYOUT)
-        builder.set_int8_array(fields["int8"])
-        builder.set_uint8_array(fields["uint8"])
-        builder.set_int16_array(fields["int16"])
-        builder.set_uint16_array(fields["uint16"])
-        builder.set_int32_array(fields["int32"])
-        builder.set_uint32_array(fields["uint32"])
-        builder.set_int64_array(fields["int64"])
-        builder.set_uint64_array(fields["uint64"])
-        builder.set_float32_array(fields["float32"])
-        builder.set_float64_array(fields["float64"])
+        writer = TableWriter(10, cls._LAYOUT)
+        writer.set_int8_array(0, fields["int8"])
+        writer.set_uint8_array(1, fields["uint8"])
+        writer.set_int16_array(2, fields["int16"])
+        writer.set_uint16_array(3, fields["uint16"])
+        writer.set_int32_array(4, fields["int32"])
+        writer.set_uint32_array(5, fields["uint32"])
+        writer.set_int64_array(6, fields["int64"])
+        writer.set_uint64_array(7, fields["uint64"])
+        writer.set_float32_array(8, fields["float32"])
+        writer.set_float64_array(9, fields["float64"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def int8(self) -> memoryview[int]:
         return self._buffer.get_int8_array(self._buffer.root_offset(0))
@@ -167,12 +167,16 @@ class Nested:
     @classmethod
     def serialize(cls, **fields: Unpack[NestedFields]) -> memoryview:
         """Writes a ``Nested`` with every field"""
-        builder = TableBuilder(3, cls._LAYOUT)
-        builder.set_string(fields["label"])
-        builder.set_table(Outer.builder(fields["outer"]))
-        builder.set_vector([Tree.builder(item) for item in fields["trees"]])
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_string(0, fields["label"])
+        writer.set_table(1, Outer.ALIGNMENT)
+        Outer.write(writer, fields["outer"])
+        vector = writer.set_vector(2, len(fields["trees"]))
+        for i, item in enumerate(fields["trees"]):
+            Tree.write(writer, item)
+            writer.set_item_end(vector, i)
 
-        return builder.bytes()
+        return writer.bytes()
 
     def label(self) -> str:
         """A string beside the tables"""
@@ -202,21 +206,26 @@ class NestedFields(TypedDict):
 class Outer:
     __slots__ = ("_buffer", "_position")
 
+    ALIGNMENT: Final = 8
+    """The alignment that a parent pads an ``Outer`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
         self._position = position
 
     @staticmethod
-    def builder(fields: OuterFields) -> TableBuilder:
-        """Returns a builder with every field set, which a parent writes straight
-        into its own bytes
+    def write(writer: TableWriter, fields: OuterFields) -> None:
+        """Writes an ``Outer`` where its parent's writer is, after the
+        field or vector that holds it
         """
-        builder = TableBuilder(2)
-        builder.set_uint32(fields["count"])
-        builder.set_table(Inner.builder(fields["inner"]))
-
-        return builder
+        parent = writer.start_table(2)
+        writer.set_uint32(0, fields["count"])
+        writer.set_table(1, Inner.ALIGNMENT)
+        Inner.write(writer, fields["inner"])
+        writer.end_table(parent)
 
     def count(self) -> int:
         return self._buffer.get_uint32(self._buffer.field_offset(self._position, 0))
@@ -235,21 +244,25 @@ class OuterFields(TypedDict):
 class Inner:
     __slots__ = ("_buffer", "_position")
 
+    ALIGNMENT: Final = 8
+    """The alignment that a parent pads an ``Inner`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
         self._position = position
 
     @staticmethod
-    def builder(fields: InnerFields) -> TableBuilder:
-        """Returns a builder with every field set, which a parent writes straight
-        into its own bytes
+    def write(writer: TableWriter, fields: InnerFields) -> None:
+        """Writes an ``Inner`` where its parent's writer is, after the
+        field or vector that holds it
         """
-        builder = TableBuilder(2)
-        builder.set_string(fields["name"])
-        builder.set_float64_array(fields["values"])
-
-        return builder
+        parent = writer.start_table(2)
+        writer.set_string(0, fields["name"])
+        writer.set_float64_array(1, fields["values"])
+        writer.end_table(parent)
 
     def name(self) -> str:
         return self._buffer.get_string(self._buffer.field_offset(self._position, 0))
@@ -274,21 +287,28 @@ class Tree:
 
     __slots__ = ("_buffer", "_position")
 
+    ALIGNMENT: Final = 1
+    """The alignment that a parent pads a ``Tree`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
         self._position = position
 
     @staticmethod
-    def builder(fields: TreeFields) -> TableBuilder:
-        """Returns a builder with every field set, which a parent writes straight
-        into its own bytes
+    def write(writer: TableWriter, fields: TreeFields) -> None:
+        """Writes a ``Tree`` where its parent's writer is, after the
+        field or vector that holds it
         """
-        builder = TableBuilder(2)
-        builder.set_int32(fields["value"])
-        builder.set_vector([Tree.builder(item) for item in fields["children"]])
-
-        return builder
+        parent = writer.start_table(2)
+        writer.set_int32(0, fields["value"])
+        vector = writer.set_vector(1, len(fields["children"]))
+        for i, item in enumerate(fields["children"]):
+            Tree.write(writer, item)
+            writer.set_item_end(vector, i)
+        writer.end_table(parent)
 
     def value(self) -> int:
         return self._buffer.get_int32(self._buffer.field_offset(self._position, 0))
@@ -312,25 +332,29 @@ class Keywords:
 
     __slots__ = ("_buffer", "_position")
 
+    ALIGNMENT: Final = 1
+    """The alignment that a parent pads a ``Keywords`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
         self._position = position
 
     @staticmethod
-    def builder(fields: KeywordsFields) -> TableBuilder:
-        """Returns a builder with every field set, which a parent writes straight
-        into its own bytes
+    def write(writer: TableWriter, fields: KeywordsFields) -> None:
+        """Writes a ``Keywords`` where its parent's writer is, after the
+        field or vector that holds it
         """
-        builder = TableBuilder(6)
-        builder.set_uint8(fields["class_"])
-        builder.set_uint8(fields["default"])
-        builder.set_uint8(fields["in_"])
-        builder.set_uint8(fields["match_"])
-        builder.set_uint8(fields["self"])
-        builder.set_string(fields["type_"])
-
-        return builder
+        parent = writer.start_table(6)
+        writer.set_uint8(0, fields["class_"])
+        writer.set_uint8(1, fields["default"])
+        writer.set_uint8(2, fields["in_"])
+        writer.set_uint8(3, fields["match_"])
+        writer.set_uint8(4, fields["self"])
+        writer.set_string(5, fields["type_"])
+        writer.end_table(parent)
 
     def class_(self) -> int:
         return self._buffer.get_uint8(self._buffer.field_offset(self._position, 0))
@@ -375,10 +399,11 @@ class Reserved:
     @classmethod
     def serialize(cls, **fields: Unpack[ReservedFields]) -> memoryview:
         """Writes a ``Reserved`` with every field"""
-        builder = TableBuilder(1, cls._LAYOUT)
-        builder.set_table(Keywords.builder(fields["keywords"]))
+        writer = TableWriter(1, cls._LAYOUT)
+        writer.set_table(0, Keywords.ALIGNMENT)
+        Keywords.write(writer, fields["keywords"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def keywords(self) -> Keywords:
         return Keywords(self._buffer, self._buffer.root_offset(0))
@@ -405,20 +430,25 @@ class Structs:
     @classmethod
     def serialize(cls, **fields: Unpack[StructsFields]) -> memoryview:
         """Writes a ``Structs`` with every field"""
-        builder = TableBuilder(5, cls._LAYOUT)
-        builder.set_struct(fields["packed"].serialize())
-        builder.set_struct_array(
+        writer = TableWriter(5, cls._LAYOUT)
+        writer.set_struct(0, fields["packed"].serialize())
+        writer.set_struct_array(
+            1,
             Documented.serialize_array(fields["documented"]),
             Documented.SIZE,
             Documented.ALIGNMENT,
         )
-        builder.set_struct(fields["segment"].serialize())
-        builder.set_struct_array(
-            Segment.serialize_array(fields["segments"]), Segment.SIZE, Segment.ALIGNMENT
+        writer.set_struct(2, fields["segment"].serialize())
+        writer.set_struct_array(
+            3,
+            Segment.serialize_array(fields["segments"]),
+            Segment.SIZE,
+            Segment.ALIGNMENT,
         )
-        builder.set_table(Path.builder(fields["path"]))
+        writer.set_table(4, Path.ALIGNMENT)
+        Path.write(writer, fields["path"])
 
-        return builder.bytes()
+        return writer.bytes()
 
     def packed(self) -> Packed:
         """A struct of every scalar type"""
@@ -465,23 +495,27 @@ class StructsFields(TypedDict):
 class Path:
     __slots__ = ("_buffer", "_position")
 
+    ALIGNMENT: Final = 4
+    """The alignment that a parent pads a ``Path`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
         self._position = position
 
     @staticmethod
-    def builder(fields: PathFields) -> TableBuilder:
-        """Returns a builder with every field set, which a parent writes straight
-        into its own bytes
+    def write(writer: TableWriter, fields: PathFields) -> None:
+        """Writes a ``Path`` where its parent's writer is, after the
+        field or vector that holds it
         """
-        builder = TableBuilder(2)
-        builder.set_struct(fields["start"].serialize())
-        builder.set_struct_array(
-            Point.serialize_array(fields["points"]), Point.SIZE, Point.ALIGNMENT
+        parent = writer.start_table(2)
+        writer.set_struct(0, fields["start"].serialize())
+        writer.set_struct_array(
+            1, Point.serialize_array(fields["points"]), Point.SIZE, Point.ALIGNMENT
         )
-
-        return builder
+        writer.end_table(parent)
 
     def start(self) -> Point:
         return Point.read(

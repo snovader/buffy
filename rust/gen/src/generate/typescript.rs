@@ -81,7 +81,8 @@ impl Generator<'_> {
                 .any(|definition| predicate(&definition.kind))
         };
         let has_message = kinds(|kind| matches!(kind, Kind::Message(_)));
-        let has_table = kinds(|kind| matches!(kind, Kind::Message(_) | Kind::Table));
+        let has_nested = kinds(|kind| matches!(kind, Kind::Table));
+        let has_table = has_message || has_nested;
         let has_struct = kinds(|kind| matches!(kind, Kind::Struct(_)));
         let versioned = kinds(|kind| {
             matches!(
@@ -107,11 +108,15 @@ impl Generator<'_> {
         if has_struct {
             names.push(("StructWriter", false));
         }
-        if has_table {
-            names.push(("TableBuilder", false));
-        }
         if has_message {
             names.push(("TableLayout", false));
+        }
+        // Messages make sizers, and tables take them and their writers
+        if has_table {
+            names.push(("TableSizer", !has_message));
+        }
+        if has_nested {
+            names.push(("TableWriter", true));
         }
 
         let mut values = Vec::new();
@@ -266,13 +271,16 @@ impl Generator<'_> {
         }
         writer.statement(
             &STYLE,
-            "const builder = ",
-            &call("new TableBuilder", arguments),
+            "const sizer = ",
+            &call("new TableSizer", arguments),
             ";",
         );
-        self.setters(writer, definition);
+        self.sizes(writer, definition);
         writer.blank();
-        writer.line("return builder.bytes();");
+        writer.line("const writer = sizer.writer();");
+        self.writes(writer, definition);
+        writer.blank();
+        writer.line("return writer.bytes();");
         writer.close("}");
 
         self.getters(writer, definition, true);
@@ -284,6 +292,25 @@ impl Generator<'_> {
 
         writer.lines(&doc_comment(&definition.docs));
         writer.open(format!("export class {name} {{"));
+        // A static of JavaScript is a number, rather than the literal that
+        // addTable() and setTable() take, without its type
+        let alignment = self.schema.table_alignment(definition);
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "The alignment that a parent pads {} to: the largest",
+                    article(name)
+                ),
+                "alignment of its arrays and nested tables, or 1".to_owned(),
+            ],
+            &[format!("@type {{{alignment}}}")],
+        );
+        writer.line(format!(
+            "{}ALIGNMENT = {alignment};",
+            self.static_readonly()
+        ));
+        writer.blank();
         self.private_field(writer, "buffer", "ByteBuffer");
         self.private_field(writer, "position", "number");
         writer.blank();
@@ -306,32 +333,76 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
+        self.nested_size_and_write(writer, definition);
+        self.getters(writer, definition, false);
+        writer.close("}");
+    }
+
+    /// The static functions with which a parent sizes and writes a nested
+    /// table
+    fn nested_size_and_write(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+        let fields = definition.fields.len();
+        // The length of a table of scalars and structs doesn't depend on
+        // their values
+        let sized_by_values = definition.fields.iter().any(|field| {
+            !matches!(
+                field.field_type,
+                FieldType::Scalar(_) | FieldType::Struct(_)
+            )
+        });
+        let values = if sized_by_values { "fields" } else { "_fields" };
         self.doc(
             writer,
             &[
-                "Returns a builder with every field set, which a parent writes".to_owned(),
-                "straight into its own bytes".to_owned(),
+                format!(
+                    "Adds {} to its parent's sizer, after the field or",
+                    article(name)
+                ),
+                "vector that holds it".to_owned(),
             ],
             &[
-                format!("@param {{{name}Fields}} fields"),
-                "@returns {TableBuilder}".to_owned(),
+                "@param {TableSizer} sizer".to_owned(),
+                format!("@param {{{name}Fields}} {values}"),
+                "@returns {void}".to_owned(),
             ],
         );
         writer.open(format!(
-            "static builder(fields{}){} {{",
+            "static size(sizer{}, {values}{}){} {{",
+            self.annotation("TableSizer"),
             self.annotation(&format!("{name}Fields")),
-            self.annotation("TableBuilder")
+            self.annotation("void")
         ));
-        writer.line(format!(
-            "const builder = new TableBuilder({});",
-            definition.fields.len()
-        ));
-        self.setters(writer, definition);
-        writer.blank();
-        writer.line("return builder;");
+        writer.line(format!("const parent = sizer.startTable({fields});"));
+        self.sizes(writer, definition);
+        writer.line("sizer.endTable(parent);");
         writer.close("}");
+        writer.blank();
 
-        self.getters(writer, definition, false);
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Writes {} where its parent's writer is, after the",
+                    article(name)
+                ),
+                "field or vector that holds it".to_owned(),
+            ],
+            &[
+                "@param {TableWriter} writer".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static write(writer{}, fields{}){} {{",
+            self.annotation("TableWriter"),
+            self.annotation(&format!("{name}Fields")),
+            self.annotation("void")
+        ));
+        writer.line(format!("const parent = writer.startTable({fields});"));
+        self.writes(writer, definition);
+        writer.line("writer.endTable(parent);");
         writer.close("}");
     }
 
@@ -569,31 +640,30 @@ impl Generator<'_> {
         }
     }
 
-    fn setters(&self, writer: &mut CodeWriter, definition: &Definition) {
+    /// The calls that add a table's fields to its sizer, in order
+    fn sizes(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let value = format!("fields.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
-                FieldType::Scalar(scalar) => {
-                    (format!("set{}", scalar_method(scalar)), vec![text(value)])
-                }
+                FieldType::Scalar(scalar) => (format!("add{}", scalar_method(scalar)), vec![]),
                 FieldType::Array(scalar) => (
-                    format!("set{}Array", scalar_method(scalar)),
-                    vec![text(value)],
+                    format!("add{}Array", scalar_method(scalar)),
+                    vec![text(format!("{value}.length"))],
                 ),
-                FieldType::String => ("setString".to_owned(), vec![text(value)]),
+                FieldType::String => ("addString".to_owned(), vec![text(value)]),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
-                        "setStruct".to_owned(),
-                        vec![call(format!("{structure}.serialize"), vec![text(value)])],
+                        "addStruct".to_owned(),
+                        vec![text(format!("{structure}.SIZE"))],
                     )
                 }
                 FieldType::StructArray(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
-                        "setStructArray".to_owned(),
+                        "addStructArray".to_owned(),
                         vec![
-                            call(format!("{structure}.serializeArray"), vec![text(value)]),
+                            text(format!("{value}.length")),
                             text(format!("{structure}.SIZE")),
                             text(format!("{structure}.ALIGNMENT")),
                         ],
@@ -601,24 +671,101 @@ impl Generator<'_> {
                 }
                 FieldType::Table(index) => {
                     let table = &self.schema.definition(index).name;
-                    (
-                        "setTable".to_owned(),
-                        vec![call(format!("{table}.builder"), vec![text(value)])],
-                    )
+                    writer.line(format!("sizer.addTable({table}.ALIGNMENT);"));
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call(format!("{table}.size"), vec![text("sizer"), text(value)]),
+                        ";",
+                    );
+                    continue;
                 }
                 FieldType::Vector(index) => {
                     let table = &self.schema.definition(index).name;
-                    let builders = call(
-                        format!("{value}.map"),
-                        vec![text(format!("{table}.builder"))],
+                    writer.line(format!("sizer.addVector({value}.length);"));
+                    writer.open(format!("for (const item of {value}) {{"));
+                    writer.line(format!("{table}.size(sizer, item);"));
+                    writer.close("}");
+                    continue;
+                }
+            };
+            writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
+        }
+    }
+
+    /// The calls that write a table's fields, in order
+    fn writes(&self, writer: &mut CodeWriter, definition: &Definition) {
+        for (index, field) in definition.fields.iter().enumerate() {
+            let value = format!("fields.{}", identifier(&field.name));
+            let position = text(index.to_string());
+            let (method, arguments) = match field.field_type {
+                FieldType::Scalar(scalar) => (
+                    format!("set{}", scalar_method(scalar)),
+                    vec![position, text(value)],
+                ),
+                FieldType::Array(scalar) => (
+                    format!("set{}Array", scalar_method(scalar)),
+                    vec![position, text(value)],
+                ),
+                FieldType::String => ("setString".to_owned(), vec![position, text(value)]),
+                FieldType::Struct(struct_index) => {
+                    let structure = &self.schema.definition(struct_index).name;
+                    (
+                        "setStruct".to_owned(),
+                        vec![
+                            position,
+                            call(format!("{structure}.serialize"), vec![text(value)]),
+                        ],
+                    )
+                }
+                FieldType::StructArray(struct_index) => {
+                    let structure = &self.schema.definition(struct_index).name;
+                    (
+                        "setStructArray".to_owned(),
+                        vec![
+                            position,
+                            call(format!("{structure}.serializeArray"), vec![text(value)]),
+                            text(format!("{structure}.SIZE")),
+                            text(format!("{structure}.ALIGNMENT")),
+                        ],
+                    )
+                }
+                FieldType::Table(table_index) => {
+                    let table = &self.schema.definition(table_index).name;
+                    writer.line(format!("writer.setTable({index}, {table}.ALIGNMENT);"));
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call(format!("{table}.write"), vec![text("writer"), text(value)]),
+                        ";",
                     );
-                    ("setVector".to_owned(), vec![builders])
+                    continue;
+                }
+                FieldType::Vector(table_index) => {
+                    // The vector's local is named after the field's index,
+                    // since its name may be a reserved word
+                    let table = &self.schema.definition(table_index).name;
+                    let vector = format!("vector{index}");
+                    writer.statement(
+                        &STYLE,
+                        &format!("const {vector} = "),
+                        &call(
+                            "writer.setVector",
+                            vec![position, text(format!("{value}.length"))],
+                        ),
+                        ";",
+                    );
+                    writer.open(format!("for (let i = 0; i < {value}.length; i++) {{"));
+                    writer.line(format!("{table}.write(writer, {value}[i]);"));
+                    writer.line(format!("writer.setItemEnd({vector}, i);"));
+                    writer.close("}");
+                    continue;
                 }
             };
             writer.statement(
                 &STYLE,
                 "",
-                &call(format!("builder.{method}"), arguments),
+                &call(format!("writer.{method}"), arguments),
                 ";",
             );
         }
@@ -829,6 +976,16 @@ fn identifier(name: &str) -> String {
     } else {
         name
     }
+}
+
+/// "a `Name`" or "an `Name`", in a comment
+fn article(name: &str) -> String {
+    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} `{name}`")
 }
 
 fn layout_expression(layout: Layout) -> Expr {

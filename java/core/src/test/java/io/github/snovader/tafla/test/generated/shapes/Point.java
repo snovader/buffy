@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.shapes;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** A small table of two coordinates, an identifier and a name */
 public final class Point {
@@ -17,13 +17,19 @@ public final class Point {
 
     /** Writes a {@code Point} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(4, LAYOUT);
-        builder.setFloat64(fields.x());
-        builder.setFloat64(fields.y());
-        builder.setInt64(fields.id());
-        builder.setString(fields.name());
+        var sizer = new TableSizer(4, LAYOUT);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addInt64();
+        sizer.addString(fields.name());
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setFloat64(0, fields.x());
+        writer.setFloat64(1, fields.y());
+        writer.setInt64(2, fields.id());
+        writer.setString(3, fields.name());
+
+        return writer.bytes();
     }
 
     public double x() {

@@ -3,8 +3,8 @@ package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.AddressableSpace;
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** 16-bit offsets, for tables of up to 65,535 bytes */
 public final class Offset16 {
@@ -20,12 +20,17 @@ public final class Offset16 {
 
     /** Writes an {@code Offset16} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(3, LAYOUT);
-        builder.setUint32(fields.id());
-        builder.setString(fields.name());
-        builder.setUint16Array(fields.values());
+        var sizer = new TableSizer(3, LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name());
+        sizer.addUint16Array(fields.values().length);
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setUint32(0, fields.id());
+        writer.setString(1, fields.name());
+        writer.setUint16Array(2, fields.values());
+
+        return writer.bytes();
     }
 
     public long id() {
