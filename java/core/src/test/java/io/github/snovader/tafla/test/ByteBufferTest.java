@@ -6,6 +6,7 @@ import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
 import java.nio.ByteOrder;
+import java.nio.ReadOnlyBufferException;
 import java.nio.charset.*;
 import java.util.*;
 
@@ -66,6 +67,11 @@ public class ByteBufferTest {
 
         write(buffer, field);
         assertEquals(field, readAtStart(buffer, field));
+
+        // After a count of 1 or 2 bytes, the elements aren't aligned
+        if (field instanceof ArrayField array) {
+            assertArrayEquals(array.values(), array.type().readArrayView(buffer, 0));
+        }
     }
 
     /** Writes a scalar, array or string from the buffer's position with the buffer's own setter */
@@ -131,6 +137,8 @@ public class ByteBufferTest {
         assertThrows(DecodeException.class, () -> buffer.getUint8Array(0));
         assertThrows(DecodeException.class, () -> buffer.getUint16Array(0));
         assertThrows(DecodeException.class, () -> buffer.getUint32Array(0));
+        assertThrows(DecodeException.class, () -> buffer.getUint8ArrayView(0));
+        assertThrows(DecodeException.class, () -> buffer.getUint32ArrayView(0));
         assertThrows(DecodeException.class, () -> buffer.getString(0));
         assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
     }
@@ -141,6 +149,22 @@ public class ByteBufferTest {
         var buffer = new ByteBuffer(withSize((1 << 29) + 1, Double.BYTES));
 
         assertThrows(DecodeException.class, () -> buffer.getFloat64Array(0));
+        assertThrows(DecodeException.class, () -> buffer.getFloat64ArrayView(0));
+    }
+
+    @Example
+    void array_views_are_read_only_and_show_later_writes_to_the_bytes() {
+        var buffer = ByteBuffer.allocate(Integer.BYTES + 2 * Float.BYTES);
+        buffer.setFloat32Array(new float[] {1, 2});
+        var view = buffer.getFloat32ArrayView(0);
+
+        assertTrue(view.isReadOnly());
+        assertThrows(ReadOnlyBufferException.class, () -> view.put(0, 3));
+
+        // 1.0f is 0x3f800000, and 0x40800000 is 4.0f
+        buffer.bytes()[Integer.BYTES + 3] = 0x40;
+        assertEquals(4, view.get(0));
+        assertEquals(2, view.get(1));
     }
 
     @Example

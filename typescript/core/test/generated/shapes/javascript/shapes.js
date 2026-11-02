@@ -3,6 +3,8 @@
 import {
     ByteBuffer,
     DecodeError,
+    readFloat32,
+    readUint32,
     StructWriter,
     TableBuilder,
     TableLayout
@@ -404,10 +406,9 @@ export class Sample {
      * @throws {DecodeError} If `bytes` are shorter than `Sample.SIZE`.
      */
     constructor(bytes) {
-        const buffer = new ByteBuffer(bytes);
-        this.#key = buffer.getUint32(0);
-        this.#a = buffer.getFloat32(4);
-        this.#b = buffer.getFloat32(8);
+        this.#key = readUint32(bytes, 0);
+        this.#a = readFloat32(bytes, 4);
+        this.#b = readFloat32(bytes, 8);
     }
 
     /**
