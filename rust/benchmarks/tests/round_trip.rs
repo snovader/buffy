@@ -7,7 +7,7 @@ use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::for_each_codec;
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape, SAMPLE,
-    SampleShape,
+    SampleShape, StructsShape,
 };
 
 #[test]
@@ -40,6 +40,14 @@ fn every_codec_sums_a_column_of_the_documents() -> Result<(), Error> {
 fn every_codec_reads_back_the_vector_of_nested_tables() -> Result<(), Error> {
     let list = workloads::list(LIST_ITEMS);
     for_each_codec!(|codec| check::round_trip::<ListShape, _>(codec, &list)?);
+
+    Ok(())
+}
+
+#[test]
+fn every_codec_reads_back_the_array_of_structs() -> Result<(), Error> {
+    let list = workloads::list(LIST_ITEMS);
+    for_each_codec!(|codec| check::round_trip::<StructsShape, _>(codec, &list)?);
 
     Ok(())
 }

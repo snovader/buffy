@@ -10,6 +10,8 @@ import io.github.snovader.tafla.benchmarks.generated.flatbuffers.List;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Pair;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Record;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Sample;
+import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Triple;
+import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Triples;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -17,13 +19,14 @@ import java.util.Arrays;
 /**
  * flatc's generated code, used as its documentation shows: a builder of the default size, vectors
  * created element by element, and float columns copied out of {@code xAsByteBuffer()} views. Keys
- * are widened to {@code long}s through the {@code IntVector} of their uint32s.
+ * are widened to {@code long}s through the {@code IntVector} of their uint32s. A vector of structs
+ * is started, filled with {@code createTriple()} from its last item to its first, and ended.
  */
 public final class FlatBuffersCodec {
     private FlatBuffersCodec() {}
 
     public static Codec create() {
-        return new Codec("flatbuffers", new Records(), new Documents(), new Lists(), new Samples());
+        return new Codec("flatbuffers", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
     }
 
     private static final class Records implements Workload<RecordInput> {
@@ -151,6 +154,39 @@ public final class FlatBuffersCodec {
         private static int createItem(FlatBufferBuilder builder, ItemInput input) {
             var pair = Pair.createPair(builder, input.first(), input.second());
             return Item.createItem(builder, input.value(), pair);
+        }
+    }
+
+    private static final class Structs implements Workload<ListInput> {
+        @Override
+        public byte[] serialize(ListInput input) {
+            var builder = new FlatBufferBuilder();
+            var items = input.items();
+
+            // Builders write back to front, so the last item is written first
+            Triples.startItemsVector(builder, items.size());
+            for (int i = items.size() - 1; i >= 0; i--) {
+                var item = items.get(i);
+                Triple.createTriple(builder, item.value(), item.first(), item.second());
+            }
+            var vector = builder.endVector();
+
+            builder.finish(Triples.createTriples(builder, vector));
+
+            return builder.sizedByteArray();
+        }
+
+        @Override
+        public ListInput deserialize(byte[] bytes) {
+            var triples = Triples.getRootAsTriples(ByteBuffer.wrap(bytes));
+
+            var items = new ItemInput[triples.itemsLength()];
+            for (int i = 0; i < items.length; i++) {
+                var triple = triples.items(i);
+                items[i] = new ItemInput(triple.value(), triple.first(), triple.second());
+            }
+
+            return new ListInput(Arrays.asList(items));
         }
     }
 

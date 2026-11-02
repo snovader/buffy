@@ -63,6 +63,12 @@ export function runSuite(codecs: Codec[], options: SuiteOptions): void {
             c => c.list,
             list
         ),
+        ...workloadGroups(
+            codecs,
+            `array of ${LIST_ITEMS} structs`,
+            c => c.structs,
+            list
+        ),
         ...workloadGroups(codecs, 'fixed-size record', c => c.sample, SAMPLE),
         ...documents.map((input, i) =>
             serializeGroup(
@@ -159,6 +165,7 @@ function printSizes(
         'record',
         ...DOCUMENT_ROWS.map(rows => `doc ${rows}`),
         'vector',
+        'structs',
         'fixed'
     ];
 
@@ -170,6 +177,7 @@ function printSizes(
             codec.record.serialize(RECORD).length,
             ...documents.map(input => codec.document.serialize(input).length),
             codec.list.serialize(list).length,
+            codec.structs.serialize(list).length,
             codec.sample.serialize(SAMPLE).length
         ];
 
@@ -243,6 +251,12 @@ function checkRoundTrips(
             codec.name,
             'list',
             codec.list.deserialize(codec.list.serialize(list)),
+            list
+        );
+        assertEqual(
+            codec.name,
+            'structs',
+            codec.structs.deserialize(codec.structs.serialize(list)),
             list
         );
         assertEqual(

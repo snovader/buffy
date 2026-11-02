@@ -1,7 +1,8 @@
 /**
  * Generic table shapes, sized to bracket how tafla is used: small tables of
  * scalars and a string, documents whose header nests a table of numeric
- * columns, vectors of small nested tables, and fixed-size records.
+ * columns, vectors of small nested tables, arrays of structs, and fixed-size
+ * records.
  */
 
 /** A small table: two float64s, an int64 and a 16-byte string */
@@ -39,14 +40,17 @@ export interface DocumentOutput {
     b: Float32Array;
 }
 
-/** A table of a float32 and a nested table of two float32s */
+/**
+ * A table of a float32 and a nested table of two float32s, or a struct of the
+ * three float32s
+ */
 export interface ItemInput {
     value: number;
     first: number;
     second: number;
 }
 
-/** A table holding a vector of item tables */
+/** A table holding a vector of item tables, or an array of item structs */
 export interface ListInput {
     items: ItemInput[];
 }

@@ -15,6 +15,9 @@ tables and typed numeric columns, on generic table shapes:
   Uint32 and two Float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each, written with `StructWriter`
+  and `setStructArray()` and read with `getStructArray()` and `readFloat32()`.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets, written
   with `StructWriter` and read with `readUint32()`/`readFloat32()`.
 
@@ -22,6 +25,16 @@ Each shape is serialized and deserialized, with columns read back as typed
 arrays. Documents are also serialized from `number[]` columns, and a column is
 summed through each library's per-element accessor. The suite also prints
 encoded sizes and what each library does with a truncated document.
+
+Each library writes the array of structs in its own fixed-size encoding:
+FlatBuffers as a vector of structs, protobuf as a repeated message of the three
+floats, which it writes as fixed32s, and msgpackr as an array of each struct's
+fields in order, without their keys, in an array for the table, as rmp-serde's
+`to_vec()` packs them. protobuf has no structs, and packed repeated floats
+would make a column of each field, which the documents time already. msgpackr's
+records extension, which `new Packr()` enables, already packs the vector's
+items as their keys once and then their values, so its two shapes are about the
+same size.
 
 ### Libraries
 

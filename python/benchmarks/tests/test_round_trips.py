@@ -67,6 +67,12 @@ class TestRoundTrips(unittest.TestCase):
             with self.subTest(codec.name):
                 self.assert_reads_back(codec.list, vector)
 
+    def test_reads_back_the_array_of_structs(self) -> None:
+        vector = list_input(LIST_ITEMS)
+        for codec in CODECS:
+            with self.subTest(codec.name):
+                self.assert_reads_back(codec.structs, vector)
+
     def test_reads_back_the_fixed_size_record(self) -> None:
         for name, workload in samples().items():
             with self.subTest(name):

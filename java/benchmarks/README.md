@@ -14,6 +14,8 @@ commands below from `java/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as Java
@@ -25,7 +27,8 @@ that the TypeScript generator printed.
 
 The benchmark classes are named after the TypeScript code's workloads:
 `RecordBenchmark`, `DocumentBenchmark`, `ListBenchmark` for the vector of
-nested tables and `SampleBenchmark` for the fixed-size record.
+nested tables, `StructsBenchmark` for the array of structs and
+`SampleBenchmark` for the fixed-size record.
 `./gradlew :benchmarks:encodingReport` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 
@@ -42,7 +45,8 @@ what it does with a truncated document, as the TypeScript comparison does.
   bytes is msgpackr's own, so MessagePack's columns are arrays of float32s and
   uint32s, packed and unpacked element by element.
 - SBE, which has no JavaScript runtime here, encodes only the fixed-size
-  record, the kind of message it's designed for.
+  record and the array of structs, as a repeating group: the kinds of message
+  it's designed for.
 - flatbuffers-java's latest release is 25.2.10, where the TypeScript
   comparison uses flatbuffers 25.9.23.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported.
@@ -55,37 +59,49 @@ what it does with a truncated document, as the TypeScript comparison does.
 | `com.google.flatbuffers:flatbuffers-java` 25.2.10             | Zero-copy tables with offsets and vectors, like tafla.                                                                                                         |
 | `com.google.protobuf:protobuf-java` 4.36.2                    | The most used schema-based codec, with packed repeated floats.                                                                                                 |
 | `org.msgpack:msgpack-core` 0.9.12                             | MessagePack's Java implementation: a schemaless format, whose tables are maps with their keys.                                                                 |
-| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record only: fields at fixed offsets, written and read in place through flyweights, like tafla's fixed-size record. |
+| `uk.co.real-logic:sbe-tool` 1.41.0, `org.agrona:agrona` 2.7.0 | Simple Binary Encoding, for the fixed-size record and the array of structs only: fields at fixed offsets, written and read in place through flyweights, like tafla's structs. |
 
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
 - **tafla** nests tables from their builders. Arrays of the elements' own Java
   type are copied in bulk, and the uint32 keys are narrowed and widened element
-  by element.
+  by element. The array of structs is written into a `byte[]` through a
+  little-endian `VarHandle` and set with `setStructArray()`, and read from
+  `getStructArray()`'s little-endian view, as tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, and creates vectors element by element with the generated
   methods. Float columns are copied out of `aAsByteBuffer()`'s little-endian
-  view, and keys are widened through an `IntVector`. Its classes in
+  view, and keys are widened through an `IntVector`. A vector of structs is
+  started, filled with `createTriple()` from its last item to its first, and
+  ended, and its structs are read with the generated accessors. Its classes in
   `generated/flatbuffers/` are written by hand in the shape that
   `flatc --java` generates from `src/main/flatbuffers/workloads.fbs`, with only
   what the benchmarks use, since flatc isn't something Gradle can download.
 - **protobuf** builds messages with their builders and parses them with their
   parsers. Repeated fields are added and read one element at a time, which
-  keeps them unboxed, and parsed columns are copied into arrays. The protobuf
+  keeps them unboxed, and parsed columns are copied into arrays. protobuf has
+  no structs, so the array of them is a repeated message of the three floats,
+  which protobuf writes as fixed32s; packed repeated floats would make a column
+  of each field, which the documents time already. The protobuf
   Gradle plugin downloads protoc and generates the messages from
   `src/main/proto/messages.proto`.
 - **MessagePack** packs a table as a map with its keys, and the reader matches
-  the keys in whatever order they come. One packer and one unpacker serve every
+  the keys in whatever order they come. The array of structs packs each struct,
+  and the table that holds them, as an array of its fields in order, without
+  their keys, as rmp-serde's `to_vec()` packs them, and the reader checks the
+  arrays' lengths. One packer and one unpacker serve every
   message, as msgpackr reuses its buffer: the packer is cleared before each
   message and `toByteArray()` copies the message out, and the unpacker is reset
   to each message's bytes. A new unpacker allocates a 16 KiB string decoder for
   its first string, which made reading the record 6 times slower in a quick
   run.
 - **SBE** writes an 8-byte message header and the 12-byte record into a new
-  array, and the decoder checks the header's template before reading. Its
+  array, and the decoder checks the header's template before reading. The array
+  of structs is a repeating group, whose 4-byte header holds its entries'
+  length and count, followed by an entry of 12 bytes for each struct. Its
   encoder and decoder flyweights are reused, as SBE intends. `generateSbe` runs
-  sbe-tool on `src/main/sbe/sample.xml`.
+  sbe-tool on `src/main/sbe/workloads.xml`.
 
 ## Method
 
@@ -122,7 +138,7 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 26 minutes. `--jmhArgs` passes JMH's own options,
+The full run takes about 31 minutes. `--jmhArgs` passes JMH's own options,
 which override those in `build.gradle.kts`: a regular expression selects
 benchmarks, `-p` sets a parameter, and `-prof gc` adds the bytes allocated per
 operation.
@@ -132,7 +148,7 @@ operation.
 ```
 
 A quick run of one fork, with one warm-up and one measured iteration of
-100 ms, checks that every benchmark works in about 20 seconds. CI runs it after
+100 ms, checks that every benchmark works in about 25 seconds. CI runs it after
 the round-trip test, on Java 25. Its numbers mean little.
 
 ```sh
@@ -217,16 +233,42 @@ An iteration can also run faster than the rest when fewer garbage collections
 fall into it. msgpack's fastest read of the large document took 972 µs,
 against 1,030 to 1,107 µs for its other 14 iterations.
 
+The array of 100 structs was added after that run, and timed on the same day
+with the vector of nested tables, in their benchmarks alone:
+`./gradlew :benchmarks:jmh --jmhArgs="Structs|List"`. It took 9 minutes, while
+another session ran benchmarks, which kept the 1-minute load average between
+2.3 and 4.3, with a median of 3.0. JMH's mean was within 5% of the fastest
+iteration for 15 of the 18 benchmarks, and at most 21% above it, where SBE's
+first fork read the structs in 0.391 µs and the others had iterations of
+0.67 to 0.83 µs. The vector's fastest iterations were within 10% of the full
+run's.
+
+| Benchmark                                | tafla |   flatbuffers |       protobuf |        msgpack |           sbe |
+| ---------------------------------------- | ----: | ------------: | -------------: | -------------: | ------------: |
+| vector of 100 nested tables: serialize   | 6.001 | 4.978 (0.83×) |  1.660 (0.28×) |  3.468 (0.58×) |               |
+| vector of 100 nested tables: deserialize | 0.540 | 0.887 (1.64×) |  3.614 (6.69×) | 7.360 (13.63×) |               |
+| array of 100 structs: serialize          | 0.135 | 0.489 (3.62×) |  0.943 (6.98×) |  0.709 (5.25×) | 0.226 (1.68×) |
+| array of 100 structs: deserialize        | 0.204 | 0.226 (1.11×) | 2.543 (12.48×) |  1.564 (7.67×) | 0.391 (1.92×) |
+
+- tafla writes the 100 structs in 0.135 µs, against 6.0 µs for the same items
+  as nested tables, and reads them in 0.204 µs, against 0.540 µs. Reading
+  creates the 100 `ItemInput` records, which every codec does.
+- FlatBuffers reads its vector of structs nearly as fast, in 0.226 µs, and
+  writes it in 0.489 µs. SBE writes its repeating group in 0.226 µs and reads
+  it in 0.391 µs.
+- protobuf and msgpack write and parse each struct's fields: 0.7 to 0.9 µs to
+  write and 1.6 to 2.5 µs to read.
+
 `./gradlew :benchmarks:encodingReport` printed:
 
 ```
 Encoded size (bytes)
-                        record     doc 100  doc 100000      vector       fixed
-  tafla                     60        1296     1200096        3208          12
-  flatbuffers               72        1328     1200128        2832          32
-  protobuf                  47        1243     1187503        1900          16
-  msgpack                   53        1573     1499239        3510          24
-  sbe                                                                       20
+                        record     doc 100  doc 100000      vector     structs       fixed
+  tafla                     60        1296     1200096        3208        1208          12
+  flatbuffers               72        1328     1200128        2832        1224          32
+  protobuf                  47        1243     1187503        1900        1700          16
+  msgpack                   53        1573     1499239        3510        1604          24
+  sbe                                                                     1212          20
 
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  threw DecodeException: Read exceeds the supplied buffer: 400000 bytes at
@@ -240,4 +282,6 @@ Truncated document of 100000 rows: deserialize()
 ```
 
 Every library rejects the truncated document. FlatBuffers' Java runtime reads
-through a `java.nio.ByteBuffer`, whose range checks throw.
+through a `java.nio.ByteBuffer`, whose range checks throw. The array of
+structs takes 1,208 bytes in tafla, 1,212 in SBE, whose message and group
+headers take 12, and 1,224 in FlatBuffers.
