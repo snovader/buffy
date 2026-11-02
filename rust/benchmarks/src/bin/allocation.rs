@@ -12,11 +12,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Codec, DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
-use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape, StructsShape,
 };
+use tafla_benchmarks::{for_each_codec, for_each_item_access};
 
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
@@ -27,7 +28,7 @@ static BYTES: AtomicUsize = AtomicUsize::new(0);
 /// Calls of each operation that the counts are divided among
 const CALLS: usize = 100;
 
-const NAME_WIDTH: usize = 16;
+const NAME_WIDTH: usize = 18;
 
 /// The system's allocator, which counts allocations and their bytes
 struct Counting;
@@ -115,6 +116,27 @@ fn main() -> Result<(), Error> {
         Ok(())
     })?;
 
+    let bytes = ItemBytes::write(&list)?;
+    for_each_item_access!(|access, _name| item_access::check(access, &list, &bytes)?);
+    let (tables, structs) = (bytes.tables.as_slice(), bytes.structs.as_slice());
+    let vector = format!("vector of {LIST_ITEMS} nested tables");
+    group(&format!("{vector}: read the last item"), || {
+        for_each_item_access!(|access, name| read(name, || access.last_table(tables)));
+        Ok(())
+    })?;
+    group(&format!("{vector}: sum every item"), || {
+        for_each_item_access!(|access, name| read(name, || access.every_table(tables)));
+        Ok(())
+    })?;
+    group(&format!("{name}: read the last item"), || {
+        for_each_item_access!(|access, name| read(name, || access.last_struct(structs)));
+        Ok(())
+    })?;
+    group(&format!("{name}: sum every item"), || {
+        for_each_item_access!(|access, name| read(name, || access.every_struct(structs)));
+        Ok(())
+    })?;
+
     group("fixed-size record: serialize", || {
         for_each_codec!(|codec| serialize::<SampleShape, _>(codec, &SAMPLE)?);
         serialize::<SampleShape, _>(LeBytes, &SAMPLE)
@@ -162,9 +184,20 @@ fn sum_a<C: DocumentWorkload>(codec: C, input: &Document<'_>) -> Result<(), Erro
     Ok(())
 }
 
+/// Counts a way of reading tafla's items, which was checked
+fn read(name: &str, read: impl Fn() -> Result<f64, Error>) {
+    print_named_counts(name, || {
+        black_box(read().ok());
+    });
+}
+
 /// Prints the allocations and bytes per call of `call`, after a call that
 /// initializes whatever the codec initializes once
-fn print_counts<C: Codec>(mut call: impl FnMut()) {
+fn print_counts<C: Codec>(call: impl FnMut()) {
+    print_named_counts(C::NAME, call);
+}
+
+fn print_named_counts(name: &str, mut call: impl FnMut()) {
     call();
 
     let allocations = ALLOCATIONS.load(Ordering::Relaxed);
@@ -175,8 +208,5 @@ fn print_counts<C: Codec>(mut call: impl FnMut()) {
     let allocations = (ALLOCATIONS.load(Ordering::Relaxed) - allocations) / CALLS;
     let bytes = (BYTES.load(Ordering::Relaxed) - bytes) / CALLS;
 
-    println!(
-        "  {:NAME_WIDTH$} {bytes:>12} B {allocations:>6} allocations",
-        C::NAME
-    );
+    println!("  {name:NAME_WIDTH$} {bytes:>12} B {allocations:>6} allocations");
 }

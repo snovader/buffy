@@ -4,11 +4,12 @@
 use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Error, Workload};
 use tafla_benchmarks::codecs::{LeBytes, Tafla, TaflaGen};
-use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::item_access::{self, ItemBytes};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape, SAMPLE,
     SampleShape, Shape, StructsShape,
 };
+use tafla_benchmarks::{for_each_codec, for_each_item_access};
 
 #[test]
 fn every_codec_reads_back_the_record() -> Result<(), Error> {
@@ -56,6 +57,15 @@ fn every_codec_reads_back_the_array_of_structs() -> Result<(), Error> {
 fn every_codec_reads_back_the_fixed_size_record() -> Result<(), Error> {
     for_each_codec!(|codec| check::round_trip::<SampleShape, _>(codec, &SAMPLE)?);
     check::round_trip::<SampleShape, _>(LeBytes, &SAMPLE)
+}
+
+#[test]
+fn every_access_sums_the_last_item_and_every_item() -> Result<(), Error> {
+    let list = workloads::list(LIST_ITEMS);
+    let bytes = ItemBytes::write(&list)?;
+    for_each_item_access!(|access, _name| item_access::check(access, &list, &bytes)?);
+
+    Ok(())
 }
 
 #[test]

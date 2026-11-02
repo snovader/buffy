@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::item_access::{ItemAccess, no_items, sum_item};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -193,6 +194,51 @@ impl Workload<SampleShape> for Tafla {
 }
 
 /// Reads a document's header, which must carry the version it's written in
+/// `ByteBuffer`'s getters by hand, as the codec reads the list
+impl ItemAccess for Tafla {
+    const NAME: &'static str = "tafla";
+
+    fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
+        let item = vector.get(last).ok_or_else(no_items)??;
+
+        Ok(sum_table(item)?)
+    }
+
+    fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+
+        let mut sum = 0.0;
+        for item in &vector {
+            sum += sum_table(item?)?;
+        }
+
+        Ok(sum)
+    }
+
+    fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        Ok(sum_struct(structs.last().ok_or_else(no_items)?))
+    }
+
+    fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        Ok(structs
+            .iter()
+            .map(sum_struct)
+            .fold(0.0, |sum, item| sum + item))
+    }
+}
+
 fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
     let buffer = ByteBuffer::new(bytes, DOCUMENT_LAYOUT);
 
@@ -230,6 +276,23 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
         first: item.get_f32(item.field_offset(pair, 0)?)?,
         second: item.get_f32(item.field_offset(pair, 1)?)?,
     })
+}
+
+/// Sums an item of the vector, as [`read_item()`] reads it
+fn sum_table(bytes: &[u8]) -> Result<f64, DecodeError> {
+    let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let pair = item.root_offset(1)?;
+
+    Ok(sum_item(
+        item.get_f32(item.root_offset(0)?)?,
+        item.get_f32(item.field_offset(pair, 0)?)?,
+        item.get_f32(item.field_offset(pair, 1)?)?,
+    ))
+}
+
+fn sum_struct(bytes: &[u8; ITEM_SIZE]) -> f64 {
+    let item = read_item_struct(bytes);
+    sum_item(item.value, item.first, item.second)
 }
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
