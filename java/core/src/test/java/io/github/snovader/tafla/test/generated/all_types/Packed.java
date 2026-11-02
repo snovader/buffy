@@ -73,9 +73,20 @@ public record Packed(
     /**
      * Reads a {@code Packed} at {@code offset} in a little-endian view, such as of an array of them
      *
-     * @throws IndexOutOfBoundsException if the view ends before it does
+     * @throws DecodeException if the view ends before it does
      */
     public static Packed read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
         return new Packed(
             view.get(offset),
             (short) Byte.toUnsignedInt(view.get(offset + 1)),

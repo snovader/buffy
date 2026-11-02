@@ -351,21 +351,7 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.open(format!(
         "public static {name} read(byte[] bytes, int offset) {{"
     ));
-    writer.open("if (offset < 0 || offset > bytes.length - SIZE) {");
-    writer.line("throw new DecodeException(");
-    writer.indent();
-    writer.line("String.format(");
-    writer.indent();
-    writer.line("\"Read exceeds the supplied buffer: %d bytes at %d of %d\",");
-    writer.line("SIZE,");
-    writer.line("offset,");
-    writer.line("bytes.length");
-    writer.dedent();
-    writer.line(")");
-    writer.dedent();
-    writer.line(");");
-    writer.close("}");
-    writer.blank();
+    struct_bounds_check(writer, "bytes.length");
     let reads = fields
         .iter()
         .map(|(_, field_type, at)| {
@@ -389,11 +375,12 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             article(name)
         ),
         String::new(),
-        "@throws IndexOutOfBoundsException if the view ends before it does".to_owned(),
+        "@throws DecodeException if the view ends before it does".to_owned(),
     ]));
     writer.open(format!(
         "public static {name} read(ByteBuffer view, int offset) {{"
     ));
+    struct_bounds_check(writer, "view.limit()");
     let reads = fields
         .iter()
         .map(|(_, field_type, at)| {
@@ -699,6 +686,26 @@ fn offset_expression(base: &str, offset: usize) -> String {
     } else {
         format!("{base} + {offset}")
     }
+}
+
+/// Writes the check that a struct read at `offset` ends within `length`
+/// bytes, which throws a `DecodeException` as the runtime's reads do
+fn struct_bounds_check(writer: &mut CodeWriter, length: &str) {
+    writer.open(format!("if (offset < 0 || offset > {length} - SIZE) {{"));
+    writer.line("throw new DecodeException(");
+    writer.indent();
+    writer.line("String.format(");
+    writer.indent();
+    writer.line("\"Read exceeds the supplied buffer: %d bytes at %d of %d\",");
+    writer.line("SIZE,");
+    writer.line("offset,");
+    writer.line(length);
+    writer.dedent();
+    writer.line(")");
+    writer.dedent();
+    writer.line(");");
+    writer.close("}");
+    writer.blank();
 }
 
 fn struct_read(scalar: Scalar, at: &str) -> String {

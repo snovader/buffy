@@ -39,9 +39,20 @@ public record Segment(Point start, Point end) {
     /**
      * Reads a {@code Segment} at {@code offset} in a little-endian view, such as of an array of them
      *
-     * @throws IndexOutOfBoundsException if the view ends before it does
+     * @throws DecodeException if the view ends before it does
      */
     public static Segment read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
         return new Segment(Point.read(view, offset), Point.read(view, offset + 8));
     }
 
