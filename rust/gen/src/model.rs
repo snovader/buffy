@@ -24,7 +24,16 @@ pub enum Kind {
     Table,
     /// Scalars at fixed offsets, without a header or padding, read and
     /// written on their own, as a field of a table or in an array
-    Struct,
+    Struct(StructLayout),
+}
+
+/// The bytes that a struct takes, which the checker measures once
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StructLayout {
+    /// The byte length of the struct: the sizes of its scalars in all
+    pub size: usize,
+    /// The alignment of an array of the struct: its largest scalar's size
+    pub alignment: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,23 +173,6 @@ impl Schema {
         }
     }
 
-    /// The byte length of a struct
-    pub fn struct_size(&self, definition: &Definition) -> usize {
-        self.struct_scalars(definition)
-            .iter()
-            .map(|scalar| usize::from(scalar.size()))
-            .sum()
-    }
-
-    /// The alignment of an array of a struct: its largest scalar's size
-    pub fn struct_alignment(&self, definition: &Definition) -> u8 {
-        self.struct_scalars(definition)
-            .iter()
-            .map(|scalar| scalar.size())
-            .max()
-            .unwrap_or(1)
-    }
-
     /// The alignment that a parent pads a nested table to, so that its
     /// arrays are aligned from the parent's start too: the largest alignment
     /// of its arrays, of scalars and of structs, and of the tables nested in
@@ -199,7 +191,7 @@ impl Schema {
         for field in &definition.fields {
             let alignment = match field.field_type {
                 FieldType::Array(scalar) => scalar.size(),
-                FieldType::StructArray(index) => self.struct_alignment(self.definition(index)),
+                FieldType::StructArray(index) => self.definition(index).struct_layout().alignment,
                 // Tables nest in place only acyclically, which the checker
                 // ensures, so this ends
                 FieldType::Table(index) => {
@@ -227,7 +219,23 @@ impl Definition {
     pub const fn layout(&self) -> Option<Layout> {
         match self.kind {
             Kind::Message(layout) => Some(layout),
-            Kind::Table | Kind::Struct => None,
+            Kind::Table | Kind::Struct(_) => None,
+        }
+    }
+
+    pub const fn is_struct(&self) -> bool {
+        matches!(self.kind, Kind::Struct(_))
+    }
+
+    /// The size and alignment of a struct
+    ///
+    /// # Panics
+    ///
+    /// If it isn't a struct.
+    pub fn struct_layout(&self) -> StructLayout {
+        match self.kind {
+            Kind::Struct(layout) => layout,
+            Kind::Message(_) | Kind::Table => unreachable!("only structs have a struct layout"),
         }
     }
 }

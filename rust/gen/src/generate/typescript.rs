@@ -53,7 +53,7 @@ pub fn generate(
         match definition.kind {
             Kind::Message(layout) => generator.message(&mut writer, definition, layout),
             Kind::Table => generator.table(&mut writer, definition),
-            Kind::Struct => generator.structure(&mut writer, definition),
+            Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
         writer.blank();
         generator.fields_type(&mut writer, definition);
@@ -83,7 +83,7 @@ impl Generator<'_> {
         let has_message = kinds(|kind| matches!(kind, Kind::Message(_)));
         let has_nested = kinds(|kind| matches!(kind, Kind::Table));
         let has_table = has_message || has_nested;
-        let has_struct = kinds(|kind| matches!(kind, Kind::Struct));
+        let has_struct = kinds(|kind| matches!(kind, Kind::Struct(_)));
         let versioned = kinds(|kind| {
             matches!(
                 kind,
@@ -165,7 +165,7 @@ impl Generator<'_> {
                 self.schema
                     .definitions
                     .iter()
-                    .filter(|definition| definition.kind == Kind::Struct)
+                    .filter(|definition| definition.is_struct())
                     .flat_map(|definition| &definition.fields)
                     .any(|field| field.field_type == FieldType::Scalar(scalar))
             })
@@ -416,12 +416,12 @@ impl Generator<'_> {
         writer.line(format!(
             "{}SIZE = {};",
             self.static_readonly(),
-            self.schema.struct_size(definition)
+            definition.struct_layout().size
         ));
         writer.blank();
         // A static of JavaScript is a number, rather than the literal that
         // setStructArray() takes, without its type
-        let alignment = self.schema.struct_alignment(definition);
+        let alignment = definition.struct_layout().alignment;
         self.doc(
             writer,
             &[format!(
@@ -490,7 +490,7 @@ impl Generator<'_> {
                     let inner = self.schema.definition(index);
                     (
                         call(format!("new {}", inner.name), vec![text("bytes"), position]),
-                        self.schema.struct_size(inner),
+                        inner.struct_layout().size,
                     )
                 }
                 _ => unreachable!("structs hold scalars and structs only"),

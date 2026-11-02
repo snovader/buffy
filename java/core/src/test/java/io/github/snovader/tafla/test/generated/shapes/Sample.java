@@ -49,9 +49,20 @@ public record Sample(long key, float a, float b) {
     /**
      * Reads a {@code Sample} at {@code offset} in a little-endian view, such as of an array of them
      *
-     * @throws IndexOutOfBoundsException if the view ends before it does
+     * @throws DecodeException if the view ends before it does
      */
     public static Sample read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
         return new Sample(
             Integer.toUnsignedLong(view.getInt(offset)),
             view.getFloat(offset + 4),

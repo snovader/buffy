@@ -70,9 +70,9 @@ pub fn generate(
         match definition.kind {
             Kind::Message(layout) => generator.message(&mut writer, definition, layout),
             Kind::Table => generator.table(&mut writer, definition),
-            Kind::Struct => generator.structure(&mut writer, definition),
+            Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
-        if definition.kind != Kind::Struct {
+        if !definition.is_struct() {
             writer.blank();
             generator.fields_struct(&mut writer, index);
         }
@@ -99,9 +99,7 @@ impl Generator<'_> {
             return;
         }
 
-        let has_tables = definitions
-            .iter()
-            .any(|definition| definition.kind != Kind::Struct);
+        let has_tables = definitions.iter().any(|definition| !definition.is_struct());
         let has_messages = definitions
             .iter()
             .any(|definition| matches!(definition.kind, Kind::Message(_)));
@@ -119,9 +117,7 @@ impl Generator<'_> {
                 .layout()
                 .is_some_and(|layout| layout.offset_size != OffsetSize::U32)
         });
-        let has_structs = definitions
-            .iter()
-            .any(|definition| definition.kind == Kind::Struct);
+        let has_structs = definitions.iter().any(Definition::is_struct);
 
         let mut names = Vec::new();
         // Arrays of structs and nested tables are padded to their alignment
@@ -256,7 +252,7 @@ impl Generator<'_> {
     #[allow(clippy::too_many_lines)]
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
-        let size = self.schema.struct_size(definition);
+        let size = definition.struct_layout().size;
         // Each field, its range of bytes in the struct, and the type that
         // reads it from them
         let mut offset = 0;
@@ -270,7 +266,7 @@ impl Generator<'_> {
                     }
                     FieldType::Struct(index) => {
                         let inner = self.schema.definition(index);
-                        (offset + self.schema.struct_size(inner), inner.name.as_str())
+                        (offset + inner.struct_layout().size, inner.name.as_str())
                     }
                     _ => unreachable!("structs hold scalars and structs only"),
                 };
@@ -307,7 +303,7 @@ impl Generator<'_> {
         );
         writer.line(format!(
             "pub const ALIGNMENT: Alignment = Alignment::{};",
-            alignment_variant(self.schema.struct_alignment(definition))
+            alignment_variant(definition.struct_layout().alignment)
         ));
         writer.blank();
 
@@ -422,7 +418,7 @@ impl Generator<'_> {
                         inner,
                         start,
                     );
-                    start += self.schema.struct_size(inner);
+                    start += inner.struct_layout().size;
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             }
@@ -467,7 +463,7 @@ impl Generator<'_> {
         match definition.kind {
             Kind::Message(layout) => self.serialize(writer, definition, layout),
             Kind::Table => self.nested_size_and_write(writer, definition),
-            Kind::Struct => unreachable!("structs are written by their own methods"),
+            Kind::Struct(_) => unreachable!("structs are written by their own methods"),
         }
         writer.close("}");
     }
