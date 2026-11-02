@@ -201,29 +201,34 @@ fun printFastestIterations(results: File) {
         else -> "%.1f"
     }.format(Locale.ROOT, value)
 
-    printTable("Fastest iteration in $unit", times, ::time)
+    val reference = times.values.first().keys.first()
+    printTable("Fastest iteration in $unit, and its ratio to $reference's", times) { value, first ->
+        if (first == null) time(value) else "${time(value)} (${"%.2f".format(Locale.ROOT, value / first)}×)"
+    }
+    // Without ratios, which a reference of about 0 bytes makes meaningless
     if (allocations.isNotEmpty()) {
-        printTable("Bytes allocated per operation, the mean of the measured iterations", allocations) {
-            "%,.0f".format(Locale.ROOT, it)
+        printTable("Bytes allocated per operation, the mean of the measured iterations", allocations) { value, _ ->
+            "%,.0f".format(Locale.ROOT, value)
         }
     }
 }
 
-/** Prints a table of a value per benchmark and codec, with its ratio to the first codec's */
-fun printTable(title: String, rows: Map<String, Map<String, Double>>, format: (Double) -> String) {
+/**
+ * Prints a table of a value per benchmark and codec, which `format` formats with the first codec's
+ * value of the benchmark, or null for the first codec's own
+ */
+fun printTable(title: String, rows: Map<String, Map<String, Double>>, format: (Double, Double?) -> String) {
     val codecs = rows.values.flatMap { it.keys }.distinct()
     val width = rows.keys.maxOf { it.length }
 
-    println("\n$title, and its ratio to ${codecs.first()}'s\n")
+    println("\n$title\n")
     println("| ${"Benchmark".padEnd(width)} | ${codecs.joinToString(" | ") { it.padStart(16) }} |")
     println("| ${"-".repeat(width)} | ${codecs.joinToString(" | ") { "-".repeat(15) + ":" }} |")
     for ((row, values) in rows) {
-        val reference = values.getValue(codecs.first())
+        val first = values.getValue(codecs.first())
         val cells = codecs.map { codec ->
             val value = values[codec] ?: return@map ""
-            val ratio = if (reference == 0.0) "-" else "%.2f".format(Locale.ROOT, value / reference)
-
-            if (codec == codecs.first()) format(value) else "${format(value)} ($ratio×)"
+            format(value, if (codec == codecs.first()) null else first)
         }
         println("| ${row.padEnd(width)} | ${cells.joinToString(" | ") { it.padStart(16) }} |")
     }

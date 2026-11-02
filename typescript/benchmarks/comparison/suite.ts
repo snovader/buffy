@@ -156,10 +156,8 @@ function formatMicroseconds(microseconds: number): string {
 }
 
 /** Bytes allocated on V8's heap per call, rounded to whole bytes */
-function formatBytes(bytes: number | undefined): string {
-    return bytes === undefined
-        ? ''
-        : `${Math.max(0, Math.round(bytes)).toLocaleString('en-US')} B`;
+function formatBytes(bytes: number): string {
+    return `${Math.max(0, Math.round(bytes)).toLocaleString('en-US')} B`;
 }
 
 function printSizes(
