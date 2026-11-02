@@ -125,6 +125,18 @@ def deserialize_list(data: Buffer) -> ListInput:
     return ListInput([ItemInput(i["value"], i["first"], i["second"]) for i in items])
 
 
+def serialize_structs(input: ListInput) -> bytes:
+    """Packs each struct as an array of its fields in order, without their
+    keys, and the table that holds them as an array too, as rmp-serde's
+    ``to_vec()`` packs both"""
+    return _packer.pack([[(i.value, i.first, i.second) for i in input.items]])
+
+
+def deserialize_structs(data: Buffer) -> ListInput:
+    [items] = _unpack(data)
+    return ListInput([ItemInput(*fields) for fields in items])
+
+
 def serialize_sample(input: SampleInput) -> bytes:
     return _packer.pack({"key": input.key, "a": input.a, "b": input.b})
 
@@ -139,6 +151,7 @@ MSGPACK = Codec(
     record=Workload(serialize_record, deserialize_record),
     document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
     list=Workload(serialize_list, deserialize_list),
+    structs=Workload(serialize_structs, deserialize_structs),
     sample=Workload(serialize_sample, deserialize_sample),
 )
 """msgpack's packer and ``unpackb()``. MessagePack is schemaless: a table packs

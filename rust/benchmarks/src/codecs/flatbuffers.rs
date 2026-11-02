@@ -1,10 +1,17 @@
 // The generated code keeps flatc's style, which flatc rather than this crate
 // would change: it names a table's buffer `_tab` and the builder `_fbb`,
 // writes types' names in full rather than `Self` or elided lifetimes, and
-// derives `PartialEq` without `Eq` for tables
+// derives `PartialEq` without `Eq` for tables. A struct's code declares
+// lifetimes that it doesn't use, implements `Default` by hand, and copies its
+// scalars through raw pointers made with `as` casts.
 #[allow(
+    clippy::borrow_as_ptr,
+    clippy::derivable_impls,
     clippy::derive_partial_eq_without_eq,
     clippy::elidable_lifetime_names,
+    clippy::extra_unused_lifetimes,
+    clippy::ptr_as_ptr,
+    clippy::ref_as_ptr,
     clippy::use_self,
     clippy::used_underscore_binding
 )]
@@ -17,7 +24,7 @@ use flatbuffers::{FlatBufferBuilder, Vector};
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    sum_column,
+    StructsShape, sum_column,
 };
 
 /// flatc's generated code, used as its documentation shows.
@@ -25,7 +32,9 @@ use crate::workloads::{
 /// Messages are written with a builder of the default size and `create()`
 /// with each table's arguments, and read with `flatbuffers::root()`, which
 /// verifies them, as `root_as_*()` does. Vectors are written
-/// from slices with `create_vector()`, which writes them element by element.
+/// from slices with `create_vector()`, which writes them element by element,
+/// and a vector of structs from a `Vec` of flatc's structs, which took 16%
+/// less time than `create_vector_from_iter()` from the items.
 ///
 /// A message is the builder's buffer from where the builder finished it,
 /// without a copy, as the TypeScript comparison takes `asUint8Array()`'s
@@ -180,6 +189,38 @@ impl Workload<ListShape> for FlatBuffers {
     }
 }
 
+impl Workload<StructsShape> for FlatBuffers {
+    type Bytes = Finished;
+
+    fn serialize(self, input: &List) -> Result<Finished, Error> {
+        let mut builder = FlatBufferBuilder::new();
+        let structs: Vec<_> = input.items.iter().map(triple).collect();
+        let items = builder.create_vector(&structs);
+
+        let args = generated::TriplesArgs { items: Some(items) };
+        let triples = generated::Triples::create(&mut builder, &args);
+        builder.finish(triples, None);
+
+        Ok(collapse(builder))
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        let triples = flatbuffers::root::<generated::Triples>(bytes)?;
+        let vector = triples.items().ok_or("The array has no items")?;
+
+        let items = vector
+            .iter()
+            .map(|triple| Item {
+                value: triple.value(),
+                first: triple.first(),
+                second: triple.second(),
+            })
+            .collect();
+
+        Ok(List { items })
+    }
+}
+
 impl Workload<SampleShape> for FlatBuffers {
     type Bytes = Finished;
 
@@ -236,4 +277,8 @@ fn create_item<'a>(
         pair: Some(pair),
     };
     generated::Item::create(builder, &args)
+}
+
+fn triple(item: &Item) -> generated::Triple {
+    generated::Triple::new(item.value, item.first, item.second)
 }

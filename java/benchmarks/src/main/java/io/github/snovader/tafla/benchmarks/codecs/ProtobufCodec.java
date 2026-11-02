@@ -12,12 +12,16 @@ import java.util.Arrays;
  * protoc's generated messages, built with their builders and parsed with their parsers. Repeated
  * fields are added and read one element at a time, which keeps them unboxed, and are copied into
  * arrays when parsed. uint32s are Java {@code int}s with the same bits.
+ *
+ * <p>protobuf has no structs, so an array of them is a repeated message of the three floats, whose
+ * fields protobuf writes as fixed32s. Packed repeated floats would be a column for each field,
+ * which the documents time already.</p>
  */
 public final class ProtobufCodec {
     private ProtobufCodec() {}
 
     public static Codec create() {
-        return new Codec("protobuf", new Records(), new Documents(), new Lists(), new Samples());
+        return new Codec("protobuf", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
     }
 
     /**
@@ -149,6 +153,36 @@ public final class ProtobufCodec {
         private static Messages.Item.Builder itemMessage(ItemInput input) {
             var pair = Messages.Pair.newBuilder().setFirst(input.first()).setSecond(input.second());
             return Messages.Item.newBuilder().setValue(input.value()).setPair(pair);
+        }
+    }
+
+    private static final class Structs implements Workload<ListInput> {
+        @Override
+        public byte[] serialize(ListInput input) {
+            var triples = Messages.Triples.newBuilder();
+            for (var item : input.items()) {
+                triples.addItems(
+                    Messages.Triple.newBuilder()
+                        .setValue(item.value())
+                        .setFirst(item.first())
+                        .setSecond(item.second())
+                );
+            }
+
+            return triples.build().toByteArray();
+        }
+
+        @Override
+        public ListInput deserialize(byte[] bytes) {
+            var triples = parse(Messages.Triples.parser(), bytes);
+
+            var items = new ItemInput[triples.getItemsCount()];
+            for (int i = 0; i < items.length; i++) {
+                var triple = triples.getItems(i);
+                items[i] = new ItemInput(triple.getValue(), triple.getFirst(), triple.getSecond());
+            }
+
+            return new ListInput(Arrays.asList(items));
         }
     }
 

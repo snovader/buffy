@@ -13,7 +13,7 @@ use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::for_each_codec;
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
-    SAMPLE, SampleShape, Shape,
+    SAMPLE, SampleShape, Shape, StructsShape,
 };
 
 type Group<'a> = BenchmarkGroup<'a, WallTime>;
@@ -25,7 +25,7 @@ criterion_group! {
     config = Criterion::default()
         .warm_up_time(Duration::from_secs(2))
         .measurement_time(Duration::from_secs(4));
-    targets = record, documents, list, sample
+    targets = record, documents, list, structs, sample
 }
 
 criterion_main!(comparison);
@@ -69,6 +69,18 @@ fn list(criterion: &mut Criterion) {
     });
     group(criterion, &format!("{name}: deserialize"), |group| {
         for_each_codec!(|codec| deserialize::<ListShape, _>(group, codec, &list));
+    });
+}
+
+fn structs(criterion: &mut Criterion) {
+    let list = workloads::list(LIST_ITEMS);
+    let name = format!("array of {LIST_ITEMS} structs");
+
+    group(criterion, &format!("{name}: serialize"), |group| {
+        for_each_codec!(|codec| serialize::<StructsShape, _>(group, codec, &list));
+    });
+    group(criterion, &format!("{name}: deserialize"), |group| {
+        for_each_codec!(|codec| deserialize::<StructsShape, _>(group, codec, &list));
     });
 }
 

@@ -14,6 +14,8 @@ compare. Run the commands below from `rust/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized into the types of `workloads.rs`,
@@ -51,7 +53,8 @@ does.
   typed-array extensions are msgpackr's own.
 - rkyv, which has no counterpart in the other languages, is the closest Rust
   counterpart to tafla's reads: an archive that's read in place after it's
-  validated.
+  validated. It archives a `Vec` of a struct inline, so its vector of nested
+  tables and its array of structs are the same archive.
 - flatbuffers' latest Rust release is 25.12.19, where the TypeScript
   comparison uses flatbuffers 25.9.23.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported.
@@ -75,11 +78,17 @@ comparison uses its counterpart:
   write each array in bulk into a table of its exact size. Readers check the
   document's version, and read columns as `ArrayView`s, whose `to_cow()`
   borrows them. The vector's items are nested from builders, collected first
-  as tafla-gen's code collects them, since creating a builder can fail.
+  as tafla-gen's code collects them, since creating a builder can fail. The
+  array of structs is written with `to_le_bytes()` into a `Vec`, which the
+  builder takes with `set_struct_array()`, and read from
+  `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
+  tafla-gen's code does.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
-  `create_vector()`, which writes them element by element. A message is the
+  `create_vector()`, which writes them element by element, and so is the
+  vector of structs, from a `Vec` of flatc's structs, which took 16% less time
+  than `create_vector_from_iter()` from the items. A message is the
   builder's buffer from where the builder finished it, taken with
   `collapse()` without a copy, as the TypeScript comparison takes
   `asUint8Array()`'s view. Readers verify the message with
@@ -92,13 +101,18 @@ comparison uses its counterpart:
   `encode_to_vec()`, which sizes the bytes first, and reads them with
   `decode()`. Its messages own their strings and repeated fields, so building
   one from borrowed input copies its columns, as a caller that keeps its
-  values would, and the decoded columns move into the output. The messages in
+  values would, and the decoded columns move into the output. protobuf has no
+  structs, so the array of them is a repeated message of the three floats,
+  which protobuf writes as fixed32s; packed repeated floats would make a column
+  of each field, which the documents time already. The messages in
   `src/codecs/protobuf.rs` are derived with `#[derive(prost::Message)]` in the
   shape that prost-build generates, so no protoc is needed.
 - **rmp-serde** packs the workloads' own types through their serde derives,
   with `to_vec_named()`, which packs a struct as a map with its field names,
   as msgpackr packs an object, and reads them with `from_slice()`, which
-  borrows strings from the bytes.
+  borrows strings from the bytes. The array of structs packs with `to_vec()`,
+  which packs each struct, and the table that holds them, as an array of its
+  fields in order, without their names.
 - **rkyv** archives the workloads' own types through their derives, with
   `to_bytes()` into an `AlignedVec`, and reads them with `access()`, which
   validates the whole archive with bytecheck first, as untrusted bytes need.
@@ -160,7 +174,7 @@ cargo bench -p tafla-benchmarks
 cargo run -p tafla-benchmarks --bin report
 ```
 
-The full run takes about 8 minutes. `-p tafla-benchmarks` keeps Cargo from
+The full run takes about 9 minutes. `-p tafla-benchmarks` keeps Cargo from
 running the other crates' benchmark harnesses, which reject Criterion's
 options. Criterion's options follow `--`: a regular expression
 selects benchmarks, and `--save-baseline <name>` and `--baseline <name>`
@@ -171,7 +185,7 @@ cargo bench -p tafla-benchmarks -- 'document of 100,000 rows'
 ```
 
 A quick run of 10 samples over 50 ms per benchmark, after a 50 ms warm-up,
-checks that every benchmark works in about 9 seconds once it's built. CI runs
+checks that every benchmark works in about 10 seconds once it's built. CI runs
 it after the round-trip test, with the report and the encoding report. Its
 numbers mean little, and replace the last run's in the report.
 
@@ -187,10 +201,12 @@ optimizations.
 Clippy checks the crate with core's lints, all of `clippy::all`, `pedantic`
 and `nursery`, and rustfmt formats it, with the workspace's other crates.
 FlatBuffers' generated code keeps flatc's style, which flatc rather than this
-crate would change, so its module allows the four lints that it raises: its
+crate would change, so its module allows the nine lints that it raises: its
 `_tab` and `_fbb` names, type names written in full rather than `Self` or
-elided lifetimes, and tables that derive `PartialEq` without `Eq`. prost's
-messages pass as they are.
+elided lifetimes, and tables that derive `PartialEq` without `Eq`, and a
+struct's unused lifetimes, its `Default` implemented by hand, and the `as`
+casts of the raw pointers that copy its scalars. prost's messages pass as they
+are.
 
 The crate builds on Rust 1.88, the workspace's `rust-version`, so
 `cargo +1.88 test` runs its tests too. Cargo's resolver picks versions of its
@@ -215,7 +231,8 @@ they were.
 - rmp-serde's `to_vec()` packs structs as arrays without their field names,
   which is smaller than `to_vec_named()`'s maps, but needs the reader to know
   the fields' order, as a schema would, so the other languages' MessagePack
-  codecs pack maps.
+  codecs pack maps, but for the array of structs, whose fixed shape every
+  language packs as arrays.
 - Summing floats one after another into an `f64` is bound by the latency of
   each addition, about 0.86 ns here, so tafla, FlatBuffers and rkyv sum the
   large document's column in the same time. The small document's 100
@@ -283,17 +300,39 @@ Fastest sample in µs per call, and its ratio to tafla's:
   other crates allocate a `Vec` for each record, and take 20 to 167 ns to
   write it and 11 to 30 ns to read it.
 
+The array of 100 structs was added after that run, and timed on the same day
+with the vector of nested tables, in their groups alone:
+`cargo bench -p tafla-benchmarks -- 'structs|nested tables'`. Another session
+ran benchmarks meanwhile, which kept the 1-minute load average between 3.2 and
+3.8. The median sample was within 5% of the fastest for 19 of the 20
+benchmarks, and at most 5% above it, and the vector's fastest samples were
+within 8% of the full run's.
+
+| Benchmark                                |  tafla |   flatbuffers |         prost |     rmp-serde |             rkyv |
+| ---------------------------------------- | -----: | ------------: | ------------: | ------------: | ---------------: |
+| vector of 100 nested tables: serialize   |  9.044 | 3.530 (0.39×) | 1.375 (0.15×) | 2.836 (0.31×) | 0.0405 (0.0045×) |
+| vector of 100 nested tables: deserialize |  0.278 | 5.047 (18.2×) | 2.483 (8.95×) | 4.271 (15.4×) |   0.0309 (0.11×) |
+| array of 100 structs: serialize          |  0.140 | 0.583 (4.17×) | 0.982 (7.01×) | 1.390 (9.93×) |   0.0404 (0.29×) |
+| array of 100 structs: deserialize        | 0.0286 | 0.102 (3.56×) | 1.934 (67.7×) | 1.537 (53.8×) |   0.0307 (1.08×) |
+
+- tafla writes the 100 structs in 140 ns, against 9.0 µs for the same items as
+  nested tables, and reads them in 29 ns, against 278 ns. rkyv, whose archive
+  is the same for both shapes, writes them in 40 ns and reads them in 31 ns.
+- FlatBuffers writes its vector of structs in 583 ns and reads it in 102 ns,
+  including `flatbuffers::root()`'s verification. prost and rmp-serde write and
+  parse each struct's three fields, in 1.0 to 1.4 µs and 1.5 to 1.9 µs.
+
 `cargo run -p tafla-benchmarks --bin encoding` printed:
 
 ```
 Encoded size (bytes)
-                        record     doc 100  doc 100000      vector       fixed
-  tafla                     60        1296     1200096        3208          12
-  flatbuffers               72        1328     1200128        2832          32
-  prost                     47        1243     1187503        1900          16
-  rmp-serde                 53        1573     1499239        3510          24
-  rkyv                      48        1272     1200072        1208          12
-  to_le_bytes                                                               12
+                        record     doc 100  doc 100000      vector     structs       fixed
+  tafla                     60        1296     1200096        3208        1208          12
+  flatbuffers               72        1328     1200128        2832        1224          32
+  prost                     47        1243     1187503        1900        1700          16
+  rmp-serde                 53        1573     1499239        3510        1604          24
+  rkyv                      48        1272     1200072        1208        1208          12
+  to_le_bytes                                                                           12
 
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  returned an error: Read exceeds the supplied buffer: 400000 bytes at 400092 of
@@ -314,3 +353,7 @@ has another root. Its errors describe the failure only in builds with debug
 assertions, as this one is; in release builds, they say only that it failed.
 The sizes of tafla, FlatBuffers and protobuf are the other languages', and
 rmp-serde's are msgpack-core's in Java, which packs floats as float32s too.
+The array of structs takes 1,208 bytes in tafla and rkyv, 1,200 of them the
+structs', and 1,224 in FlatBuffers. protobuf's 1,700 bytes give each struct a
+tag and a length, and each float a tag, and rmp-serde's 1,604 an array header
+for each struct and a type byte for each float.

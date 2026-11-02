@@ -23,7 +23,14 @@ public final class MessagePackCodec {
 
     public static Codec create() {
         var state = new State();
-        return new Codec("msgpack", new Records(state), new Documents(state), new Lists(state), new Samples(state));
+        return new Codec(
+            "msgpack",
+            new Records(state),
+            new Documents(state),
+            new Lists(state),
+            new Structs(state),
+            new Samples(state)
+        );
     }
 
     /** The packer and unpacker that a codec's workloads share */
@@ -281,6 +288,52 @@ public final class MessagePackCodec {
             }
 
             return new ItemInput(value, first, second);
+        }
+    }
+
+    /**
+     * Structs have a fixed shape, so each packs as an array of its fields in order, without their
+     * keys, and so does the table that holds them, as rmp-serde's {@code to_vec()} packs both. The
+     * reader checks the arrays' lengths, since it reads the fields by their position.
+     */
+    private static final class Structs extends MessagePackWorkload<ListInput> {
+        private static final int TABLE_FIELDS = 1;
+        private static final int ITEM_FIELDS = 3;
+
+        Structs(State state) {
+            super(state);
+        }
+
+        @Override
+        void pack(MessagePacker packer, ListInput input) throws IOException {
+            var items = input.items();
+
+            packer.packArrayHeader(TABLE_FIELDS).packArrayHeader(items.size());
+            for (var item : items) {
+                packer.packArrayHeader(ITEM_FIELDS);
+                packer.packFloat(item.value()).packFloat(item.first()).packFloat(item.second());
+            }
+        }
+
+        @Override
+        ListInput unpack(MessageUnpacker unpacker) throws IOException {
+            unpackFields(unpacker, TABLE_FIELDS);
+
+            var items = new ItemInput[unpacker.unpackArrayHeader()];
+            for (int i = 0; i < items.length; i++) {
+                unpackFields(unpacker, ITEM_FIELDS);
+                items[i] = new ItemInput(unpacker.unpackFloat(), unpacker.unpackFloat(), unpacker.unpackFloat());
+            }
+
+            return new ListInput(Arrays.asList(items));
+        }
+
+        /** @throws MessageTypeException if the next value isn't an array of {@code fields} values */
+        private static void unpackFields(MessageUnpacker unpacker, int fields) throws IOException {
+            var length = unpacker.unpackArrayHeader();
+            if (length != fields) {
+                throw new MessageTypeException(String.format("Expected %d fields, not %d", fields, length));
+            }
         }
     }
 

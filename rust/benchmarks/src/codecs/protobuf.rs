@@ -5,12 +5,16 @@ use prost::Message;
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    sum_column,
+    StructsShape, sum_column,
 };
 
 /// protobuf's messages, derived by hand in the shape that prost-build 0.14
 /// generates from this schema, so that no protoc is needed. proto3 packs
 /// repeated scalars, as prost does by default.
+///
+/// protobuf has no structs, so an array of them is a repeated message of the
+/// three floats, whose fields protobuf writes as fixed32s. Packed repeated
+/// floats would be a column for each field, which the documents time already.
 ///
 /// ```proto
 /// syntax = "proto3";
@@ -34,6 +38,9 @@ use crate::workloads::{
 /// message Pair { float first = 1; float second = 2; }
 /// message Item { float value = 1; Pair pair = 2; }
 /// message List { repeated Item items = 1; }
+///
+/// message Triple { float value = 1; float first = 2; float second = 3; }
+/// message Triples { repeated Triple items = 1; }
 ///
 /// message Sample { uint32 key = 1; float a = 2; float b = 3; }
 /// ```
@@ -94,6 +101,22 @@ pub mod messages {
     pub struct List {
         #[prost(message, repeated, tag = "1")]
         pub items: ::prost::alloc::vec::Vec<Item>,
+    }
+
+    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+    pub struct Triple {
+        #[prost(float, tag = "1")]
+        pub value: f32,
+        #[prost(float, tag = "2")]
+        pub first: f32,
+        #[prost(float, tag = "3")]
+        pub second: f32,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct Triples {
+        #[prost(message, repeated, tag = "1")]
+        pub items: ::prost::alloc::vec::Vec<Triple>,
     }
 
     #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -223,6 +246,34 @@ impl Workload<ListShape> for Prost {
     }
 }
 
+impl Workload<StructsShape> for Prost {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
+        let message = messages::Triples {
+            items: input.items.iter().map(triple_message).collect(),
+        };
+
+        Ok(message.encode_to_vec())
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        let message = messages::Triples::decode(bytes)?;
+
+        let items = message
+            .items
+            .into_iter()
+            .map(|triple| Item {
+                value: triple.value,
+                first: triple.first,
+                second: triple.second,
+            })
+            .collect();
+
+        Ok(List { items })
+    }
+}
+
 impl Workload<SampleShape> for Prost {
     type Bytes = Vec<u8>;
 
@@ -256,5 +307,13 @@ const fn item_message(item: &Item) -> messages::Item {
     messages::Item {
         value: item.value,
         pair: Some(pair),
+    }
+}
+
+const fn triple_message(item: &Item) -> messages::Triple {
+    messages::Triple {
+        value: item.value,
+        first: item.first,
+        second: item.second,
     }
 }

@@ -24,5 +24,7 @@ export interface Codec {
     record: Workload<RecordInput, RecordInput>;
     document: DocumentWorkload;
     list: Workload<ListInput, ListInput>;
+    /** The list's items as an array of structs, in the library's encoding */
+    structs: Workload<ListInput, ListInput>;
     sample: Workload<SampleInput, SampleInput>;
 }

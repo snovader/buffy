@@ -3,12 +3,15 @@ package io.github.snovader.tafla.benchmarks.codecs;
 import io.github.snovader.tafla.*;
 import io.github.snovader.tafla.benchmarks.*;
 
+import java.lang.invoke.*;
+import java.nio.ByteOrder;
 import java.util.*;
 
 /**
  * tafla's tables, nested from their builders. The fixed-size record is written with
  * {@link ByteBuffer}'s setters and read with its getters at fixed positions, since Java has no
- * {@code StructWriter}.
+ * {@code StructWriter}. An array of structs is written through a little-endian {@link VarHandle}
+ * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
  */
 public final class TaflaCodec {
     private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
@@ -16,10 +19,16 @@ public final class TaflaCodec {
 
     private static final int SAMPLE_SIZE = Integer.BYTES + 2 * Float.BYTES;
 
+    /** An item as a struct: its three float32s, aligned to 4 in an array */
+    private static final int ITEM_SIZE = 3 * Float.BYTES;
+    private static final int ITEM_ALIGNMENT = Float.BYTES;
+    private static final VarHandle FLOAT32 =
+        MethodHandles.byteArrayViewVarHandle(float[].class, ByteOrder.LITTLE_ENDIAN);
+
     private TaflaCodec() {}
 
     public static Codec create() {
-        return new Codec("tafla", new Records(), new Documents(), new Lists(), new Samples());
+        return new Codec("tafla", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
     }
 
     private static final class Records implements Workload<RecordInput> {
@@ -156,6 +165,46 @@ public final class TaflaCodec {
             item.setTable(pair);
 
             return item;
+        }
+    }
+
+    private static final class Structs implements Workload<ListInput> {
+        @Override
+        public byte[] serialize(ListInput input) {
+            var items = input.items();
+            var structs = new byte[items.size() * ITEM_SIZE];
+            for (int i = 0; i < items.size(); i++) {
+                writeItem(items.get(i), structs, i * ITEM_SIZE);
+            }
+
+            var builder = new TableBuilder(1);
+            builder.setStructArray(structs, ITEM_SIZE, ITEM_ALIGNMENT);
+
+            return builder.bytes();
+        }
+
+        @Override
+        public ListInput deserialize(byte[] bytes) {
+            var buffer = new ByteBuffer(bytes);
+            var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+
+            var items = new ItemInput[view.remaining() / ITEM_SIZE];
+            for (int i = 0; i < items.length; i++) {
+                var offset = i * ITEM_SIZE;
+                items[i] = new ItemInput(
+                    view.getFloat(offset),
+                    view.getFloat(offset + Float.BYTES),
+                    view.getFloat(offset + 2 * Float.BYTES)
+                );
+            }
+
+            return new ListInput(Arrays.asList(items));
+        }
+
+        private static void writeItem(ItemInput item, byte[] bytes, int offset) {
+            FLOAT32.set(bytes, offset, item.value());
+            FLOAT32.set(bytes, offset + Float.BYTES, item.first());
+            FLOAT32.set(bytes, offset + 2 * Float.BYTES, item.second());
         }
     }
 
