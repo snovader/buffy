@@ -5,6 +5,7 @@
 
 mod common;
 
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::process::Command;
 
@@ -94,8 +95,13 @@ proptest! {
             let again = compile("schemas/schema.tafla", &source, target, &Options::default())
                 .unwrap();
 
-            // Java has a file per class, and the others one per schema
-            let expected_files = if name == "java" { schema.definitions.len() } else { 1 };
+            // Java has a file per class, a table's and the view of a vector
+            // of it, and the others one per schema
+            let expected_files = if name == "java" {
+                schema.definitions.len() + schema.vector_items().len()
+            } else {
+                1
+            };
             prop_assert_eq!(files.len(), expected_files);
             prop_assert_eq!(&files, &again, "{} isn't deterministic", name);
             for file in &files {
@@ -359,9 +365,7 @@ fn docs() -> impl Strategy<Value = Vec<String>> {
 
 impl Schema {
     fn render(&self) -> String {
-        let tables: Vec<usize> = (0..self.definitions.len())
-            .filter(|&index| matches!(self.definitions[index].kind, Kind::Table))
-            .collect();
+        let tables = self.tables();
 
         let mut source = String::new();
         for (index, definition) in self.definitions.iter().enumerate() {
@@ -410,6 +414,36 @@ impl Schema {
         }
 
         source
+    }
+
+    fn tables(&self) -> Vec<usize> {
+        (0..self.definitions.len())
+            .filter(|&index| matches!(self.definitions[index].kind, Kind::Table))
+            .collect()
+    }
+
+    /// The names of the tables that vectors hold, as the fields resolve
+    fn vector_items(&self) -> HashSet<String> {
+        let tables = self.tables();
+
+        self.definitions
+            .iter()
+            .enumerate()
+            .flat_map(|(index, definition)| {
+                definition
+                    .fields
+                    .iter()
+                    .map(move |field| (index, field.of_type))
+            })
+            .filter_map(|(index, of_type)| {
+                let field_type = self.resolve(index, of_type, &tables);
+                field_type
+                    .strip_prefix('[')
+                    .and_then(|item| item.strip_suffix(']'))
+                    .filter(|item| item.starts_with("Definition"))
+                    .map(str::to_owned)
+            })
+            .collect()
     }
 
     /// The type of a field, as the definition at `index` can hold it

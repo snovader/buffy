@@ -45,6 +45,11 @@ public final class ItemList {
             .toList();
     }
 
+    /** Views the items of {@code items()}, reading each one when it's asked for */
+    public ItemVector itemsView() {
+        return new ItemVector(buffer, buffer.rootOffset(0));
+    }
+
     /** The fields of an {@code ItemList}, to write */
     public record Fields(List<Item.Fields> items) {}
 }

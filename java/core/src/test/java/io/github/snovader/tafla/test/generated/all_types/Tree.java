@@ -69,6 +69,11 @@ public final class Tree {
             .toList();
     }
 
+    /** Views the items of {@code children()}, reading each one when it's asked for */
+    public TreeVector childrenView() {
+        return new TreeVector(buffer, buffer.fieldOffset(position, 1));
+    }
+
     /** The fields of a {@code Tree}, to write */
     public record Fields(int value, List<Tree.Fields> children) {}
 }

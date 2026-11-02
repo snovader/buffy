@@ -20,6 +20,8 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
         .map(|declaration| check_declaration(declaration, declarations, &indices, &mut errors))
         .collect();
 
+    check_view_declarations(&definitions, declarations, &indices, &mut errors);
+
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
         check_nested_offsets(&definitions, declarations, &mut errors);
@@ -206,10 +208,9 @@ fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Ve
         }
 
         let view = format!("{}View", camel_case(&field.name));
-        let clashes = declaration
-            .fields
-            .iter()
-            .filter(|other| is_snake_case(&other.name.text) && camel_case(&other.name.text) == view);
+        let clashes = declaration.fields.iter().filter(|other| {
+            is_snake_case(&other.name.text) && camel_case(&other.name.text) == view
+        });
         for other in clashes {
             errors.push(
                 Diagnostic::new(
@@ -225,6 +226,47 @@ fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Ve
                 )),
             );
         }
+    }
+}
+
+/// Checks that no declaration takes the name of the view of a vector or an
+/// array of structs, `<Table>Vector` or `<Struct>Array`, which the generated
+/// code declares beside the tables and structs that they hold
+fn check_view_declarations(
+    definitions: &[Definition],
+    declarations: &[Declaration],
+    indices: &HashMap<&str, usize>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let mut views = HashSet::new();
+    let items = definitions
+        .iter()
+        .flat_map(|definition| &definition.fields)
+        .filter_map(|field| match field.field_type {
+            FieldType::Vector(index) => Some(("Vector", "a vector", index)),
+            FieldType::StructArray(index) => Some(("Array", "an array", index)),
+            _ => None,
+        });
+
+    for (suffix, kind, index) in items {
+        let item = &definitions[index].name;
+        let view = format!("{item}{suffix}");
+        let Some(&clash) = indices.get(view.as_str()) else {
+            continue;
+        };
+        if !views.insert(clash) {
+            continue;
+        }
+
+        errors.push(
+            Diagnostic::new(
+                format!("`{view}` clashes with the view of {kind} of `{item}`"),
+                declarations[clash].name.span,
+            )
+            .with_help(format!(
+                "the generated code declares `{view}` to read {kind} of `{item}` lazily"
+            )),
+        );
     }
 }
 

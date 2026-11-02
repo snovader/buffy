@@ -20,3 +20,17 @@ table Item {
 struct Point {
     x: float32;
 }
+
+/// Declarations named after the views of vectors and arrays of structs
+table ItemVector {
+    value: uint8;
+}
+
+struct PointArray {
+    x: float32;
+}
+
+/// A name that a view would take, if anything held a vector of `Point`s
+table PointVector {
+    value: uint8;
+}

@@ -738,9 +738,7 @@ impl Generator<'_> {
             self.annotation("number"),
             self.annotation(structure)
         ));
-        writer.open(
-            "if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {",
-        );
+        writer.open("if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {");
         writer.statement(
             &STYLE,
             "throw ",

@@ -99,10 +99,11 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
-    let has_sequence = has_struct
-        || has_field(|field_type| {
-            matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
-        });
+    // Vectors and arrays of structs have views, which iterate their items
+    let has_view = has_field(|field_type| {
+        matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
+    });
+    let has_sequence = has_struct || has_view;
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -111,10 +112,6 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
                 ..
             })
         )
-    });
-
-    let has_view = has_field(|field_type| {
-        matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
     });
 
     let mut abc = Vec::new();

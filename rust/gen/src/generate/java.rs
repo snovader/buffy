@@ -54,42 +54,179 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         .as_ref()
         .map_or(PACKAGE, JavaPackage::as_str);
 
-    schema
-        .definitions
-        .iter()
-        .map(|definition| {
+    let file = |name: &str, contents: String| GeneratedFile {
+        path: format!("{}/{name}.java", package.replace('.', "/")),
+        contents,
+    };
+
+    let mut files = Vec::new();
+    for (index, definition) in schema.definitions.iter().enumerate() {
+        let mut writer = CodeWriter::new(STYLE.indent);
+        writer.line(format!("// {header}"));
+        writer.line(format!("package {package};"));
+        writer.blank();
+
+        match definition.kind {
+            Kind::Message(layout) => {
+                imports(&mut writer, runtime, definition, Some(layout));
+                message(&mut writer, schema, definition, layout);
+            }
+            Kind::Table => {
+                imports(&mut writer, runtime, definition, None);
+                table(&mut writer, schema, definition);
+            }
+            Kind::Struct(_) => {
+                writer.line(format!("import {runtime}.DecodeException;"));
+                writer.blank();
+                writer.line("import java.lang.invoke.MethodHandles;");
+                writer.line("import java.lang.invoke.VarHandle;");
+                writer.line("import java.nio.ByteBuffer;");
+                writer.line("import java.nio.ByteOrder;");
+                writer.blank();
+                structure(&mut writer, schema, definition);
+            }
+        }
+        files.push(file(&definition.name, writer.finish()));
+
+        if schema.is_item(index) {
             let mut writer = CodeWriter::new(STYLE.indent);
             writer.line(format!("// {header}"));
             writer.line(format!("package {package};"));
             writer.blank();
 
-            match definition.kind {
-                Kind::Message(layout) => {
-                    imports(&mut writer, runtime, definition, Some(layout));
-                    message(&mut writer, schema, definition, layout);
-                }
-                Kind::Table => {
-                    imports(&mut writer, runtime, definition, None);
-                    table(&mut writer, schema, definition);
-                }
-                Kind::Struct(_) => {
-                    writer.line(format!("import {runtime}.DecodeException;"));
-                    writer.blank();
-                    writer.line("import java.lang.invoke.MethodHandles;");
-                    writer.line("import java.lang.invoke.VarHandle;");
-                    writer.line("import java.nio.ByteBuffer;");
-                    writer.line("import java.nio.ByteOrder;");
-                    writer.blank();
-                    structure(&mut writer, schema, definition);
-                }
-            }
+            let view = if definition.is_struct() {
+                struct_array_view(&mut writer, runtime, definition)
+            } else {
+                vector_view(&mut writer, runtime, definition)
+            };
+            files.push(file(&view, writer.finish()));
+        }
+    }
 
-            GeneratedFile {
-                path: format!("{}/{}.java", package.replace('.', "/"), definition.name),
-                contents: writer.finish(),
-            }
-        })
-        .collect()
+    files
+}
+
+/// The view of a vector of a table, a lazy `List` whose `get()` reads an
+/// item from its end and the end of the item before it, and returns the
+/// view's class name
+fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) -> String {
+    let table = &definition.name;
+    let name = format!("{table}Vector");
+
+    writer.line(format!("import {runtime}.ByteBuffer;"));
+    writer.line(format!("import {runtime}.DecodeException;"));
+    writer.blank();
+    writer.line("import java.util.AbstractList;");
+    writer.line("import java.util.RandomAccess;");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "A vector of `{table}`s, which reads each item when it's asked for"
+    )]));
+    writer.open(format!(
+        "public final class {name} extends AbstractList<{table}> implements RandomAccess {{"
+    ));
+    writer.line("private final ByteBuffer buffer;");
+    writer.line("private final int position;");
+    writer.line("private final int size;");
+    writer.blank();
+    writer.lines(&javadoc(&[
+        "Views the vector at `position`, as its parent's getter finds it".to_owned(),
+        String::new(),
+        "@throws DecodeException if the vector's count or the ends of its items aren't within the"
+            .to_owned(),
+        "    bytes".to_owned(),
+    ]));
+    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
+    writer.line("this.buffer = buffer;");
+    writer.line("this.position = position;");
+    writer.line("this.size = buffer.getVectorLength(position);");
+    writer.close("}");
+    writer.blank();
+
+    view_size(writer, "items");
+
+    writer.lines(&javadoc(&[
+        "Reads item `index`, without reading the others".to_owned(),
+        String::new(),
+        "@throws DecodeException if the item ends before it starts or past the bytes".to_owned(),
+        "@throws IndexOutOfBoundsException if the vector has no item `index`".to_owned(),
+    ]));
+    writer.line("@Override");
+    writer.open(format!("public {table} get(int index) {{"));
+    writer.line(format!(
+        "return new {table}(buffer, buffer.getVectorOffset(position, index));"
+    ));
+    writer.close("}");
+    writer.close("}");
+
+    name
+}
+
+/// The view of an array of a struct, a lazy `List` whose `get()` reads a
+/// struct from a view of their bytes, and returns the view's class name
+fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) -> String {
+    let structure = &definition.name;
+    let name = format!("{structure}Array");
+
+    writer.line(format!("import {runtime}.ByteBuffer;"));
+    writer.line(format!("import {runtime}.DecodeException;"));
+    writer.blank();
+    writer.line("import java.util.AbstractList;");
+    writer.line("import java.util.Objects;");
+    writer.line("import java.util.RandomAccess;");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "An array of `{structure}`s, which reads each struct when it's asked for"
+    )]));
+    writer.open(format!(
+        "public final class {name} extends AbstractList<{structure}> implements RandomAccess {{"
+    ));
+    writer.line("private final java.nio.ByteBuffer view;");
+    writer.line("private final int size;");
+    writer.blank();
+    writer.lines(&javadoc(&[
+        "Views the array at `position`, as its parent's getter finds it".to_owned(),
+        String::new(),
+        "@throws DecodeException if the array's count or its structs aren't within the bytes"
+            .to_owned(),
+    ]));
+    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
+    writer.line(format!(
+        "this.view = buffer.getStructArray(position, {structure}.SIZE);"
+    ));
+    writer.line(format!("this.size = view.remaining() / {structure}.SIZE;"));
+    writer.close("}");
+    writer.blank();
+
+    view_size(writer, "structs");
+
+    writer.lines(&javadoc(&[
+        "Reads struct `index`".to_owned(),
+        String::new(),
+        "@throws IndexOutOfBoundsException if the array has no struct `index`".to_owned(),
+    ]));
+    writer.line("@Override");
+    writer.open(format!("public {structure} get(int index) {{"));
+    writer.line("Objects.checkIndex(index, size);");
+    writer.line(format!(
+        "return {structure}.read(view, index * {structure}.SIZE);"
+    ));
+    writer.close("}");
+    writer.close("}");
+
+    name
+}
+
+/// A view's `size()`, of the number of items that it read when it was made
+fn view_size(writer: &mut CodeWriter, items: &str) {
+    writer.lines(&javadoc(&[format!("{{@return the number of {items}}}")]));
+    writer.line("@Override");
+    writer.open("public int size() {");
+    writer.line("return size;");
+    writer.close("}");
+    writer.blank();
 }
 
 fn imports(
@@ -709,6 +846,36 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
         }
         writer.close("}");
+
+        if let Some(view) = view_type(field.field_type, schema) {
+            let mut docs = field.docs.clone();
+            if !docs.is_empty() {
+                docs.push(String::new());
+            }
+            docs.push(format!(
+                "Views the items of `{}()`, reading each one when it's asked for",
+                identifier(&field.name)
+            ));
+
+            writer.blank();
+            writer.lines(&javadoc(&docs));
+            writer.open(format!(
+                "public {view} {}View() {{",
+                camel_case(&field.name)
+            ));
+            writer.line(format!("return new {view}(buffer, {offset});"));
+            writer.close("}");
+        }
+    }
+}
+
+/// The view of a vector or an array of structs, which their view getters
+/// return
+fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
+    match field_type {
+        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
+        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
+        _ => None,
     }
 }
 

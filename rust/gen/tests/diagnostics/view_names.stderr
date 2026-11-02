@@ -15,3 +15,15 @@ error: `children_view` clashes with the view of `children`
    |
 16 |     children_view: [Item];
    |     ^^^^^^^^^^^^^ the generated code reads `children` lazily with `children_view()`, or `childrenView()` in camelCase
+
+error: `ItemVector` clashes with the view of a vector of `Item`
+  --> view_names.tafla:25:7
+   |
+25 | table ItemVector {
+   |       ^^^^^^^^^^ the generated code declares `ItemVector` to read a vector of `Item` lazily
+
+error: `PointArray` clashes with the view of an array of `Point`
+  --> view_names.tafla:29:8
+   |
+29 | struct PointArray {
+   |        ^^^^^^^^^^ the generated code declares `PointArray` to read an array of `Point` lazily

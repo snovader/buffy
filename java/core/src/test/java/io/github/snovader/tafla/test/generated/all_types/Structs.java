@@ -66,6 +66,15 @@ public final class Structs {
         return items;
     }
 
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * Views the items of {@code documented()}, reading each one when it's asked for
+     */
+    public DocumentedArray documentedView() {
+        return new DocumentedArray(buffer, buffer.rootOffset(1));
+    }
+
     /** A struct of structs */
     public Segment segment() {
         return Segment.read(buffer.bytes(), buffer.rootOffset(2));
@@ -80,6 +89,11 @@ public final class Structs {
         }
 
         return items;
+    }
+
+    /** Views the items of {@code segments()}, reading each one when it's asked for */
+    public SegmentArray segmentsView() {
+        return new SegmentArray(buffer, buffer.rootOffset(3));
     }
 
     /** A table nested in the message, which holds structs too */

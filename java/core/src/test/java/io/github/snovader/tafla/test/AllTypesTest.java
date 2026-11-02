@@ -179,6 +179,104 @@ public class AllTypesTest {
         assertValuesOrDecodeException(() -> readStructs(new Structs(bytes)));
     }
 
+    // Views
+
+    @Property
+    void a_nested_message_reads_back_its_trees_item_by_item_through_their_views(
+        @ForAll("nesteds") Nested.Fields fields,
+        @ForAll ViewOrder order
+    ) {
+        var bytes = Nested.serialize(fields);
+
+        assertEquals(describeNested(fields), describeNested(readNestedViews(new Nested(bytes), order)));
+    }
+
+    @Property
+    void structs_read_back_their_arrays_struct_by_struct_through_their_views(
+        @ForAll("structs") Structs.Fields fields,
+        @ForAll ViewOrder order
+    ) {
+        var bytes = Structs.serialize(fields);
+
+        assertEquals(describeStructs(fields), describeStructs(readStructsViews(new Structs(bytes), order)));
+    }
+
+    @Property
+    void a_corrupted_nested_message_reads_through_its_views_as_values_or_throws_DecodeException(
+        @ForAll("nesteds") Nested.Fields fields,
+        @ForAll("corruptions") Corruption corruption,
+        @ForAll ViewOrder order
+    ) {
+        var bytes = corruption.applyTo(Nested.serialize(fields));
+
+        assertValuesOrDecodeException(() -> readNestedViews(new Nested(bytes), order));
+    }
+
+    @Property
+    void corrupted_structs_read_through_their_views_as_values_or_throw_DecodeException(
+        @ForAll("structs") Structs.Fields fields,
+        @ForAll("corruptions") Corruption corruption,
+        @ForAll ViewOrder order
+    ) {
+        var bytes = corruption.applyTo(Structs.serialize(fields));
+
+        assertValuesOrDecodeException(() -> readStructsViews(new Structs(bytes), order));
+    }
+
+    @Property
+    void any_bytes_read_through_the_views_or_throw_DecodeException(
+        @ForAll @Size(max = 64) byte[] bytes,
+        @ForAll ViewOrder order
+    ) {
+        assertValuesOrDecodeException(() -> readNestedViews(new Nested(bytes), order));
+        assertValuesOrDecodeException(() -> readStructsViews(new Structs(bytes), order));
+    }
+
+    @Property
+    void a_view_throws_IndexOutOfBoundsException_for_an_item_outside_it(
+        @ForAll("nesteds") Nested.Fields nestedFields,
+        @ForAll("structs") Structs.Fields structsFields,
+        @ForAll @IntRange(min = 0, max = 1000) int past
+    ) {
+        var nested = new Nested(Nested.serialize(nestedFields));
+        var structs = new Structs(Structs.serialize(structsFields));
+
+        for (var view : List.<List<?>>of(nested.treesView(), structs.documentedView())) {
+            assertThrows(IndexOutOfBoundsException.class, () -> view.get(view.size() + past));
+            assertThrows(IndexOutOfBoundsException.class, () -> view.get(-1 - past));
+        }
+    }
+
+    @Example
+    void views_of_empty_vectors_and_arrays_of_structs_hold_no_items() {
+        var point = new Point(0, 0);
+        var nested = new Nested(
+            Nested.serialize(new Nested.Fields("", new Outer.Fields(0, new Inner.Fields("", new double[0])), List.of()))
+        );
+        var structs = new Structs(
+            Structs.serialize(
+                new Structs.Fields(
+                    new Packed((byte) 0, (short) 0, (short) 0, 0, 0, 0, 0, 0, 0, 0),
+                    new Documented[0],
+                    new Segment(point, point),
+                    new Segment[0],
+                    new Path.Fields(point, new Point[0])
+                )
+            )
+        );
+
+        var views = List.<List<?>>of(
+            nested.treesView(),
+            structs.documentedView(),
+            structs.segmentsView(),
+            structs.path().pointsView()
+        );
+        for (var view : views) {
+            assertTrue(view.isEmpty());
+            assertThrows(IndexOutOfBoundsException.class, () -> view.get(0));
+        }
+    }
+
     // Structs
 
     @Property
