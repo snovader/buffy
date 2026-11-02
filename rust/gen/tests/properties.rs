@@ -1,7 +1,8 @@
 //! Properties of the generator over arbitrary input: parsing never panics,
-//! every schema that the checker accepts generates code for every target, its
-//! files stay in the output directory, and the CLI writes what the library
-//! generates.
+//! every schema that the checker accepts generates code for every target,
+//! structs that contain themselves or grow too large fail with the checker's
+//! errors, its files stay in the output directory, and the CLI writes what the
+//! library generates.
 
 mod common;
 
@@ -105,6 +106,50 @@ proptest! {
     }
 
     #[test]
+    fn structs_that_contain_themselves_fail_with_diagnostics(
+        schema in schema_with_struct(),
+        chosen in any::<Index>(),
+        back in any::<Index>(),
+    ) {
+        // A field that closes a cycle: from a struct to one that contains it,
+        // or to itself
+        let structs: Vec<usize> = schema.structs().collect();
+        let start = structs[chosen.index(structs.len())];
+        let containing: Vec<usize> = structs
+            .iter()
+            .copied()
+            .filter(|&outer| schema.contains(outer, start))
+            .collect();
+        let end = containing[back.index(containing.len())];
+        let source = schema.render_with(Some((start, &format!("cycle: {}", name(end)))));
+
+        // Each struct on the cycle, rather than those that hold one of them
+        let expected: Vec<(String, String)> = structs
+            .into_iter()
+            .filter(|&index| schema.contains(end, index) && schema.contains(index, start))
+            .map(|index| (format!("`{}` contains itself", name(index)), name(index)))
+            .collect();
+        check_errors(&source, &expected)?;
+    }
+
+    #[test]
+    fn structs_larger_than_65536_bytes_fail_with_diagnostics(
+        schema in schema_with_struct(),
+        chosen in any::<Index>(),
+    ) {
+        // A struct that holds one of 65,536 bytes beside its own fields,
+        // which makes it and every struct that contains it too large
+        let structs: Vec<usize> = schema.structs().collect();
+        let large = structs[chosen.index(structs.len())];
+        let mut source = schema.render_with(Some((large, "large: Large16")));
+        source.push_str(&large_structs());
+
+        // The struct that grows too large, rather than those that hold it
+        let expected = [(format!("`{}` is too large for a struct", name(large)), name(large))];
+        check_errors(&source, &expected)?;
+    }
+
+    #[test]
     fn generated_files_stay_in_the_output_directory(
         file_name in r"[ab./\\:]{0,10}",
         package in r"[ab1_$./\\:-]{0,10}",
@@ -163,6 +208,23 @@ fn check_parse(source: &str) -> Result<(), TestCaseError> {
         );
     }
 
+    Ok(())
+}
+
+/// Checks that a schema fails with the errors in `expected`, each a message
+/// and the text that its span points at, in source order
+fn check_errors(source: &str, expected: &[(String, String)]) -> Result<(), TestCaseError> {
+    check_parse(source)?;
+
+    let diagnostics = parse(source).err().unwrap_or_default();
+    let errors: Vec<(String, String)> = diagnostics
+        .into_iter()
+        .map(|diagnostic| {
+            let span = diagnostic.span;
+            (diagnostic.message, source[span.start..span.end].to_owned())
+        })
+        .collect();
+    prop_assert_eq!(errors, expected, "{}", source);
     Ok(())
 }
 
@@ -248,8 +310,11 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 
 /// A schema that the checker accepts, by construction: unique names, tables
 /// nested only in definitions before them, so that none contains itself,
-/// tables only in messages of 32-bit offsets, structs of scalars only, and
-/// versions that fit in their offsets
+/// tables only in messages of 32-bit offsets, structs of scalars and of the
+/// structs after them, which can share a struct, and versions that fit in
+/// their offsets. Of at most 5 definitions of at most 5 fields, a struct
+/// takes at most 5^5 float64s, 25,000 bytes, within the 65,536 that a struct
+/// takes at most.
 #[derive(Debug)]
 struct Schema {
     definitions: Vec<Definition>,
@@ -288,6 +353,11 @@ enum FieldType {
     Scalar(Index),
     Array(Index),
     String,
+    /// Any of the structs, or in a struct one of the structs after it, or a
+    /// scalar if there's none
+    Struct(Index),
+    /// Any of the structs, or an array of scalars if there's none
+    StructArray(Index),
     /// One of the tables after the definition, or a scalar if there's none
     Table(Index),
     /// Any of the tables, or a string if there's none
@@ -298,9 +368,18 @@ fn schema() -> impl Strategy<Value = Schema> {
     prop::collection::vec(definition(), 0..6).prop_map(|definitions| Schema { definitions })
 }
 
+/// A schema with at least one struct, for a property to break
+fn schema_with_struct() -> impl Strategy<Value = Schema> {
+    schema().prop_filter("a schema without structs", |schema| {
+        schema.structs().next().is_some()
+    })
+}
+
 fn definition() -> impl Strategy<Value = Definition> {
+    // As many structs as messages and tables, so that schemas often hold
+    // several, which nest and share each other
     let kind = prop_oneof![
-        (
+        1 => (
             any::<bool>(),
             prop::option::of(any::<Index>()),
             prop::sample::select(&[8_u8, 16, 32][..]),
@@ -314,16 +393,29 @@ fn definition() -> impl Strategy<Value = Definition> {
                     trailing_comma,
                 }
             ),
-        Just(Kind::Table),
-        Just(Kind::Struct),
+        1 => Just(Kind::Table),
+        2 => Just(Kind::Struct),
     ];
-    let fields = subsequence(&FIELD_NAMES[..], 1..6)
+
+    kind.prop_flat_map(|kind| {
+        let field_type = if matches!(kind, Kind::Struct) {
+            struct_field_type().boxed()
+        } else {
+            field_type().boxed()
+        };
+        (Just(kind), docs(), fields(field_type))
+    })
+    .prop_map(|(kind, docs, fields)| Definition { kind, docs, fields })
+}
+
+fn fields(field_type: BoxedStrategy<FieldType>) -> impl Strategy<Value = Vec<Field>> {
+    subsequence(&FIELD_NAMES[..], 1..6)
         .prop_shuffle()
-        .prop_flat_map(|names| {
+        .prop_flat_map(move |names| {
             let count = names.len();
             (
                 Just(names),
-                prop::collection::vec((docs(), field_type()), count),
+                prop::collection::vec((docs(), field_type.clone()), count),
             )
         })
         .prop_map(|(names, fields)| {
@@ -336,18 +428,28 @@ fn definition() -> impl Strategy<Value = Definition> {
                     of_type,
                 })
                 .collect()
-        });
-
-    (kind, docs(), fields).prop_map(|(kind, docs, fields)| Definition { kind, docs, fields })
+        })
 }
 
+/// The type of a message's or table's field
 fn field_type() -> impl Strategy<Value = FieldType> {
     prop_oneof![
         any::<Index>().prop_map(FieldType::Scalar),
         any::<Index>().prop_map(FieldType::Array),
         Just(FieldType::String),
+        any::<Index>().prop_map(FieldType::Struct),
+        any::<Index>().prop_map(FieldType::StructArray),
         any::<Index>().prop_map(FieldType::Table),
         any::<Index>().prop_map(FieldType::Vector),
+    ]
+}
+
+/// The type of a struct's field, which is a scalar or a struct. A struct
+/// field is a scalar too in the structs without structs after them.
+fn struct_field_type() -> impl Strategy<Value = FieldType> {
+    prop_oneof![
+        1 => any::<Index>().prop_map(FieldType::Scalar),
+        2 => any::<Index>().prop_map(FieldType::Struct),
     ]
 }
 
@@ -359,6 +461,12 @@ fn docs() -> impl Strategy<Value = Vec<String>> {
 
 impl Schema {
     fn render(&self) -> String {
+        self.render_with(None)
+    }
+
+    /// Renders the schema with `added`, a field's declaration, after the
+    /// fields of the definition at its index
+    fn render_with(&self, added: Option<(usize, &str)>) -> String {
         let tables: Vec<usize> = (0..self.definitions.len())
             .filter(|&index| matches!(self.definitions[index].kind, Kind::Table))
             .collect();
@@ -406,6 +514,9 @@ impl Schema {
                 let field_type = self.resolve(index, field.of_type, &tables);
                 writeln!(source, "    {}: {field_type};", field.name).unwrap();
             }
+            if let Some((_, field)) = added.filter(|&(at, _)| at == index) {
+                writeln!(source, "    {field};").unwrap();
+            }
             source.push_str("}\n\n");
         }
 
@@ -427,9 +538,17 @@ impl Schema {
             .collect();
 
         match field_type {
-            FieldType::Scalar(scalar) => SCALARS[scalar.index(SCALARS.len())].to_owned(),
-            _ if matches!(kind, Kind::Struct) => "uint8".to_owned(),
-            FieldType::Array(scalar) => format!("[{}]", SCALARS[scalar.index(SCALARS.len())]),
+            FieldType::Scalar(scalar) => scalar_name(scalar).to_owned(),
+            FieldType::Array(scalar) => format!("[{}]", scalar_name(scalar)),
+            FieldType::Struct(chosen) => self
+                .nested_struct(index, chosen)
+                .map_or_else(|| scalar_name(chosen).to_owned(), name),
+            FieldType::StructArray(chosen) => {
+                let element = self
+                    .nested_struct(index, chosen)
+                    .map_or_else(|| scalar_name(chosen).to_owned(), name);
+                format!("[{element}]")
+            }
             FieldType::Table(table) if holds_tables && !later_tables.is_empty() => {
                 name(later_tables[table.index(later_tables.len())])
             }
@@ -440,9 +559,61 @@ impl Schema {
             FieldType::String | FieldType::Vector(_) => "string".to_owned(),
         }
     }
+
+    /// The indices of the structs
+    fn structs(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.definitions.len())
+            .filter(|&index| matches!(self.definitions[index].kind, Kind::Struct))
+    }
+
+    /// The struct that a field of the definition at `index` holds, if there's
+    /// one: any of the structs, or in a struct one after it, so that none
+    /// contains itself
+    fn nested_struct(&self, index: usize, chosen: Index) -> Option<usize> {
+        let in_struct = matches!(self.definitions[index].kind, Kind::Struct);
+        let structs: Vec<usize> = self
+            .structs()
+            .filter(|&other| !in_struct || other > index)
+            .collect();
+
+        (!structs.is_empty()).then(|| structs[chosen.index(structs.len())])
+    }
+
+    /// Whether the struct at `outer` is the one at `inner` or contains it,
+    /// even within another struct
+    fn contains(&self, outer: usize, inner: usize) -> bool {
+        outer == inner
+            || self.definitions[outer]
+                .fields
+                .iter()
+                .filter_map(|field| match field.of_type {
+                    FieldType::Struct(chosen) => self.nested_struct(outer, chosen),
+                    _ => None,
+                })
+                .any(|nested| self.contains(nested, inner))
+    }
+}
+
+fn scalar_name(scalar: Index) -> &'static str {
+    SCALARS[scalar.index(SCALARS.len())]
 }
 
 /// Unique names, which mix letters and digits as `PascalCase` allows
 fn name(index: usize) -> String {
     format!("Definition{index}X")
+}
+
+/// Structs that double in size, from `Large0` of one byte to `Large16` of
+/// 65,536, the most that a struct takes
+fn large_structs() -> String {
+    let mut source = "struct Large0 { value: uint8; }\n".to_owned();
+    for level in 1..=16 {
+        let half = level - 1;
+        writeln!(
+            source,
+            "struct Large{level} {{ left: Large{half}; right: Large{half}; }}"
+        )
+        .unwrap();
+    }
+    source
 }
