@@ -61,10 +61,10 @@ pub fn generate(
         match definition.kind {
             Kind::Message(layout) => message(&mut writer, schema, definition, layout),
             Kind::Table => table(&mut writer, schema, definition),
-            Kind::Struct => structure(&mut writer, schema, definition),
+            Kind::Struct(_) => structure(&mut writer, schema, definition),
         }
 
-        if definition.kind != Kind::Struct {
+        if !definition.is_struct() {
             writer.blanks(2);
             fields_type(&mut writer, schema, definition);
         }
@@ -80,7 +80,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     let has = |predicate: fn(&Definition) -> bool| schema.definitions.iter().any(predicate);
     let has_message = has(|definition| matches!(definition.kind, Kind::Message(_)));
     let has_table = has(|definition| matches!(definition.kind, Kind::Message(_) | Kind::Table));
-    let has_struct = has(|definition| definition.kind == Kind::Struct);
+    let has_struct = has(Definition::is_struct);
     let has_field = |predicate: fn(FieldType) -> bool| {
         schema
             .definitions
@@ -353,10 +353,10 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.blank();
     writer.line(format!(
         "SIZE: ClassVar[int] = {}",
-        schema.struct_size(definition)
+        definition.struct_layout().size
     ));
     docstring(writer, &[format!("The byte length of {}", article(name))]);
-    let alignment = schema.struct_alignment(definition);
+    let alignment = definition.struct_layout().alignment;
     writer.line(format!(
         "ALIGNMENT: ClassVar[Literal[{alignment}]] = {alignment}"
     ));

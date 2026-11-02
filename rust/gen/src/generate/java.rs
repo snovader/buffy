@@ -71,7 +71,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
                     imports(&mut writer, runtime, definition, None);
                     table(&mut writer, schema, definition);
                 }
-                Kind::Struct => {
+                Kind::Struct(_) => {
                     writer.line(format!("import {runtime}.DecodeException;"));
                     writer.blank();
                     writer.line("import java.lang.invoke.MethodHandles;");
@@ -283,7 +283,7 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             let at = offset;
             offset += match field.field_type {
                 FieldType::Scalar(scalar) => usize::from(scalar.size()),
-                FieldType::Struct(index) => schema.struct_size(schema.definition(index)),
+                FieldType::Struct(index) => schema.definition(index).struct_layout().size,
                 _ => unreachable!("structs hold scalars and structs only"),
             };
             (identifier(&field.name), field.field_type, at)
@@ -305,7 +305,7 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.lines(&javadoc(&[format!("The byte length of {}", article(name))]));
     writer.line(format!(
         "public static final int SIZE = {};",
-        schema.struct_size(definition)
+        definition.struct_layout().size
     ));
     writer.blank();
     writer.lines(&javadoc(&[format!(
@@ -314,7 +314,7 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     )]));
     writer.line(format!(
         "public static final int ALIGNMENT = {};",
-        schema.struct_alignment(definition)
+        definition.struct_layout().alignment
     ));
     writer.blank();
 
