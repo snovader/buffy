@@ -48,6 +48,38 @@ it('should write values as they are when finalizing', () => {
     expect(buffer.getFloat32Array(buffer.rootOffset(0))).toStrictEqual(new Float32Array([3, 2]));
 });
 
+describe('arrays of structs', () => {
+    it.each([
+        [new Uint8Array(5), 2, "5 bytes aren't a whole number of 2-byte structs"],
+        [new Uint8Array(4), 0, "A struct's size must be a positive integer, not 0"],
+        [new Uint8Array(4), 1.5, "A struct's size must be a positive integer, not 1.5"]
+    ])(
+        'should reject %s bytes of %s-byte structs, and leave the builder as it was',
+        (bytes, size, message) => {
+            const builder = new TableBuilder(1);
+
+            expect(() => builder.setStructArray(bytes, size, 1)).toThrow(new RangeError(message));
+            builder.setStructArray(new Uint8Array([1, 2, 3, 4]), 2, 2);
+            expect(builder.bytes()).toStrictEqual(
+                new Uint8Array([4, 0, 0, 0, 2, 0, 0, 0, 1, 2, 3, 4])
+            );
+        }
+    );
+
+    it('should count structs, and pad so that they start at a multiple of their alignment', () => {
+        const builder = new TableBuilder(2);
+        builder.setUint8(7);
+        builder.setStructArray(new Uint8Array(16), 8, 8);
+
+        // The count goes at 12, after the uint8 at 8 and 3 bytes of padding,
+        // so that the structs start at 16
+        const buffer = builder.finalize();
+        expect(buffer.rootOffset(1)).toBe(12);
+        expect(buffer.getStructArray(12, 8)).toHaveLength(16);
+        expect(buffer.getUint32(12)).toBe(2);
+    });
+});
+
 describe('tables longer than the offsets address', () => {
     it.each([SIZEOF_8, SIZEOF_16] as const)(
         'should reject a header longer than %s-byte offsets address',

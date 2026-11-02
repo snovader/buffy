@@ -52,16 +52,17 @@ public class FormatTest {
     }
 
     @Property
-    void every_array_starts_at_a_multiple_of_its_element_size_from_the_start_of_its_table(
+    void every_array_starts_at_a_multiple_of_its_alignment_from_the_start_of_its_table(
         @ForAll("tables") TableDescription table
     ) {
         var bytes = Tables.build(table).bytes();
         var layout = table.layout();
 
         for (int index = 0; index < table.fields().size(); index++) {
-            if (table.fields().get(index) instanceof ArrayField array) {
+            var alignment = arrayAlignment(table.fields().get(index));
+            if (alignment.isPresent()) {
                 var elements = rootOffset(bytes, layout, index) + layout.width();
-                assertEquals(0, elements % array.type().size(), "The elements of field " + index);
+                assertEquals(0, elements % alignment.getAsInt(), "The elements of field " + index);
             }
         }
     }
@@ -102,28 +103,37 @@ public class FormatTest {
 
     // Tables of many nested tables, so fewer of them
     @Property(tries = 250)
-    void a_vector_holds_its_item_count_and_then_each_items_length_and_bytes(
+    void a_vector_holds_its_item_count_then_each_items_end_and_then_the_items_bytes(
         @ForAll("nestingTables") TableDescription table
     ) {
         var bytes = Tables.build(table).bytes();
         var layout = table.layout();
-        var width = layout.width();
 
         for (int index = 0; index < table.fields().size(); index++) {
             if (table.fields().get(index) instanceof VectorField vector) {
-                var position = rootOffset(bytes, layout, index);
-                assertEquals(vector.items().size(), unsigned(bytes, position, width), "The count of field " + index);
-                position += width;
-
-                for (var item : vector.items()) {
-                    var itemBytes = Tables.build(item.table()).bytes();
-                    assertEquals(itemBytes.length, unsigned(bytes, position, width), "The length of " + item);
-                    position += width;
-
-                    assertArrayEquals(itemBytes, slice(bytes, position, itemBytes.length), "The bytes of " + item);
-                    position += itemBytes.length;
-                }
+                assertVector(bytes, rootOffset(bytes, layout, index), layout.width(), vector);
             }
+        }
+    }
+
+    /**
+     * Asserts that the vector at {@code position} holds its count, then the end of each item from
+     * that position, and then each item's bytes, starting where the item before it ends
+     */
+    private static void assertVector(byte[] bytes, int position, int width, VectorField vector) {
+        var items = vector.items();
+        assertEquals(items.size(), unsigned(bytes, position, width), "The count of " + vector);
+
+        // Item 0 starts after the count and the ends
+        var start = (items.size() + 1) * width;
+        for (int i = 0; i < items.size(); i++) {
+            var item = items.get(i);
+            var itemBytes = Tables.build(item.table()).bytes();
+            var end = start + itemBytes.length;
+
+            assertEquals(end, unsigned(bytes, position + (i + 1) * width, width), "The end of " + item);
+            assertArrayEquals(itemBytes, slice(bytes, position + start, itemBytes.length), "The bytes of " + item);
+            start = end;
         }
     }
 
@@ -149,8 +159,8 @@ public class FormatTest {
 
     /**
      * {@return the alignment that {@code SPEC.md} gives a nested table}: the one passed to
-     * {@code setTable()}, or by default 4 for bytes, and for a builder the largest element size of
-     * its arrays and alignment of its own nested tables, or 1 if it has neither
+     * {@code setTable()}, or by default 4 for bytes, and for a builder the largest alignment of its
+     * arrays, arrays of structs and own nested tables, or 1 if it has none of them
      */
     private static int alignmentOf(TableField field) {
         if (field.alignment().isPresent()) {
@@ -163,11 +173,9 @@ public class FormatTest {
 
         var alignment = 1;
         for (var nested : field.table().fields()) {
-            var fieldAlignment = switch (nested) {
-                case ArrayField array -> array.type().size();
-                case TableField table -> alignmentOf(table);
-                default -> 1;
-            };
+            var fieldAlignment = nested instanceof TableField table
+                ? alignmentOf(table)
+                : arrayAlignment(nested).orElse(1);
             alignment = Math.max(alignment, fieldAlignment);
         }
 
@@ -175,14 +183,29 @@ public class FormatTest {
     }
 
     /**
-     * {@return the bytes of a scalar, array or string, as the JDK writes them little-endian}, or
-     * nothing for a nested table or vector
+     * {@return the alignment of an array's elements from the start of its table}: the size of a
+     * scalar array's elements, or of the largest scalar of an array's structs, and nothing for a
+     * field of any other type
+     */
+    private static OptionalInt arrayAlignment(FieldDescription field) {
+        return switch (field) {
+            case ArrayField array -> OptionalInt.of(array.type().size());
+            case StructArrayField array -> OptionalInt.of(StructBytes.alignment(array.fields()));
+            default -> OptionalInt.empty();
+        };
+    }
+
+    /**
+     * {@return the bytes of a scalar, array, string, struct or array of structs, as the JDK writes
+     * them little-endian}, or nothing for a nested table or vector
      */
     private static Optional<byte[]> littleEndian(FieldDescription field, int width) {
         return switch (field) {
             case ScalarField scalar -> Optional.of(littleEndian(scalar));
             case ArrayField array -> Optional.of(littleEndian(array, width));
             case StringField string -> Optional.of(littleEndian(string, width));
+            case StructField struct -> Optional.of(littleEndian(struct));
+            case StructArrayField array -> Optional.of(littleEndian(array, width));
             case TableField ignored -> Optional.empty();
             case VectorField ignored -> Optional.empty();
         };
@@ -216,6 +239,34 @@ public class FormatTest {
         var view = littleEndianView(bytes);
         putUnsigned(view, width, utf8.length);
         view.put(utf8);
+
+        return bytes;
+    }
+
+    /** {@return a struct's scalars, one after another} */
+    private static byte[] littleEndian(StructField struct) {
+        var bytes = new byte[StructBytes.size(struct.types())];
+
+        var view = littleEndianView(bytes);
+        for (var scalar : struct.fields()) {
+            scalar.type().put(view, scalar.value());
+        }
+
+        return bytes;
+    }
+
+    /** {@return an array of structs' count and then each struct's scalars, one after another} */
+    private static byte[] littleEndian(StructArrayField array, int width) {
+        var types = array.fields();
+        var bytes = new byte[width + array.items().size() * StructBytes.size(types)];
+
+        var view = littleEndianView(bytes);
+        putUnsigned(view, width, array.items().size());
+        for (var values : array.items()) {
+            for (int i = 0; i < types.size(); i++) {
+                types.get(i).put(view, values.get(i));
+            }
+        }
 
         return bytes;
     }

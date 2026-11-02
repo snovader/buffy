@@ -32,6 +32,7 @@ from tests.descriptions import (
     LAYOUTS,
     OFFSET_SIZES,
     SCALAR_VALUES,
+    STRUCT_TYPES,
     longest_length,
     tables,
 )
@@ -53,6 +54,8 @@ from tests.tables import (
     layout_of,
     read_table,
     set_field,
+    struct_alignment,
+    struct_of,
 )
 
 
@@ -70,20 +73,26 @@ def unsigned(data: memoryview[int], position: int, size: int) -> int:
     return int.from_bytes(data[position : position + size], "little")
 
 
+def vector_ends(placement: Placement) -> list[int]:
+    """Returns the end of each item of the vector at a placement, from the
+    vector's position"""
+    data, position, size = placement.data, placement.position, placement.offset_size
+    count = unsigned(data, position, size)
+
+    return [unsigned(data, position + i * size, size) for i in range(1, count + 1)]
+
+
 def vector_items(placement: Placement) -> list[memoryview[int]]:
-    """Returns the bytes of each item of the vector at a placement, from its
-    count and their lengths"""
-    data, size = placement.data, placement.offset_size
-    count = unsigned(data, placement.position, size)
+    """Returns the bytes of each item of the vector at a placement, from the
+    end of the item before it, or of the ends, to its own"""
+    ends = vector_ends(placement)
+    starts = [(len(ends) + 1) * placement.offset_size, *ends]
 
-    items: list[memoryview[int]] = []
-    start = placement.position + size
-    for _ in range(count):
-        length = unsigned(data, start, size)
-        items.append(data[start + size : start + size + length])
-        start += size + length
-
-    return items
+    position = placement.position
+    return [
+        placement.data[position + start : position + end]
+        for start, end in zip(starts, ends, strict=False)
+    ]
 
 
 def tables_in_own_bytes(
@@ -175,18 +184,24 @@ class TestFormatRules(unittest.TestCase):
             self.assertEqual(offsets, sorted(offsets))
 
     @given(tables())
-    def test_typed_arrays_start_at_a_multiple_of_their_element_size_in_their_table(
+    def test_arrays_start_at_a_multiple_of_their_alignment_in_their_table(
         self, table: Description
     ) -> None:
+        """The alignment of an array of scalars is their size, and of an
+        array of structs the size of their largest scalar"""
         for placement in placements_of(build_table(table).bytes(), table):
-            kind = placement.field["type"]
-            if not kind.endswith("[]"):
+            field = placement.field
+            kind = field["type"]
+
+            if kind == "struct[]":
+                alignment = struct_alignment(field["fields"])
+            elif kind.endswith("[]"):
+                alignment = ELEMENT_SIZES[kind.removesuffix("[]")]
+            else:
                 continue
 
             first_element = placement.position + placement.offset_size
-            element_size = ELEMENT_SIZES[kind.removesuffix("[]")]
-
-            self.assertEqual((first_element - placement.table) % element_size, 0)
+            self.assertEqual((first_element - placement.table) % alignment, 0)
 
     @given(tables())
     def test_nested_tables_start_at_a_multiple_of_their_alignment_in_their_parent(
@@ -207,15 +222,28 @@ class TestFormatRules(unittest.TestCase):
             self.assert_little_endian(placement)
 
     def assert_little_endian(self, placement: Placement) -> None:
-        """Compares the bytes of a scalar, array or string with the ones that
-        ``struct`` packs little-endian, and a vector's count with its items"""
+        """Compares the bytes of a scalar, struct, array or string with the
+        ones that ``struct`` packs little-endian, and a vector's count and ends
+        with its items"""
         data, position, size = placement.data, placement.position, placement.offset_size
         field = placement.field
         kind = field["type"]
 
         if kind in FORMATS:
-            value = struct.pack(f"<{FORMATS[kind]}", from_json(kind, field["value"]))
+            value = packed_scalar(field)
             self.assertEqual(bytes(data[position : position + len(value)]), value)
+        elif kind == "struct":
+            value = b"".join(packed_scalar(scalar) for scalar in field["fields"])
+            self.assertEqual(bytes(data[position : position + len(value)]), value)
+        elif kind == "struct[]":
+            types = field["fields"]
+            structs = b"".join(
+                packed_struct(types, values) for values in field["items"]
+            )
+
+            start = position + size
+            self.assertEqual(unsigned(data, position, size), len(field["items"]))
+            self.assertEqual(bytes(data[start : start + len(structs)]), structs)
         elif kind.endswith("[]"):
             element = kind.removesuffix("[]")
             values = [from_json(element, value) for value in field["value"]]
@@ -231,7 +259,56 @@ class TestFormatRules(unittest.TestCase):
             self.assertEqual(unsigned(data, position, size), len(encoded))
             self.assertEqual(bytes(data[start : start + len(encoded)]), encoded)
         elif kind == "vector":
-            self.assertEqual(unsigned(data, position, size), len(field["items"]))
+            # The count, then the ends, which only grow from the first item's
+            # start, after them
+            count = len(field["items"])
+            ends = vector_ends(placement)
+
+            self.assertEqual(unsigned(data, position, size), count)
+            self.assertEqual(ends, sorted(ends))
+            self.assertTrue(all(end >= (count + 1) * size for end in ends))
+
+
+def packed_scalar(scalar: Description) -> bytes:
+    """The little-endian bytes of a scalar, as ``struct`` packs it"""
+    kind = scalar["type"]
+    return struct.pack(f"<{FORMATS[kind]}", from_json(kind, scalar["value"]))
+
+
+def packed_struct(types: list[str], values: list[object]) -> bytes:
+    """The bytes of a struct of an array of structs, each scalar packed one
+    by one"""
+    scalars = zip(types, values, strict=True)
+    return b"".join(
+        packed_scalar({"type": kind, "value": value}) for kind, value in scalars
+    )
+
+
+def _last_vector_item(buffer: ByteBuffer, position: int) -> int | None:
+    """Finds the last item of the vector at ``position`` from its ends, which
+    reads the ends before and after it"""
+    length = buffer.get_vector_length(position)
+    return None if length == 0 else buffer.get_vector_offset(position, length - 1)
+
+
+type _Getter = Callable[[ByteBuffer, int], object]
+
+# Every getter of a value at a position, with sizes of structs that need one
+_GETTERS: dict[str, _Getter] = {
+    **{
+        name: getattr(ByteBuffer, name)
+        for name in [
+            *(f"get_{kind}" for kind in FORMATS),
+            *(f"get_{kind}_array" for kind in FORMATS),
+            "get_string",
+            "get_vector",
+            "get_vector_offsets",
+        ]
+    },
+    "get_struct": lambda buffer, position: buffer.get_struct(position, 9),
+    "get_struct_array": lambda buffer, position: buffer.get_struct_array(position, 3),
+    "get_vector_offset": _last_vector_item,
+}
 
 
 class TestUntrustedBytes(unittest.TestCase):
@@ -288,15 +365,7 @@ class TestUntrustedBytes(unittest.TestCase):
     @given(
         binary(max_size=64),
         LAYOUTS,
-        sampled_from(
-            [
-                *(f"get_{kind}" for kind in FORMATS),
-                *(f"get_{kind}_array" for kind in FORMATS),
-                "get_string",
-                "get_vector",
-                "get_vector_offsets",
-            ]
-        ),
+        sampled_from(list(_GETTERS)),
         lists(integers(0, 16), min_size=1, max_size=3),
     )
     def test_any_getter_reads_arbitrary_bytes_as_a_value_or_raises_decode_error(
@@ -311,7 +380,7 @@ class TestUntrustedBytes(unittest.TestCase):
             for index in indices[1:]:
                 position = buffer.field_offset(position, index)
 
-            return getattr(buffer, getter)(position)
+            return _GETTERS[getter](buffer, position)
 
         reads: list[Callable[[], object]] = [buffer.get_size, read_value]
         if layout["versioned"]:
@@ -355,12 +424,13 @@ _GROWING_TABLES: dict[bool, SearchStrategy[Callable[[int], Description]]] = {
 
 @composite
 def growing_fields(draw: DrawFn, offset_size: OffsetSize) -> GrowingField:
-    """Arrays and strings, and tables nested with ``set_table()`` and in a
-    vector that end in a ``uint8[]``, which grow by an element or character at
-    a time, and vectors that grow by an empty item, for tables whose offsets
-    are ``offset_size`` bytes wide. Nested tables have 4-byte offsets, so that
-    they fit any length that their parent does."""
-    kinds = ["array", "string", "table", "vector item"]
+    """Strings, arrays of scalars and of structs, and tables nested with
+    ``set_table()`` and in a vector that end in a ``uint8[]``, which grow by a
+    character, element or struct at a time, and vectors that grow by an empty
+    item, for tables whose offsets are ``offset_size`` bytes wide. Nested
+    tables have 4-byte offsets, so that they fit any length that their parent
+    does."""
+    kinds = ["array", "struct array", "string", "table", "vector item"]
     if offset_size == 1:
         # A vector of thousands of items would take most of the suite's time
         kinds.append("vector count")
@@ -373,6 +443,18 @@ def growing_fields(draw: DrawFn, offset_size: OffsetSize) -> GrowingField:
             return GrowingField(
                 lambda count: {"type": f"{element}[]", "value": [value] * count},
                 ELEMENT_SIZES[element],
+            )
+        case "struct array":
+            types = draw(STRUCT_TYPES)
+            values = [draw(SCALAR_VALUES[kind]) for kind in types]
+
+            return GrowingField(
+                lambda count: {
+                    "type": "struct[]",
+                    "fields": types,
+                    "items": [values] * count,
+                },
+                struct_of(types).size,
             )
         case "string":
             character = draw(characters(codec="utf-8"))

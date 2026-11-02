@@ -48,6 +48,14 @@ pub enum Field {
     F32Array(Vec<f32>),
     F64Array(Vec<f64>),
     String(String),
+    /// A struct of scalar fields, one after another
+    Struct(Vec<Self>),
+    /// An array of structs of scalars of `types`, as the scalar fields of
+    /// each struct
+    StructArray {
+        types: Vec<ScalarType>,
+        items: Vec<Vec<Self>>,
+    },
     /// A table nested with `set_table()`, or with `set_table_aligned()`
     /// when the description gives an alignment
     Table {
@@ -71,6 +79,74 @@ pub enum Source {
     Bytes,
 }
 
+/// The type of a scalar, of which structs are made
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScalarType {
+    I8,
+    U8,
+    I16,
+    U16,
+    I32,
+    U32,
+    I64,
+    U64,
+    F32,
+    F64,
+}
+
+impl ScalarType {
+    pub const ALL: [Self; 10] = [
+        Self::I8,
+        Self::U8,
+        Self::I16,
+        Self::U16,
+        Self::I32,
+        Self::U32,
+        Self::I64,
+        Self::U64,
+        Self::F32,
+        Self::F64,
+    ];
+
+    /// The scalar's size in bytes, which is also its alignment in an array
+    pub const fn alignment(self) -> Alignment {
+        match self {
+            Self::I8 | Self::U8 => Alignment::One,
+            Self::I16 | Self::U16 => Alignment::Two,
+            Self::I32 | Self::U32 | Self::F32 => Alignment::Four,
+            Self::I64 | Self::U64 | Self::F64 => Alignment::Eight,
+        }
+    }
+
+    pub const fn size(self) -> usize {
+        self.alignment().bytes()
+    }
+}
+
+/// The size of a struct of scalars of `types`: the sum of theirs
+pub fn struct_size(types: impl IntoIterator<Item = ScalarType>) -> usize {
+    types.into_iter().map(ScalarType::size).sum()
+}
+
+/// The alignment of an array of structs of scalars of `types`: the largest
+/// of their sizes
+pub fn struct_alignment(types: impl IntoIterator<Item = ScalarType>) -> Alignment {
+    let alignments = types.into_iter().map(ScalarType::alignment);
+    alignments.max().unwrap_or(Alignment::One)
+}
+
+/// The types of a struct's scalar fields
+pub fn struct_types(scalars: &[Field]) -> impl Iterator<Item = ScalarType> + '_ {
+    let scalar_type = |field: &Field| field.scalar_type().expect("A struct holds scalars");
+    scalars.iter().map(scalar_type)
+}
+
+/// The bytes of a struct of scalar fields: theirs, one after another
+pub fn struct_bytes(scalars: &[Field]) -> Vec<u8> {
+    let scalar_bytes = |field: &Field| field.scalar_bytes().expect("A struct holds scalars");
+    scalars.iter().flat_map(scalar_bytes).collect()
+}
+
 impl Layout {
     /// A layout without header slots, which tables nested with
     /// `set_table()` have
@@ -91,6 +167,43 @@ impl Layout {
     /// The byte length of the header slots before the field offsets
     pub const fn header_size(self) -> usize {
         (self.sized as usize + self.versioned as usize) * self.offset_size.bytes()
+    }
+}
+
+impl Field {
+    /// The type of a scalar field, or `None` for a field of any other type
+    pub const fn scalar_type(&self) -> Option<ScalarType> {
+        Some(match self {
+            Self::I8(_) => ScalarType::I8,
+            Self::U8(_) => ScalarType::U8,
+            Self::I16(_) => ScalarType::I16,
+            Self::U16(_) => ScalarType::U16,
+            Self::I32(_) => ScalarType::I32,
+            Self::U32(_) => ScalarType::U32,
+            Self::I64(_) => ScalarType::I64,
+            Self::U64(_) => ScalarType::U64,
+            Self::F32(_) => ScalarType::F32,
+            Self::F64(_) => ScalarType::F64,
+            _ => return None,
+        })
+    }
+
+    /// The little-endian bytes of a scalar field, or `None` for a field of
+    /// any other type
+    pub fn scalar_bytes(&self) -> Option<Vec<u8>> {
+        Some(match self {
+            Self::I8(value) => value.to_le_bytes().to_vec(),
+            Self::U8(value) => value.to_le_bytes().to_vec(),
+            Self::I16(value) => value.to_le_bytes().to_vec(),
+            Self::U16(value) => value.to_le_bytes().to_vec(),
+            Self::I32(value) => value.to_le_bytes().to_vec(),
+            Self::U32(value) => value.to_le_bytes().to_vec(),
+            Self::I64(value) => value.to_le_bytes().to_vec(),
+            Self::U64(value) => value.to_le_bytes().to_vec(),
+            Self::F32(value) => value.to_le_bytes().to_vec(),
+            Self::F64(value) => value.to_le_bytes().to_vec(),
+            _ => return None,
+        })
     }
 }
 
@@ -124,6 +237,17 @@ impl PartialEq for Field {
             (Self::I64Array(a), Self::I64Array(b)) => a == b,
             (Self::U64Array(a), Self::U64Array(b)) => a == b,
             (Self::String(a), Self::String(b)) => a == b,
+            (Self::Struct(a), Self::Struct(b)) => a == b,
+            (
+                Self::StructArray {
+                    types: a_types,
+                    items: a,
+                },
+                Self::StructArray {
+                    types: b_types,
+                    items: b,
+                },
+            ) => a_types == b_types && a == b,
             (
                 Self::Table {
                     nested: a,

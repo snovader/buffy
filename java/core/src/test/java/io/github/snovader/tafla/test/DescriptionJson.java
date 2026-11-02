@@ -46,6 +46,10 @@ final class DescriptionJson {
 
         return switch (type) {
             case "string" -> new StringField(field.getString("value"));
+            case "struct" -> new StructField(
+                field.getJsonArray("fields").stream().map(scalar -> readScalar(scalar.asJsonObject())).toList()
+            );
+            case "struct[]" -> readStructArray(field);
             case "table" -> new TableField(
                 readFrom(field),
                 readTable(field.getJsonObject("table")),
@@ -56,8 +60,40 @@ final class DescriptionJson {
             );
             default -> type.endsWith("[]")
                 ? readArray(scalarType(type.substring(0, type.length() - "[]".length())), field.getJsonArray("value"))
-                : new ScalarField(scalarType(type), readValue(scalarType(type), Objects.requireNonNull(field.get("value"))));
+                : readScalar(field);
         };
+    }
+
+    private static ScalarField readScalar(JsonObject field) {
+        var type = scalarType(field.getString("type"));
+        return new ScalarField(type, readValue(type, Objects.requireNonNull(field.get("value"))));
+    }
+
+    private static StructArrayField readStructArray(JsonObject field) {
+        var types = field.getJsonArray("fields").stream()
+            .map(type -> scalarType(((JsonString) type).getString()))
+            .toList();
+        var items = field.getJsonArray("items").stream()
+            .map(item -> readStruct(types, item.asJsonArray()))
+            .toList();
+
+        return new StructArrayField(types, items);
+    }
+
+    /** {@return the values of a struct's scalars of the types, as {@link ScalarType} holds them} */
+    private static List<Long> readStruct(List<ScalarType> types, JsonArray json) {
+        if (json.size() != types.size()) {
+            throw new IllegalArgumentException(
+                String.format("A struct of %d scalars has %d values: %s", types.size(), json.size(), json)
+            );
+        }
+
+        var values = new ArrayList<Long>(types.size());
+        for (int i = 0; i < types.size(); i++) {
+            values.add(readValue(types.get(i), json.get(i)));
+        }
+
+        return values;
     }
 
     private static NestedTable readNestedTable(JsonObject item) {
@@ -161,6 +197,8 @@ final class DescriptionJson {
                 .add("type", "string")
                 .add("value", string.value())
                 .build();
+            case StructField struct -> writeStruct(struct);
+            case StructArrayField array -> writeStructArray(array);
             case TableField table -> writeTableField(table);
             case VectorField vector -> writeVector(vector);
         };
@@ -170,6 +208,39 @@ final class DescriptionJson {
         return Json.createObjectBuilder()
             .add("from", item.from().jsonName())
             .add("table", write(item.table()))
+            .build();
+    }
+
+    private static JsonObject writeStruct(StructField struct) {
+        var fields = Json.createArrayBuilder();
+        for (var scalar : struct.fields()) {
+            fields.add(write(scalar));
+        }
+
+        return Json.createObjectBuilder().add("type", "struct").add("fields", fields).build();
+    }
+
+    private static JsonObject writeStructArray(StructArrayField array) {
+        var types = array.fields();
+
+        var fields = Json.createArrayBuilder();
+        for (var type : types) {
+            fields.add(type.jsonName());
+        }
+
+        var items = Json.createArrayBuilder();
+        for (var values : array.items()) {
+            var item = Json.createArrayBuilder();
+            for (int i = 0; i < types.size(); i++) {
+                item.add(writeValue(types.get(i), values.get(i)));
+            }
+            items.add(item);
+        }
+
+        return Json.createObjectBuilder()
+            .add("type", "struct[]")
+            .add("fields", fields)
+            .add("items", items)
             .build();
     }
 

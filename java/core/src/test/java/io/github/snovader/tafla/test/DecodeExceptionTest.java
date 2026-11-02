@@ -111,6 +111,42 @@ public class DecodeExceptionTest {
     }
 
     @Example
+    void should_throw_DecodeException_for_a_vector_item_that_ends_before_it_starts() {
+        // A count of 2 puts the first item after the ends, at 12, but it ends at 11
+        var buffer = new ByteBuffer(new byte[] {2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0});
+
+        var exception = assertThrows(DecodeException.class, () -> buffer.getVector(0));
+        assertEquals("The vector item at 12 ends before it starts, at 11", exception.getMessage());
+        assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
+        assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
+    }
+
+    @Example
+    void should_throw_DecodeException_for_a_vector_item_that_ends_past_the_bytes() {
+        // A vector of one item, which would end at 9 from the vector's position, of 8 bytes
+        var buffer = new ByteBuffer(new byte[] {1, 0, 0, 0, 9, 0, 0, 0});
+
+        var exception = assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
+        assertEquals("Read exceeds the supplied buffer: 1 bytes at 8 of 8", exception.getMessage());
+        assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
+        assertThrows(DecodeException.class, () -> buffer.getVector(0));
+    }
+
+    @Example
+    void should_throw_DecodeException_for_a_struct_or_structs_past_the_bytes() {
+        // A count of 2 and then 5 bytes, which hold one struct of 3 bytes but not two
+        var buffer = new ByteBuffer(new byte[] {2, 0, 0, 0, 1, 2, 3, 4, 5});
+
+        var exception = assertThrows(DecodeException.class, () -> buffer.getStructArray(0, 3));
+        assertEquals("Read exceeds the supplied buffer: 6 bytes at 4 of 9", exception.getMessage());
+        exception = assertThrows(DecodeException.class, () -> buffer.getStruct(4, 6));
+        assertEquals("Read exceeds the supplied buffer: 6 bytes at 4 of 9", exception.getMessage());
+        assertThrows(DecodeException.class, () -> buffer.getStruct(-1, 1));
+        assertThrows(DecodeException.class, () -> buffer.getStruct(Integer.MAX_VALUE, 1));
+        assertEquals(5, buffer.getStruct(4, 5).remaining());
+    }
+
+    @Example
     void should_throw_DecodeException_for_an_offset_or_count_beyond_the_largest_int() {
         // 2^32 - 1, which once threw an AssertionError as an offset, and then four bytes
         var bytes = new byte[] {-1, -1, -1, -1, 0, 0, 0, 0};
@@ -153,10 +189,22 @@ public class DecodeExceptionTest {
         }
 
         getters.add(new Getter("string", ByteBuffer::getString));
+        getters.add(new Getter("struct of 9 bytes", (buffer, position) -> buffer.getStruct(position, 9)));
+        getters.add(new Getter("structs of 3 bytes", (buffer, position) -> buffer.getStructArray(position, 3)));
         getters.add(new Getter("vector", ByteBuffer::getVector));
+        getters.add(new Getter("vector length", ByteBuffer::getVectorLength));
         getters.add(new Getter("vector offsets", ByteBuffer::getVectorOffsets));
+        getters.add(new Getter("last vector offset", DecodeExceptionTest::getLastVectorOffset));
 
         return Arbitraries.of(getters);
+    }
+
+    /** Finds the last item of a vector, which reads the ends before and after it, if it has any */
+    private static void getLastVectorOffset(ByteBuffer buffer, int position) {
+        var length = buffer.getVectorLength(position);
+        if (length > 0) {
+            buffer.getVectorOffset(position, length - 1);
+        }
     }
 
     /** Where a getter reads: at a root field's offset, at the offset of a field of a nested table, or anywhere */

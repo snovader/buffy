@@ -10,8 +10,8 @@ import java.nio.ShortBuffer;
 import java.util.*;
 
 /**
- * The type of a scalar field and of an array's elements, which descriptions name as
- * {@code cases.json} does, such as {@code "uint16"} and {@code "uint16[]"}.
+ * The type of a scalar field, of an array's elements and of a struct's scalars, which descriptions
+ * name as {@code cases.json} does, such as {@code "uint16"} and {@code "uint16[]"}.
  *
  * <p>Descriptions hold every value as a {@code long}: an integer as its value, a {@code uint64} as
  * its bits, as {@link ByteBuffer} reads it, and a float as its raw bits, a float32's as an
@@ -162,6 +162,24 @@ enum ScalarType {
         }
 
         return values;
+    }
+
+    /**
+     * Gets the value at {@code index} of the JDK's own buffer, in its byte order, as descriptions
+     * hold it, such as a scalar of a struct's view
+     */
+    long get(java.nio.ByteBuffer source, int index) {
+        return switch (this) {
+            case INT8 -> source.get(index);
+            case UINT8 -> Byte.toUnsignedLong(source.get(index));
+            case INT16 -> source.getShort(index);
+            case UINT16 -> Short.toUnsignedLong(source.getShort(index));
+            case INT32 -> source.getInt(index);
+            case UINT32 -> Integer.toUnsignedLong(source.getInt(index));
+            case INT64, UINT64 -> source.getLong(index);
+            case FLOAT32 -> Float.floatToRawIntBits(source.getFloat(index));
+            case FLOAT64 -> Double.doubleToRawLongBits(source.getDouble(index));
+        };
     }
 
     /** Puts a value with the JDK's own buffer, in its byte order, to compare tafla's bytes with */

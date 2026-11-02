@@ -52,17 +52,36 @@ export interface TableField extends NestedTable {
     alignment?: Alignment;
 }
 
+/** A scalar of a struct, with its value */
+export interface StructScalar {
+    type: ScalarType;
+    value: JsonNumber;
+}
+
+/**
+ * An array of structs: the types of the scalars of each, and the values of
+ * every struct's scalars in that order
+ */
+export interface StructArrayField {
+    type: 'struct[]';
+    fields: ScalarType[];
+    items: JsonNumber[][];
+}
+
 export type FieldDescription =
     | { type: ScalarType; value: JsonNumber }
     | { type: ArrayType; value: JsonNumber[] }
     | { type: 'string'; value: string }
+    | { type: 'struct'; fields: StructScalar[] }
+    | StructArrayField
     | TableField
     | { type: 'vector'; items: NestedTable[] };
 
 export type ArrayField = Extract<FieldDescription, { type: ArrayType }>;
 
+/** Whether a field is an array of scalars, rather than of structs */
 export function isArrayField(field: FieldDescription): field is ArrayField {
-    return field.type.endsWith('[]');
+    return field.type !== 'struct[]' && field.type.endsWith('[]');
 }
 
 /** The element type of an array type */

@@ -34,6 +34,8 @@ import {
     layoutOf,
     readTable,
     setField,
+    structAlignment,
+    structSize,
     TableReader
 } from './conformance/tables.ts';
 
@@ -98,7 +100,7 @@ describe('format rules', () => {
     );
 
     it.prop([tables()])(
-        'should start every typed array at a multiple of its element size from the start of its table',
+        "should start every array at a multiple of its alignment from the start of its table: its element size, or its structs' largest scalar size",
         table => {
             for (const { table: inner, offsets } of tablesIn(buildTable(table).bytes(), table)) {
                 const { offsetSize } = inner.layout;
@@ -107,6 +109,9 @@ describe('format rules', () => {
                     if (isArrayField(field)) {
                         const elementSize = ELEMENT_SIZES[elementTypeOf(field.type)];
                         expect((offsets[index] + offsetSize) % elementSize).toBe(0);
+                    } else if (field.type === 'struct[]') {
+                        const alignment = structAlignment(field.fields);
+                        expect((offsets[index] + offsetSize) % alignment).toBe(0);
                     }
                 }
             }
@@ -158,7 +163,41 @@ function expectLittleEndian(
     }
 
     if (field.type === 'vector') {
+        // The count, then the ends, which only grow
+        const count = field.items.length;
+        const ends = field.items.map((_, index) =>
+            readUnsigned(bytes, position + (index + 1) * offsetSize, offsetSize)
+        );
+
+        expect(readUnsigned(bytes, position, offsetSize)).toBe(count);
+        expect(ends).toStrictEqual(ends.toSorted((a, b) => a - b));
+        expect(ends.every(end => end >= (count + 1) * offsetSize)).toBe(true);
+        return;
+    }
+
+    if (field.type === 'struct') {
+        let at = position;
+        for (const { type, value } of field.fields) {
+            expect(readScalar(bytes, type, at)).toBe(value);
+            at += ELEMENT_SIZES[type];
+        }
+        return;
+    }
+
+    if (field.type === 'struct[]') {
+        const size = structSize(field.fields);
+        const start = position + offsetSize;
+        const items = field.items.map((_, item) => {
+            let at = start + item * size;
+            return field.fields.map(type => {
+                const value = readScalar(bytes, type, at);
+                at += ELEMENT_SIZES[type];
+                return value;
+            });
+        });
+
         expect(readUnsigned(bytes, position, offsetSize)).toBe(field.items.length);
+        expect(items).toStrictEqual(field.items);
         return;
     }
 
@@ -186,34 +225,41 @@ function expectLittleEndian(
     expect(readScalar(bytes, field.type, position)).toBe(field.value);
 }
 
-/** Every getter of a value at a position */
-const GETTERS = [
-    'getInt8',
-    'getUint8',
-    'getInt16',
-    'getUint16',
-    'getInt32',
-    'getUint32',
-    'getInt64',
-    'getUint64',
-    'getFloat32',
-    'getFloat64',
-    'getInt8Array',
-    'getUint8Array',
-    'getInt16Array',
-    'getUint16Array',
-    'getInt32Array',
-    'getUint32Array',
-    'getInt64Array',
-    'getUint64Array',
-    'getFloat32Array',
-    'getFloat64Array',
-    'getString',
-    'getVector',
-    'getVectorOffsets'
-] as const;
+/** Every getter of a value at a position, with sizes of structs that need one */
+const GETTERS = {
+    getInt8: (buffer, position) => buffer.getInt8(position),
+    getUint8: (buffer, position) => buffer.getUint8(position),
+    getInt16: (buffer, position) => buffer.getInt16(position),
+    getUint16: (buffer, position) => buffer.getUint16(position),
+    getInt32: (buffer, position) => buffer.getInt32(position),
+    getUint32: (buffer, position) => buffer.getUint32(position),
+    getInt64: (buffer, position) => buffer.getInt64(position),
+    getUint64: (buffer, position) => buffer.getUint64(position),
+    getFloat32: (buffer, position) => buffer.getFloat32(position),
+    getFloat64: (buffer, position) => buffer.getFloat64(position),
+    getInt8Array: (buffer, position) => buffer.getInt8Array(position),
+    getUint8Array: (buffer, position) => buffer.getUint8Array(position),
+    getInt16Array: (buffer, position) => buffer.getInt16Array(position),
+    getUint16Array: (buffer, position) => buffer.getUint16Array(position),
+    getInt32Array: (buffer, position) => buffer.getInt32Array(position),
+    getUint32Array: (buffer, position) => buffer.getUint32Array(position),
+    getInt64Array: (buffer, position) => buffer.getInt64Array(position),
+    getUint64Array: (buffer, position) => buffer.getUint64Array(position),
+    getFloat32Array: (buffer, position) => buffer.getFloat32Array(position),
+    getFloat64Array: (buffer, position) => buffer.getFloat64Array(position),
+    getString: (buffer, position) => buffer.getString(position),
+    getStruct: (buffer, position) => buffer.getStruct(position, 9),
+    getStructArray: (buffer, position) => buffer.getStructArray(position, 3),
+    getVector: (buffer, position) => buffer.getVector(position),
+    getVectorOffsets: (buffer, position) => buffer.getVectorOffsets(position),
+    // The last item, which reads the ends before and after it
+    getVectorOffset: (buffer, position) => {
+        const length = buffer.getVectorLength(position);
+        return length === 0 ? null : buffer.getVectorOffset(position, length - 1);
+    }
+} satisfies Record<string, (buffer: ByteBuffer, position: number) => unknown>;
 
-type Getter = (typeof GETTERS)[number];
+type Getter = keyof typeof GETTERS;
 
 /** The index of a root field, and then of a field of each nested table */
 const PATHS = fc.array(fc.nat({ max: 20 }), { minLength: 1, maxLength: 3 });
@@ -249,7 +295,7 @@ describe('untrusted bytes', () => {
     it.prop([
         fc.uint8Array({ maxLength: 64 }),
         LAYOUTS,
-        fc.constantFrom(...GETTERS),
+        fc.constantFrom(...(Object.keys(GETTERS) as Getter[])),
         PATHS,
         BYTE_OFFSETS
     ])(
@@ -332,7 +378,7 @@ function readPath(
                 position = buffer.fieldOffset(position, index);
             }
 
-            return buffer[getter](position);
+            return GETTERS[getter](buffer, position);
         })
     ];
 }
@@ -391,7 +437,8 @@ describe('builder limits', () => {
     const unpaddedFields = FIELDS.filter(
         field =>
             field.type !== 'table' &&
-            !(isArrayField(field) && ELEMENT_SIZES[elementTypeOf(field.type)] > 1)
+            !(isArrayField(field) && ELEMENT_SIZES[elementTypeOf(field.type)] > 1) &&
+            !(field.type === 'struct[]' && structAlignment(field.fields) > 1)
     );
 
     const tablesWithLastFields = fc.oneof(
@@ -449,8 +496,8 @@ function bytesField(length: number): FieldDescription {
 
 /**
  * Fields that are by themselves longer than a table of `offsetSize`-byte
- * offsets addresses: arrays, strings, nested tables and vectors with a long
- * item or many items
+ * offsets addresses: arrays of scalars and of structs, strings, nested tables
+ * and vectors with a long item or many items
  */
 function oversizedFields(offsetSize: OffsetSize): fc.Arbitrary<FieldDescription> {
     const max = MAX_VALUES[offsetSize];
@@ -461,6 +508,11 @@ function oversizedFields(offsetSize: OffsetSize): fc.Arbitrary<FieldDescription>
 
     const arrays = SCALAR_TYPES.map(type => arrayField(type, max));
     const string: FieldDescription = { type: 'string', value: 'a'.repeat(max) };
+    const structs: FieldDescription = {
+        type: 'struct[]',
+        fields: ['uint16', 'uint8'],
+        items: Array.from({ length: Math.ceil(max / 3) }, () => [1, 2])
+    };
     const manyItems: FieldDescription = {
         type: 'vector',
         items: Array.from({ length: Math.ceil(max / offsetSize) }, () => ({
@@ -470,7 +522,7 @@ function oversizedFields(offsetSize: OffsetSize): fc.Arbitrary<FieldDescription>
     };
 
     return fc.oneof(
-        fc.constantFrom(...arrays, string, manyItems),
+        fc.constantFrom(...arrays, string, structs, manyItems),
         froms.map((from): FieldDescription => ({ type: 'table', from, table: long })),
         froms.map((from): FieldDescription => ({ type: 'vector', items: [{ from, table: long }] }))
     );

@@ -1,7 +1,7 @@
 from collections.abc import Buffer, Callable, Iterable, Sequence
 from typing import Any, Literal, overload
 
-from .byte_buffer import ByteBuffer
+from .byte_buffer import ByteBuffer, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
 from .layout import TableLayout
@@ -20,19 +20,20 @@ _MAX_LENGTHS: dict[AddressableSpace, int] = {
 class TableBuilder:
     """Builds a table: a header with one offset per field, after the table's
     total length and version when its layout has them, followed by the fields
-    in the order they're set. Arrays, strings and vectors are length-prefixed,
-    and typed arrays are padded so their elements are aligned from the start of
-    the table. Fields are read back by index with ``ByteBuffer.root_offset()``,
-    or ``ByteBuffer.field_offset()`` for a table nested in another.
+    in the order they're set. Arrays, strings and vectors start with their
+    count, and a vector then holds the end of each item. Arrays of scalars and
+    of structs are padded so their elements are aligned from the start of the
+    table. Fields are read back by index with ``ByteBuffer.root_offset()``, or
+    ``ByteBuffer.field_offset()`` for a table nested in another.
 
     Setting a field records it and its position. ``finalize()`` then allocates
-    the table at its exact size and writes every field in one pass, so arrays
-    and tables given as buffers must keep their length in between; a changed
-    length raises ``ValueError``. Tables nested from their builders are written
-    in the same pass, straight into this one. A setter raises ``ValueError``,
-    and leaves the builder as it was, when its field would make the table
-    longer than the layout's ``offset_size`` addresses: 255 bytes, 64 KiB or 4
-    GiB.
+    the table at its exact size and writes every field in one pass, so arrays,
+    structs and tables given as buffers must keep their length in between; a
+    changed length raises ``ValueError``. Tables nested from their builders are
+    written in the same pass, straight into this one. A setter raises
+    ``ValueError``, and leaves the builder as it was, when its field would make
+    the table longer than the layout's ``offset_size`` addresses: 255 bytes, 64
+    KiB or 4 GiB.
     """
 
     __slots__ = [
@@ -118,9 +119,9 @@ class TableBuilder:
         """Writes the table, once; later calls return the same buffer.
 
         Raises ``ValueError`` if fewer fields were set than the table holds, or
-        if the length of an array or table given as a buffer changed since it
-        was set. A failed write leaves the builder unfinalized, with its fields
-        set.
+        if the length of an array, struct or table given as a buffer changed
+        since it was set. A failed write leaves the builder unfinalized, with
+        its fields set.
         """
         if self.__buffer is not None:
             return self.__buffer
@@ -251,6 +252,34 @@ class TableBuilder:
         encoded = string.encode()
         self.__add_field(ByteBuffer.set_string, encoded, self.__size + len(encoded), 0)
 
+    def set_struct(self, data: Buffer) -> None:
+        """Sets a struct field from its bytes: its scalars, little-endian, one
+        after another, which are written as they are, without padding. A
+        ``struct.Struct`` with a ``<`` format packs them."""
+        byte_length = memoryview(data).nbytes
+        self.__add_field(_write_bytes, (data, byte_length), byte_length, 0)
+
+    def set_struct_array(self, data: Buffer, size: int, alignment: ElementSize) -> None:
+        """Sets an array of structs of ``size`` bytes each, from their bytes
+        one after another. It's padded so that the structs start at a multiple
+        of ``alignment`` from the start of the table, which is the size of the
+        structs' largest scalar.
+
+        Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
+        whole number of structs.
+        """
+        byte_length = memoryview(data).nbytes
+        struct_count(byte_length, size)
+        padding = _padding(self.__offset + self.__size, alignment)
+
+        self.__add_field(
+            _write_struct_array,
+            (data, size, byte_length),
+            self.__size + byte_length,
+            padding,
+        )
+        self.__align_to(alignment)
+
     def set_table(
         self, table: TableBuilder | Buffer, alignment: ElementSize | None = None
     ) -> None:
@@ -263,12 +292,12 @@ class TableBuilder:
         finalized or nested elsewhere too, since a complete builder doesn't
         change.
 
-        The nested table's typed arrays are aligned from its own start, so it's
+        The nested table's arrays are aligned from its own start, so it's
         padded to start at a multiple of ``alignment``. For a builder, the
-        default is the largest element size of its arrays and the alignment of
-        its nested tables, or 1 if it has neither. For bytes, the default of 4
-        suits tables of 8-, 16- and 32-bit elements; pass 8 for a table with
-        64-bit arrays.
+        default is the largest alignment of its arrays, of scalars and of
+        structs, and of its nested tables, or 1 if it has neither. For bytes,
+        the default of 4 suits tables of 8-, 16- and 32-bit elements; pass 8
+        for a table with 64-bit arrays.
 
         Raises ``ValueError`` if the builder has fields left to set.
         """
@@ -290,11 +319,12 @@ class TableBuilder:
         self.__align_to(alignment)
 
     def set_vector(self, vector: Sequence[TableBuilder | Buffer]) -> None:
-        """Writes a vector of tables, from their builders or their bytes, each
-        with a length prefix. Builders must have all their fields set, and are
-        written straight into this table as ``set_table()`` writes them, except
-        for those whose layout has another ``offset_size``, which are finalized
-        and copied. Items aren't padded.
+        """Writes a vector of tables, from their builders or their bytes, after
+        the end of each, which lets readers find any item without reading the
+        others. Builders must have all their fields set, and are written
+        straight into this table as ``set_table()`` writes them, except for
+        those whose layout has another ``offset_size``, which are finalized and
+        copied. Items aren't padded.
 
         Raises ``ValueError`` if a builder has fields left to set.
         """
@@ -415,14 +445,21 @@ class TableBuilder:
         field: tuple[tuple[TableBuilder | Buffer, ...], int, AddressableSpace],
     ) -> None:
         """Writes a vector into a buffer whose offsets are ``size`` bytes wide,
-        like the vector's count and lengths"""
+        like the vector's count and item ends"""
         items, byte_length, size = field
         lengths = [TableBuilder.__length_of(item) for item in items]
-        _check_length(byte_length, size * (1 + len(items)) + sum(lengths))
+        first = size * (1 + len(items))
+        _check_length(byte_length, first + sum(lengths))
 
         buffer.set_size(len(items))
-        for item, length in zip(items, lengths, strict=True):
-            buffer.set_size(length)
+
+        # Each end counts from the vector's position, which is its count's
+        end = first
+        for length in lengths:
+            end += length
+            buffer.set_size(end)
+
+        for item in items:
             TableBuilder.__write_item(buffer, item, size)
 
     @staticmethod
@@ -442,10 +479,11 @@ class TableBuilder:
 
 
 def _write_bytes(buffer: ByteBuffer, field: tuple[Buffer, int]) -> None:
-    table, byte_length = field
-    _check_length(byte_length, memoryview(table).nbytes)
+    """Writes a table or struct given as bytes"""
+    data, byte_length = field
+    _check_length(byte_length, memoryview(data).nbytes)
 
-    buffer.set_bytes(table)
+    buffer.set_bytes(data)
 
 
 def _write_array(buffer: ByteBuffer, field: tuple[_Write, Buffer, int]) -> None:
@@ -453,6 +491,13 @@ def _write_array(buffer: ByteBuffer, field: tuple[_Write, Buffer, int]) -> None:
     _check_length(byte_length, memoryview(elements).nbytes)
 
     set_array(buffer, elements)
+
+
+def _write_struct_array(buffer: ByteBuffer, field: tuple[Buffer, int, int]) -> None:
+    data, size, byte_length = field
+    _check_length(byte_length, memoryview(data).nbytes)
+
+    buffer.set_struct_array(data, size)
 
 
 def _check_length(recorded: int, current: int) -> None:

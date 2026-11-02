@@ -36,6 +36,12 @@ final class Tables {
             case ScalarField scalar -> scalar.type().set(builder, scalar.value());
             case ArrayField array -> array.type().setArray(builder, array.values());
             case StringField string -> builder.setString(string.value());
+            case StructField struct -> builder.setStruct(StructBytes.pack(struct.types(), List.of(struct.values())));
+            case StructArrayField array -> builder.setStructArray(
+                StructBytes.pack(array.fields(), array.items()),
+                StructBytes.size(array.fields()),
+                StructBytes.alignment(array.fields())
+            );
             case TableField table -> setTable(builder, table);
             case VectorField vector -> setVector(builder, vector.items());
         }

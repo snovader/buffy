@@ -6,10 +6,11 @@ use crate::{Alignment, BuildError, Element, OffsetSize, TableLayout, element::ex
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
-/// the order they're set. Arrays, strings and vectors are length-prefixed,
-/// and arrays are padded so their elements are aligned from the start of the
-/// table. Fields are read back by index with `ByteBuffer::root_offset()`, or
-/// `ByteBuffer::field_offset()` for a table nested in another.
+/// the order they're set. Arrays, strings and vectors start with their
+/// count, and a vector then holds the end of each item. Arrays of scalars
+/// and of structs are padded so their elements are aligned from the start of
+/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
+/// or `ByteBuffer::field_offset()` for a table nested in another.
 ///
 /// Setting a field records it, borrowing or owning its value, and
 /// [`TableBuilder::to_bytes()`] then allocates the table at its exact size
@@ -195,6 +196,47 @@ impl<'a> TableBuilder<'a> {
         self.add_field(Field::String(string.into()))
     }
 
+    /// Sets a struct field from its bytes: its scalars, little-endian, one
+    /// after another, which are written as they are, without padding. The
+    /// builder borrows a slice or owns a `Vec` until the table is written.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it longer
+    /// than its offsets address.
+    pub fn set_struct(&mut self, bytes: impl Into<Cow<'a, [u8]>>) -> Result<(), BuildError> {
+        self.add_field(Field::Struct(bytes.into()))
+    }
+
+    /// Sets an array of structs of `size` bytes each, from their bytes one
+    /// after another, which it counts. It's padded so that the structs start
+    /// at a multiple of `alignment` from the start of the table, which is
+    /// the size of the structs' largest scalar.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::NotWholeStructs`] if `size` is 0 or the bytes aren't a
+    /// whole number of structs, or an error of any setter.
+    pub fn set_struct_array(
+        &mut self,
+        bytes: impl Into<Cow<'a, [u8]>>,
+        size: usize,
+        alignment: Alignment,
+    ) -> Result<(), BuildError> {
+        let bytes = bytes.into();
+        let length = bytes.len();
+        if size == 0 || !length.is_multiple_of(size) {
+            return Err(BuildError::NotWholeStructs { length, size });
+        }
+
+        self.add_field(Field::StructArray {
+            bytes,
+            count: length / size,
+            alignment,
+        })
+    }
+
     /// Embeds a table, from its builder or its bytes, without a length prefix.
     /// Readers find its fields with `ByteBuffer::field_offset()` from the
     /// field's position, which reads offsets as wide as the parent's, so the
@@ -207,10 +249,10 @@ impl<'a> TableBuilder<'a> {
     ///
     /// The nested table's arrays are aligned from its own start, so it's
     /// padded to start at a multiple of an alignment, which they need to be
-    /// read in place. For a builder, that's the largest element size of its
-    /// arrays and the alignment of its nested tables, or 1 if it has neither.
-    /// For bytes, it's 4, which suits tables of 8-, 16- and 32-bit elements;
-    /// [`TableBuilder::set_table_aligned()`] takes another.
+    /// read in place. For a builder, that's the largest alignment of its
+    /// arrays, of scalars and of structs, and of its nested tables, or 1 if
+    /// it has neither. For bytes, it's 4, which suits tables of 8-, 16- and
+    /// 32-bit elements; [`TableBuilder::set_table_aligned()`] takes another.
     ///
     /// # Errors
     ///
@@ -238,11 +280,12 @@ impl<'a> TableBuilder<'a> {
         self.add_table(table.into(), alignment)
     }
 
-    /// Writes a vector of tables, from their builders or their bytes, each
-    /// with a length prefix. Builders must have all their fields set, and are
-    /// written straight into this table as `set_table()` writes them, each in
-    /// its own layout. Items aren't padded, so their arrays are read in place
-    /// only when they happen to be aligned.
+    /// Writes a vector of tables, from their builders or their bytes, after
+    /// the end of each, which lets readers find any item without reading the
+    /// others. Builders must have all their fields set, and are written
+    /// straight into this table as `set_table()` writes them, each in its own
+    /// layout. Items aren't padded, so their arrays are read in place only
+    /// when they happen to be aligned.
     ///
     /// # Errors
     ///
@@ -273,8 +316,8 @@ impl<'a> TableBuilder<'a> {
     /// Records a field after the padding that it needs. Checking the table's
     /// length here, rather than when writing it, reports a field too long for
     /// the layout from its own setter and leaves the builder as it was. Every
-    /// offset and length is shorter than the table, so the table's length is
-    /// the one value to check.
+    /// offset, count, length and item end is at most the table's length, so
+    /// that's the one value to check.
     fn add_field(&mut self, field: Field<'a>) -> Result<(), BuildError> {
         let index = self.values.len();
         if index == self.fields as usize {
@@ -451,6 +494,15 @@ enum Field<'a> {
     },
     Array(Array<'a>),
     String(Cow<'a, str>),
+    /// A struct's bytes, written as they are
+    Struct(Cow<'a, [u8]>),
+    /// The bytes of `count` structs, which start at a multiple of
+    /// `alignment` from the table's start
+    StructArray {
+        bytes: Cow<'a, [u8]>,
+        count: usize,
+        alignment: Alignment,
+    },
     Table {
         table: NestedTable<'a>,
         alignment: Alignment,
@@ -472,20 +524,22 @@ impl Field<'_> {
     fn alignment(&self) -> Alignment {
         match self {
             Self::Array(array) => array.alignment(),
-            Self::Table { alignment, .. } => *alignment,
-            Self::Scalar { .. } | Self::String(_) | Self::Vector(_) => Alignment::One,
+            Self::StructArray { alignment, .. } | Self::Table { alignment, .. } => *alignment,
+            Self::Scalar { .. } | Self::String(_) | Self::Struct(_) | Self::Vector(_) => {
+                Alignment::One
+            }
         }
     }
 
     /// The padding before the field when it would start at `offset`, which
-    /// aligns an array's elements after its length prefix and a nested
-    /// table's start
+    /// aligns an array's elements after its count and a nested table's start
     fn padding(&self, offset: usize, width: usize) -> usize {
         match self {
             // Wrapping, since only the remainder matters
             Self::Array(array) => array.alignment().padding(offset.wrapping_add(width)),
+            Self::StructArray { alignment, .. } => alignment.padding(offset.wrapping_add(width)),
             Self::Table { alignment, .. } => alignment.padding(offset),
-            Self::Scalar { .. } | Self::String(_) | Self::Vector(_) => 0,
+            Self::Scalar { .. } | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
         }
     }
 
@@ -499,6 +553,8 @@ impl Field<'_> {
             Self::Scalar { size, .. } => *size as u64,
             Self::Array(array) => width + array.byte_length() as u64,
             Self::String(string) => width + string.len() as u64,
+            Self::Struct(bytes) => bytes.len() as u64,
+            Self::StructArray { bytes, .. } => width + bytes.len() as u64,
             Self::Table { table, .. } => table.byte_length() as u64,
             Self::Vector(items) => items.iter().fold(width, |length, item| {
                 length.saturating_add(width + item.byte_length() as u64)
@@ -526,12 +582,28 @@ impl Field<'_> {
                 push_slot(bytes, offset_size, string.len());
                 bytes.extend_from_slice(string.as_bytes());
             }
+            Self::Struct(scalars) => bytes.extend_from_slice(scalars),
+            Self::StructArray {
+                bytes: structs,
+                count,
+                ..
+            } => {
+                push_slot(bytes, offset_size, *count);
+                bytes.extend_from_slice(structs);
+            }
             Self::Table { table, .. } => table.write(bytes),
             Self::Vector(items) => {
                 push_slot(bytes, offset_size, items.len());
 
+                // Each end counts from the vector's position, which is its
+                // count's
+                let mut end = (items.len() + 1) * offset_size.bytes();
                 for item in items {
-                    push_slot(bytes, offset_size, item.byte_length());
+                    end += item.byte_length();
+                    push_slot(bytes, offset_size, end);
+                }
+
+                for item in items {
                     item.write(bytes);
                 }
             }

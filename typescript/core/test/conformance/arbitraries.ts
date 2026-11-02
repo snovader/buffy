@@ -156,6 +156,42 @@ const stringFields = STRINGS.map(
     (value): FieldDescription => ({ type: 'string', value })
 );
 
+const ITEMS_PER_STRUCT_ARRAY = 4;
+
+/** The scalar types of a struct, of one to four scalars */
+const STRUCT_TYPES: fc.Arbitrary<ScalarType[]> = fc.array(
+    fc.constantFrom(...SCALAR_TYPES),
+    { minLength: 1, maxLength: 4 }
+);
+
+/** The values of a struct of scalars of these types */
+function structValues(types: ScalarType[]): fc.Arbitrary<JsonNumber[]> {
+    return fc.tuple(...types.map(type => VALUES[type]));
+}
+
+const structFields = STRUCT_TYPES.chain(types =>
+    structValues(types).map(
+        (values): FieldDescription => ({
+            type: 'struct',
+            fields: types.map((type, index) => ({ type, value: values[index] }))
+        })
+    )
+);
+
+/** Arrays of structs of any scalars, empty too */
+export const STRUCT_ARRAY_FIELDS: fc.Arbitrary<FieldDescription> =
+    STRUCT_TYPES.chain(types =>
+        fc
+            .array(structValues(types), { maxLength: ITEMS_PER_STRUCT_ARRAY })
+            .map(
+                (items): FieldDescription => ({
+                    type: 'struct[]',
+                    fields: types,
+                    items
+                })
+            )
+    );
+
 /** A table's layout, and its version when it's versioned */
 type Header = Pick<TableDescription, 'layout' | 'version'>;
 
@@ -212,7 +248,13 @@ export const FIELDS: fc.Arbitrary<FieldDescription> = fc.letrec<{
         // At the maximum depth, only the first arbitrary is drawn
         { maxDepth: NESTING_DEPTH, withCrossShrink: true },
         {
-            arbitrary: fc.oneof(scalarFields, ARRAY_FIELDS, stringFields),
+            arbitrary: fc.oneof(
+                scalarFields,
+                ARRAY_FIELDS,
+                stringFields,
+                structFields,
+                STRUCT_ARRAY_FIELDS
+            ),
             weight: 4
         },
         { arbitrary: tableFields(tie('nestedTable')), weight: 1 },

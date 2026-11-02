@@ -2,7 +2,9 @@
 
 use tafla::{BuildError, NestedTable, TableBuilder};
 
-use super::description::{Field, Nested, Source, Table};
+use super::description::{
+    Field, Nested, Source, Table, struct_alignment, struct_bytes, struct_size,
+};
 
 impl Table {
     /// Starts a builder of the table's layout, version and number of
@@ -36,7 +38,8 @@ impl Table {
 }
 
 impl Field {
-    /// Sets the field on `builder`, which borrows its value
+    /// Sets the field on `builder`, which borrows its value, or owns the
+    /// bytes of structs
     pub fn set<'a>(&'a self, builder: &mut TableBuilder<'a>) -> Result<(), BuildError> {
         match self {
             Self::I8(value) => builder.set_i8(*value),
@@ -60,6 +63,14 @@ impl Field {
             Self::F32Array(values) => builder.set_f32_array(values),
             Self::F64Array(values) => builder.set_f64_array(values),
             Self::String(string) => builder.set_str(string),
+            Self::Struct(scalars) => builder.set_struct(struct_bytes(scalars)),
+            Self::StructArray { types, items } => {
+                let bytes = items.iter().flat_map(|scalars| struct_bytes(scalars));
+                let size = struct_size(types.iter().copied());
+                let alignment = struct_alignment(types.iter().copied());
+
+                builder.set_struct_array(bytes.collect::<Vec<_>>(), size, alignment)
+            }
             Self::Table { nested, alignment } => {
                 let table = nested.build()?;
                 match alignment {

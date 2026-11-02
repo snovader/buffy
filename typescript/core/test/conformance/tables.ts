@@ -1,4 +1,18 @@
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
+import {
+    ByteBuffer,
+    readFloat32,
+    readFloat64,
+    readInt8,
+    readInt16,
+    readInt32,
+    readInt64,
+    readUint8,
+    readUint16,
+    readUint32,
+    readUint64,
+    TableBuilder,
+    TableLayout
+} from 'tafla';
 import {
     type Alignment,
     elementTypeOf,
@@ -9,6 +23,7 @@ import {
     type LayoutDescription,
     type NestedTable,
     type ScalarType,
+    type StructArrayField,
     type TableDescription,
     type TableField,
     toJsonNumber
@@ -155,6 +170,23 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
             builder.setString(field.value);
             break;
 
+        case 'struct':
+            builder.setStruct(
+                packStructs(
+                    field.fields.map(({ type }) => type),
+                    [field.fields.map(({ value }) => value)]
+                )
+            );
+            break;
+
+        case 'struct[]':
+            builder.setStructArray(
+                packStructs(field.fields, field.items),
+                structSize(field.fields),
+                structAlignment(field.fields)
+            );
+            break;
+
         case 'table':
             builder.setTable(buildNested(field), field.alignment);
             break;
@@ -162,6 +194,145 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
         case 'vector':
             builder.setVector(field.items.map(buildNested));
             break;
+    }
+}
+
+/** The byte length of a struct of scalars of these types */
+export function structSize(types: readonly ScalarType[]): number {
+    return types.reduce((size, type) => size + ELEMENT_SIZES[type], 0);
+}
+
+/** The alignment of an array of structs: their largest scalar's size */
+export function structAlignment(types: readonly ScalarType[]): Alignment {
+    let largest: Alignment = 1;
+    for (const type of types) {
+        if (ELEMENT_SIZES[type] > largest) {
+            largest = ELEMENT_SIZES[type];
+        }
+    }
+
+    return largest;
+}
+
+/** The bytes of structs of scalars of these types, one after another */
+function packStructs(
+    types: readonly ScalarType[],
+    items: readonly JsonNumber[][]
+): Uint8Array {
+    const buffer = new ByteBuffer(
+        new Uint8Array(items.length * structSize(types))
+    );
+    for (const values of items) {
+        for (const [index, type] of types.entries()) {
+            setScalar(buffer, type, values[index]);
+        }
+    }
+
+    return buffer.bytes();
+}
+
+/** Writes a scalar at the buffer's position */
+function setScalar(
+    buffer: ByteBuffer,
+    type: ScalarType,
+    value: JsonNumber
+): void {
+    switch (type) {
+        case 'int8':
+            buffer.setInt8(fromJsonNumber(value));
+            break;
+
+        case 'uint8':
+            buffer.setUint8(fromJsonNumber(value));
+            break;
+
+        case 'int16':
+            buffer.setInt16(fromJsonNumber(value));
+            break;
+
+        case 'uint16':
+            buffer.setUint16(fromJsonNumber(value));
+            break;
+
+        case 'int32':
+            buffer.setInt32(fromJsonNumber(value));
+            break;
+
+        case 'uint32':
+            buffer.setUint32(fromJsonNumber(value));
+            break;
+
+        case 'int64':
+            buffer.setInt64(BigInt(value));
+            break;
+
+        case 'uint64':
+            buffer.setUint64(BigInt(value));
+            break;
+
+        case 'float32':
+            buffer.setFloat32(fromJsonNumber(value));
+            break;
+
+        case 'float64':
+            buffer.setFloat64(fromJsonNumber(value));
+            break;
+    }
+}
+
+/**
+ * Reads the scalars of a struct at `offset` in its bytes with the runtime's
+ * read functions, as descriptions hold them
+ */
+function readStruct(
+    bytes: Uint8Array,
+    types: readonly ScalarType[],
+    offset: number
+): JsonNumber[] {
+    let position = offset;
+
+    return types.map(type => {
+        const value = readScalar(bytes, type, position);
+        position += ELEMENT_SIZES[type];
+        return value;
+    });
+}
+
+function readScalar(
+    bytes: Uint8Array,
+    type: ScalarType,
+    offset: number
+): JsonNumber {
+    switch (type) {
+        case 'int8':
+            return readInt8(bytes, offset);
+
+        case 'uint8':
+            return readUint8(bytes, offset);
+
+        case 'int16':
+            return readInt16(bytes, offset);
+
+        case 'uint16':
+            return readUint16(bytes, offset);
+
+        case 'int32':
+            return readInt32(bytes, offset);
+
+        case 'uint32':
+            return readUint32(bytes, offset);
+
+        case 'int64':
+            return String(readInt64(bytes, offset));
+
+        case 'uint64':
+            return String(readUint64(bytes, offset));
+
+        case 'float32':
+            return toJsonNumber(readFloat32(bytes, offset));
+
+        case 'float64':
+            return toJsonNumber(readFloat64(bytes, offset));
     }
 }
 
@@ -176,8 +347,8 @@ function toBigInt(value: JsonNumber): bigint {
 
 /**
  * The alignment that `setTable()` pads a nested table to: the one passed, or
- * by default for a builder the largest element size of its arrays and the
- * alignment of its nested tables, or 1 if it has neither, and for bytes 4.
+ * by default for a builder the largest alignment of its arrays and nested
+ * tables, or 1 if it has neither, and for bytes 4.
  */
 export function alignmentOf({ from, alignment, table }: TableField): Alignment {
     if (alignment !== undefined) {
@@ -205,7 +376,11 @@ function alignmentWithin(field: FieldDescription): Alignment {
         return ELEMENT_SIZES[elementTypeOf(field.type)];
     }
 
-    // Scalars, strings and vectors aren't padded
+    if (field.type === 'struct[]') {
+        return structAlignment(field.fields);
+    }
+
+    // Scalars, strings, structs and vectors aren't padded
     return field.type === 'table' ? alignmentOf(field) : 1;
 }
 
@@ -381,6 +556,29 @@ export class TableReader {
             case 'string':
                 return { ...field, value: buffer.getString(position) };
 
+            case 'struct': {
+                const types = field.fields.map(({ type }) => type);
+                const values = readStruct(
+                    buffer.getStruct(position, structSize(types)),
+                    types,
+                    0
+                );
+
+                return {
+                    ...field,
+                    fields: field.fields.map((scalar, index) => ({
+                        ...scalar,
+                        value: values[index]
+                    }))
+                };
+            }
+
+            case 'struct[]':
+                return {
+                    ...field,
+                    items: this.#readStructArray(position, field)
+                };
+
             case 'table':
                 return {
                     ...field,
@@ -407,6 +605,16 @@ export class TableReader {
             );
         }
 
+        // Finding each item from its ends alone finds the same item
+        for (const [index, offset] of offsets.entries()) {
+            const found = this.#buffer.getVectorOffset(position, index);
+            if (found !== offset) {
+                throw new DescriptionMismatch(
+                    `Item ${index} of the vector is at ${found} from its ends, but at ${offset} among every item`
+                );
+            }
+        }
+
         const vector = this.#buffer.getVector(position);
 
         return items.map((item, index) => ({
@@ -415,6 +623,18 @@ export class TableReader {
                 ? this.#readInPlace(offsets[index], item.table)
                 : readTable(vector[index], item.table)
         }));
+    }
+
+    #readStructArray(
+        position: number,
+        { fields }: StructArrayField
+    ): JsonNumber[][] {
+        const size = structSize(fields);
+        const bytes = this.#buffer.getStructArray(position, size);
+
+        return Array.from({ length: bytes.length / size }, (_, index) =>
+            readStruct(bytes, fields, index * size)
+        );
     }
 
     /** Reads a table nested with `setTable()` */

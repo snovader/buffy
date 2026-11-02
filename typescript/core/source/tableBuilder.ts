@@ -1,4 +1,4 @@
-import { ByteBuffer } from './byteBuffer.ts';
+import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
 import { TableLayout } from './layout.ts';
@@ -28,13 +28,15 @@ const FLOAT64_ARRAY = 19;
 const STRING = 20;
 const TABLE = 21;
 const VECTOR = 22;
+const STRUCT = 23;
+const STRUCT_ARRAY = 24;
 
 /**
  * Builds a table: a header with one offset per field, after the table's total
  * length and version when its layout has them, followed by the fields in the
- * order they're set. Arrays, strings and vectors are length-prefixed, and
- * typed arrays are padded so their elements are aligned from the start of the
- * table. Fields are read back by index with `ByteBuffer.rootOffset()`, or
+ * order they're set. Arrays, strings and vectors start with their count, and a
+ * vector then holds the end of each item. Arrays of scalars and of structs are
+ * padded so their elements are aligned from the start of the table. Fields are read back by index with `ByteBuffer.rootOffset()`, or
  * `ByteBuffer.fieldOffset()` for a table nested in another.
  *
  * Setting a field records it and its position. `finalize()` then allocates the
@@ -337,6 +339,40 @@ export class TableBuilder {
     }
 
     /**
+     * Sets a struct field from its bytes: its scalars, little-endian, one
+     * after another, which are written as they are, without padding.
+     */
+    setStruct(bytes: Uint8Array): void {
+        this.#addField(STRUCT, bytes, bytes.length, 0);
+    }
+
+    /**
+     * Sets an array of structs of `size` bytes each, from their bytes one
+     * after another. It's padded so that the structs start at a multiple of
+     * `alignment` from the start of the table, which is the size of the
+     * structs' largest scalar.
+     *
+     * @throws {RangeError} If `size` isn't a positive integer, or `bytes`
+     * aren't a whole number of structs.
+     */
+    setStructArray(
+        bytes: Uint8Array,
+        size: number,
+        alignment: ElementSize
+    ): void {
+        structCount(bytes.length, size);
+
+        const padding = getPadding(this.#offset + this.#size, alignment);
+        this.#addField(
+            STRUCT_ARRAY,
+            [bytes, size],
+            this.#size + bytes.length,
+            padding
+        );
+        this.#alignTo(alignment);
+    }
+
+    /**
      * Embeds a table, from its builder or its bytes, without a length prefix.
      * Readers find its fields with `ByteBuffer.fieldOffset()` from the field's
      * offset, so its layout must be {@link TableLayout.DEFAULT}.
@@ -349,8 +385,7 @@ export class TableBuilder {
      * The nested table's typed arrays are aligned from its own start, so it's
      * padded to start at a multiple of `alignment`, which they need to be read
      * as views rather than copies. For a builder, the default is the largest
-     * element size of its arrays and the alignment of its nested tables, or 1
-     * if it has neither. For bytes, the default of 4 suits tables of 8-, 16-
+     * alignment of its arrays and nested tables, or 1 if it has neither. For bytes, the default of 4 suits tables of 8-, 16-
      * and 32-bit elements; pass 8 for a table with 64-bit arrays.
      *
      * @throws {RangeError} If the builder has fields left to set.
@@ -367,12 +402,13 @@ export class TableBuilder {
     }
 
     /**
-     * Writes a vector of tables, from their builders or their bytes, each with
-     * a length prefix. Builders must have all their fields set, and are
-     * written straight into this table as `setTable()` writes them, except
-     * for those whose layout has another `offsetSize`, which are finalized
-     * and copied. Items aren't padded, so their typed arrays are read as
-     * copies when they don't happen to be aligned.
+     * Writes a vector of tables, from their builders or their bytes, after
+     * the end of each, which lets readers find any item without reading the
+     * others. Builders must have all their fields set, and are written
+     * straight into this table as `setTable()` writes them, except for those
+     * whose layout has another `offsetSize`, which are finalized and copied.
+     * Items aren't padded, so their typed arrays are read as copies when they
+     * don't happen to be aligned.
      *
      * @throws {RangeError} If a builder has fields left to set.
      */
@@ -524,8 +560,14 @@ export class TableBuilder {
     ): void {
         setLength(buffer, this.#size, vector.length);
 
+        // Each end counts from the vector's position, which is its count's
+        let end = (vector.length + 1) * this.#size;
         for (let i = 0; i < vector.length; i++) {
-            setLength(buffer, this.#size, TableBuilder.#lengthOf(vector[i]));
+            end += TableBuilder.#lengthOf(vector[i]);
+            setLength(buffer, this.#size, end);
+        }
+
+        for (let i = 0; i < vector.length; i++) {
             this.#writeTable(buffer, vector[i]);
         }
     }
@@ -632,6 +674,16 @@ function writeField(buffer: ByteBuffer, kind: number, value: unknown): void {
         case STRING:
             buffer.setString(value as Uint8Array);
             break;
+
+        case STRUCT:
+            buffer.setBytes(value as Uint8Array);
+            break;
+
+        case STRUCT_ARRAY: {
+            const [bytes, size] = value as [Uint8Array, number];
+            buffer.setStructArray(bytes, size);
+            break;
+        }
     }
 }
 

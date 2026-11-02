@@ -13,9 +13,9 @@ class TableLayout[Versioned: bool = bool]:
     - ``sized``: whether the header starts with the table's total byte length.
     - ``versioned``: whether the header has a slot for a version, after the
       length when ``sized``. Readers can check it before reading any field.
-    - ``offset_size``: the width in bytes of the header slots, field offsets
-      and length prefixes, which limits the table's size: 1 for up to 255
-      bytes, 2 for 65,535 and 4, the default, for 4 GiB.
+    - ``offset_size``: the width in bytes of the header slots, field offsets,
+      counts and vector item ends, which limits the table's size: 1 for up to
+      255 bytes, 2 for 65,535 and 4, the default, for 4 GiB.
 
     ``Versioned`` lets type checkers require a version where a versioned table
     is built.

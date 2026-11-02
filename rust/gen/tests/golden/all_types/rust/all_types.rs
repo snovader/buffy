@@ -316,8 +316,12 @@ impl<'a> Nested<'a> {
     pub fn trees(&self) -> Result<Vec<Tree<'a>>, DecodeError> {
         let position = self.buffer.root_offset(2)?;
         let vector = self.buffer.get_vector(position)?;
+        let mut items = Vec::with_capacity(vector.len());
+        for item in vector {
+            items.push(Tree::new(item?, 0));
+        }
 
-        Ok(vector.iter().map(|item| Tree::new(item, 0)).collect())
+        Ok(items)
     }
 }
 
@@ -493,8 +497,12 @@ impl<'a> Tree<'a> {
     pub fn children(&self) -> Result<Vec<Tree<'a>>, DecodeError> {
         let position = self.buffer.field_offset(self.position, 1)?;
         let vector = self.buffer.get_vector(position)?;
+        let mut items = Vec::with_capacity(vector.len());
+        for item in vector {
+            items.push(Tree::new(item?, 0));
+        }
 
-        Ok(vector.iter().map(|item| Tree::new(item, 0)).collect())
+        Ok(items)
     }
 }
 
