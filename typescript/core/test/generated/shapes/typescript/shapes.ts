@@ -340,7 +340,8 @@ export class ItemVector {
     /**
      * Views the vector at `position`, as its parent's getter finds it
      *
-     * @throws {DecodeError} If the vector's count lies outside the bytes.
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
      */
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;

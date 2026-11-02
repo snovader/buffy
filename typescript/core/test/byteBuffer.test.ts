@@ -21,11 +21,13 @@ it('should share the storage of aligned arrays, except swapped copies on a big-e
     expect(float64s.buffer === bytes.buffer).toBe(IS_LITTLE_ENDIAN);
 });
 
-it('should reject impossible vector counts before allocating their offsets', () => {
+it('should reject impossible vector counts before anything allocates for them', () => {
     const buffer = new ByteBuffer(new Uint8Array([255, 255, 255, 255]));
 
     // Allocating the offsets first would fail with a different error
+    expect(() => buffer.getVectorLength(0)).toThrow('Read exceeds the supplied buffer');
     expect(() => buffer.getVectorOffsets(0)).toThrow('Read exceeds the supplied buffer');
+    expect(() => buffer.getVector(0)).toThrow('Read exceeds the supplied buffer');
 });
 
 it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError', index => {

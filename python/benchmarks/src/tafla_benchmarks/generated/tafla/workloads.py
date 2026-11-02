@@ -248,7 +248,8 @@ class ItemVector:
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Views the vector at ``position``, as its parent's getter finds it.
 
-        Raises ``DecodeError`` if the vector's count lies outside the bytes.
+        Raises ``DecodeError`` if the vector's count or the ends of its items lie
+        outside the bytes.
         """
         self._buffer = buffer
         self._position = position

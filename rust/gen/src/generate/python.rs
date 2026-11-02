@@ -547,7 +547,8 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
         &[
             "Views the vector at `position`, as its parent's getter finds it.".to_owned(),
             String::new(),
-            "Raises `DecodeError` if the vector's count lies outside the bytes.".to_owned(),
+            "Raises `DecodeError` if the vector's count or the ends of its items lie".to_owned(),
+            "outside the bytes.".to_owned(),
         ],
     );
     writer.line("self._buffer = buffer");

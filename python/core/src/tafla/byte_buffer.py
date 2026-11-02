@@ -479,8 +479,17 @@ class ByteBuffer:
         self.__write(source)
 
     def get_vector_length(self, position: int) -> int:
-        """Returns the number of items of the vector at ``position``."""
-        return self.__get_size(position)
+        """Returns the number of items of the vector at ``position``.
+
+        Raises ``DecodeError`` if the count or the ends after it don't lie
+        within the buffer. Every item has an end, so a count that the bytes
+        can't hold fails before anything is allocated for it.
+        """
+        size = self.__size
+        count = self.__get_size(position)
+        self.__check_range(position + size, count * size)
+
+        return count
 
     def get_vector_offset(self, position: int, index: int) -> int:
         """Returns the position of item ``index`` of the vector at
@@ -576,8 +585,8 @@ class ByteBuffer:
         checked to lie within the buffer, before anything is allocated for
         the vector's untrusted count"""
         size = self.__size
-        byte_length = self.__get_size(position) * size
-        start = self.__check_range(position + size, byte_length)
+        start = position + size
+        byte_length = self.get_vector_length(position) * size
 
         return from_little_endian(
             _SIZE_CODES[size], self.__view[start : start + byte_length]

@@ -273,6 +273,20 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             }
         );
 
+        it("should throw DecodeError for a vector whose count the bytes can't hold", () => {
+            const bytes = allTypes.Nested.serialize({
+                label: '',
+                outer: { count: 0, inner: { name: '', values: [] } },
+                trees: [{ value: 0, children: [] }]
+            });
+            // A count of 2^31 in the tree's empty vector of children, its count
+            // alone, which ends the bytes
+            bytes.set([0, 0, 0, 0x80], bytes.length - 4);
+            const tree = new allTypes.Nested(bytes).treesView().get(0);
+
+            expect(() => tree.childrenView()).toThrow(DecodeError);
+        });
+
         it('should view empty vectors and arrays of structs', () => {
             const nested = new allTypes.Nested(
                 allTypes.Nested.serialize({

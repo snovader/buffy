@@ -633,7 +633,9 @@ impl Generator<'_> {
             &[
                 "@param {ByteBuffer} buffer".to_owned(),
                 "@param {number} position".to_owned(),
-                "@throws {DecodeError} If the vector's count lies outside the bytes.".to_owned(),
+                "@throws {DecodeError} If the vector's count or the ends of its items lie"
+                    .to_owned(),
+                "outside the bytes.".to_owned(),
             ],
         );
         writer.open(format!(
@@ -1136,11 +1138,18 @@ impl Generator<'_> {
         self.doc(writer, docs, &tags);
     }
 
-    /// Documentation with `JSDoc` type tags, which TypeScript leaves out
+    /// Documentation with `JSDoc` type tags, which TypeScript leaves out. A
+    /// line that doesn't start with `@` continues the tag before it.
     fn doc(&self, writer: &mut CodeWriter, docs: &[String], tags: &[String]) {
+        let mut kept = false;
         let tags: Vec<&String> = tags
             .iter()
-            .filter(|tag| !self.typed || tag.starts_with("@throws"))
+            .filter(|tag| {
+                if tag.starts_with('@') {
+                    kept = !self.typed || tag.starts_with("@throws");
+                }
+                kept
+            })
             .collect();
 
         let mut lines = docs.to_vec();

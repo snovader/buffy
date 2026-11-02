@@ -3,7 +3,7 @@ writes and reads tables with tafla."""
 
 import unittest
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists
 
 from tafla import DecodeError
@@ -278,6 +278,17 @@ class TestViews(unittest.TestCase):
 
     @SETTINGS
     @given(nested_fields, corruptions)
+    # Overwrites the last 4 of the 216 bytes, the count of the last tree's
+    # empty vector of children, with 2.5 billion, which list() allocated for
+    # when the view didn't check its count against the bytes
+    @example(
+        fields={
+            "label": "000\x80\x80\x80𐀀𐀀",
+            "outer": {"count": 0, "inner": {"name": "0\x80\x80𐀀", "values": [0.0] * 8}},
+            "trees": [{"value": 0, "children": []}] * 3,
+        },
+        corruption=Overwrite(312302300, b"\x00\x00\x00\x95"),
+    )
     def test_reads_corrupted_trees_through_their_views_as_values_or_raises_decode_error(
         self, fields: NestedFields, corruption: Truncation | Overwrite
     ) -> None:
@@ -325,6 +336,25 @@ class TestViews(unittest.TestCase):
             for index in [len(view) + past, -len(view) - 1 - past]:
                 with self.assertRaises(IndexError):
                     view[index]
+
+    def test_raises_decode_error_for_a_vector_whose_count_the_bytes_cant_hold(
+        self,
+    ) -> None:
+        """A view checks its count against the bytes before ``len()`` gives it
+        to a caller that allocates for it"""
+        data = bytearray(
+            Nested.serialize(
+                label="",
+                outer={"count": 0, "inner": {"name": "", "values": []}},
+                trees=[{"value": 0, "children": []}],
+            )
+        )
+        # The tree's empty vector of children, its count alone, ends the bytes
+        data[-4:] = (2**31).to_bytes(4, "little")
+        tree = Nested(data).trees_view()[0]
+
+        with self.assertRaises(DecodeError):
+            tree.children_view()
 
     def test_views_empty_vectors_and_arrays_of_structs(self) -> None:
         point = Point(0.0, 0.0)

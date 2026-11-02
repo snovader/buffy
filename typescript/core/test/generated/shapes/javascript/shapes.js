@@ -426,7 +426,8 @@ export class ItemVector {
      *
      * @param {ByteBuffer} buffer
      * @param {number} position
-     * @throws {DecodeError} If the vector's count lies outside the bytes.
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
      */
     constructor(buffer, position) {
         this.#buffer = buffer;
