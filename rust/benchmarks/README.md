@@ -28,7 +28,8 @@ generator printed.
 
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
 sizes and what it does with a truncated document, as the TypeScript comparison
-does.
+does, and `cargo run --release -p tafla-benchmarks --bin allocation` prints
+the allocations and bytes of each benchmark's call.
 
 ### What differs from TypeScript
 
@@ -41,13 +42,14 @@ does.
   `aArray()` in TypeScript, and rkyv reads them in place as little-endian
   wrappers, `f32_le`, rather than `f32`s, so both copy their columns into
   `Vec`s. Summing a column shows them reading in place.
-- tafla's Rust runtime has no `StructWriter` or `readUint32()`. tafla-gen
-  generates a struct's writer with `to_le_bytes()` and its reader with
-  `ByteBuffer`'s getters, which the tafla codec does for the fixed-size
-  record, and tafla's README recommends the standard library's
-  `to_le_bytes()` and `from_le_bytes()` for such records, which are compared
-  too. tafla and `to_le_bytes` write the record with the same code, an A/A
-  pair that shows the harness's noise.
+- tafla's Rust runtime has no `StructWriter` or `readUint32()`. The tafla
+  codec writes the fixed-size record with `to_le_bytes()` and reads it with
+  `ByteBuffer`'s getters, and tafla's README recommends the standard
+  library's `to_le_bytes()` and `from_le_bytes()` for such records, which are
+  compared too. tafla-gen's struct writes and reads them in the same way as
+  the standard library's. So tafla, tafla-gen and `to_le_bytes` write the
+  record with the same code, and tafla-gen and `to_le_bytes` read it with the
+  same code: A/A pairs that show the harness's noise.
 - MessagePack's columns are arrays of float32s and uint32s, packed and
   unpacked element by element, as serde serializes a `[f32]`. msgpackr's
   typed-array extensions are msgpackr's own.
@@ -65,6 +67,7 @@ does.
 | Crate                                  | Why it's comparable                                                                                                                     |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `tafla` (`core/`)                      | The reference that the others are compared with.                                                                                        |
+| tafla-gen's code                       | tafla's tables, written and read by the code that tafla-gen generates.                                                                  |
 | `flatbuffers` 25.12.19                 | Zero-copy tables with offsets and vectors, like tafla.                                                                                  |
 | `prost` 0.14.4                         | The most used protobuf crate, with packed repeated floats.                                                                              |
 | `rmp-serde` 1.3.1, `serde` 1.0.229     | MessagePack through serde: a schemaless format, whose tables are maps with their keys.                                                  |
@@ -77,12 +80,24 @@ comparison uses its counterpart:
 - **tafla** nests tables from their builders, which borrow the columns and
   write each array in bulk into a table of its exact size. Readers check the
   document's version, and read columns as `ArrayView`s, whose `to_cow()`
-  borrows them. The vector's items are nested from builders, collected first
-  as tafla-gen's code collects them, since creating a builder can fail. The
+  borrows them. The vector's items are nested from builders, collected first,
+  since creating a builder can fail. The
   array of structs is written with `to_le_bytes()` into a `Vec`, which the
   builder takes with `set_struct_array()`, and read from
   `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
   tafla-gen's code does.
+- **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
+  in `src/codecs/tafla_gen/`. A message's `serialize()` counts the table's
+  length with a `TableSizer`, and then writes every field, nested tables
+  included, into a `Vec` of that capacity with a `TableWriter`, in one
+  allocation. Its readers borrow strings and columns, as tafla's do. It takes
+  the workloads' types, as the other codecs do, so it collects the generated
+  fields of the vector's items and the generated structs of the array into a
+  `Vec` in each call, as the prost codec collects its messages, since the
+  generated code writes them from slices. The generated reader of the vector
+  collects its items' readers into a `Vec`, which the codec reads into the
+  workload's items. Every suite has a copy of the schema; after changing them,
+  regenerate the code as `gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
@@ -141,6 +156,11 @@ from the fastest.
 - Every codec is a type of its own, and each benchmark's loop is compiled for
   its codec, so nothing is shared between their loops; Rust has no JIT
   feedback to share.
+- The `allocation` binary counts what each benchmark's call allocates with a
+  global allocator that wraps the system's: the allocations and reallocations,
+  and the bytes they ask for, over 100 calls after one, divided among them. A
+  reallocation counts its new size, and freeing isn't counted. Counting adds
+  an atomic addition to every allocation, so it runs apart from the timings.
 - Inputs pass through `black_box()`, so that the compiler can't fold the
   constant record and fixed-size record into the code, and results are
   returned to Criterion, which passes them through `black_box()` and drops
@@ -172,9 +192,11 @@ report reads from the samples that it saves.
 uptime
 cargo bench -p tafla-benchmarks
 cargo run -p tafla-benchmarks --bin report
+cargo run --release -p tafla-benchmarks --bin allocation
 ```
 
-The full run takes about 9 minutes. `-p tafla-benchmarks` keeps Cargo from
+The full run takes about 11 minutes, and the allocation counts about a
+second once they're built, which CI runs too. `-p tafla-benchmarks` keeps Cargo from
 running the other crates' benchmark harnesses, which reject Criterion's
 options. Criterion's options follow `--`: a regular expression
 selects benchmarks, and `--save-baseline <name>` and `--baseline <name>`
@@ -185,7 +207,7 @@ cargo bench -p tafla-benchmarks -- 'document of 100,000 rows'
 ```
 
 A quick run of 10 samples over 50 ms per benchmark, after a 50 ms warm-up,
-checks that every benchmark works in about 10 seconds once it's built. CI runs
+checks that every benchmark works in about 12 seconds once it's built. CI runs
 it after the round-trip test, with the report and the encoding report. Its
 numbers mean little, and replace the last run's in the report.
 
@@ -200,6 +222,9 @@ optimizations.
 
 Clippy checks the crate with core's lints, all of `clippy::all`, `pedantic`
 and `nursery`, and rustfmt formats it, with the workspace's other crates.
+tafla-gen's code passes clippy's pedantic lints, which tafla-gen's tests check
+it with, and its module allows the nursery lints, whose suggestions the
+generator doesn't follow, such as `map_or()` for a `match` of an `Option`.
 FlatBuffers' generated code keeps flatc's style, which flatc rather than this
 crate would change, so its module allows the nine lints that it raises: its
 `_tab` and `_fbb` names, type names written in full rather than `Self` or
@@ -227,7 +252,12 @@ they were.
   message's capacity, or reused with `reset()`, would make writing cheaper,
   but the TypeScript comparison doesn't reuse its builder either.
 - prost copies the input's columns into its message, which a caller that
-  builds its values in prost's messages wouldn't.
+  builds its values in prost's messages wouldn't. tafla-gen's codec collects
+  the vector's and the array's items into the generated types, which a caller
+  that holds its values in them wouldn't, but borrows the columns.
+- The allocation counts depend on the allocator's sizes only through
+  `realloc()`'s new sizes, which each crate chooses, and not on what macOS's
+  allocator rounds them to.
 - rmp-serde's `to_vec()` packs structs as arrays without their field names,
   which is smaller than `to_vec_named()`'s maps, but needs the reader to know
   the fields' order, as a schema would, so the other languages' MessagePack
@@ -322,12 +352,83 @@ within 8% of the full run's.
   including `flatbuffers::root()`'s verification. prost and rmp-serde write and
   parse each struct's three fields, in 1.0 to 1.4 µs and 1.5 to 1.9 µs.
 
+tafla-gen's codec was added after those runs, and timed on 2026-11-02 in a
+full run of every crate, followed by the `allocation` binary, which took 11
+minutes in all. Other processes kept the 1-minute load average between 2.2 and
+3.5, with a median of 2.9, about one of which was the run's own. The median
+sample was within 5% of the fastest for 77 of the 86 benchmarks, and at most
+27% above it, for rkyv's read of the small document. tafla's and the other
+crates' fastest samples were within 12% of the runs above, with a median
+difference of 1.3%. tafla, tafla-gen and `to_le_bytes` wrote the fixed-size
+record, with the same code, in 0.711, 0.711 and 0.717 ns.
+
+Fastest sample in µs per call, and tafla-gen's ratio to tafla's:
+
+| Benchmark                                          |    tafla |        tafla-gen |
+| -------------------------------------------------- | -------: | ---------------: |
+| record: serialize                                  |   0.0800 |   0.0346 (0.43×) |
+| record: deserialize                                |   0.0130 |   0.0118 (0.91×) |
+| document of 100 rows: serialize                    |    0.169 |   0.0854 (0.51×) |
+| document of 100 rows: deserialize                  |   0.0343 |   0.0276 (0.80×) |
+| document of 100 rows: sum a column per element     |   0.0362 |   0.0359 (0.99×) |
+| document of 100,000 rows: serialize                |     18.0 |     19.0 (1.06×) |
+| document of 100,000 rows: deserialize              |   0.0347 |   0.0277 (0.80×) |
+| document of 100,000 rows: sum a column per element |     85.6 |     85.5 (1.00×) |
+| vector of 100 nested tables: serialize             |    9.389 |    0.997 (0.11×) |
+| vector of 100 nested tables: deserialize           |    0.275 |    0.525 (1.91×) |
+| array of 100 structs: serialize                    |    0.141 |    0.164 (1.17×) |
+| array of 100 structs: deserialize                  |   0.0313 |   0.0285 (0.91×) |
+| fixed-size record: serialize                       | 0.000711 | 0.000711 (1.00×) |
+| fixed-size record: deserialize                     |  0.00117 | 0.000769 (0.66×) |
+
+Bytes allocated per call, and the allocations and reallocations that ask for
+them, which the `allocation` binary counts:
+
+| Benchmark                                          |         tafla |     tafla-gen |    flatbuffers |          prost |      rmp-serde |          rkyv | to_le_bytes |
+| -------------------------------------------------- | ------------: | ------------: | -------------: | -------------: | -------------: | ------------: | ----------: |
+| record: serialize                                  |       252 (2) |        60 (1) |        296 (7) |         63 (2) |        120 (4) |        80 (2) |             |
+| record: deserialize                                |         0 (0) |         0 (0) |          0 (0) |         16 (1) |          0 (0) |         0 (0) |             |
+| document of 100 rows: serialize                    |     1,680 (3) |     1,296 (1) |     4,136 (11) |      2,459 (5) |      4,088 (9) |     3,600 (4) |             |
+| document of 100 rows: deserialize                  |         0 (0) |         0 (0) |      1,200 (3) |     3,040 (19) |      1,200 (3) |     1,200 (3) |             |
+| document of 100 rows: sum a column per element     |         0 (0) |         0 (0) |          0 (0) |     3,040 (19) |      1,200 (3) |         0 (0) |             |
+| document of 100,000 rows: serialize                | 1,200,480 (3) | 1,200,096 (1) | 4,194,344 (21) |  2,387,519 (5) | 4,194,296 (19) | 3,670,032 (4) |             |
+| document of 100,000 rows: deserialize              |         0 (0) |         0 (0) |  1,200,000 (3) | 3,145,696 (49) |  1,200,000 (3) | 1,200,000 (3) |             |
+| document of 100,000 rows: sum a column per element |         0 (0) |         0 (0) |          0 (0) | 3,145,696 (49) |  1,200,000 (3) |         0 (0) |             |
+| vector of 100 nested tables: serialize             |  32,536 (208) |     4,408 (2) |     8,632 (13) |      3,500 (2) |     8,184 (10) |     2,048 (1) |             |
+| vector of 100 nested tables: deserialize           |     1,200 (1) |     4,400 (2) |      1,200 (1) |      5,232 (7) |      1,200 (1) |     1,200 (1) |             |
+| array of 100 structs: serialize                    |     2,456 (3) |     3,608 (3) |     5,336 (12) |      2,900 (2) |      4,088 (9) |     2,048 (1) |             |
+| array of 100 structs: deserialize                  |     1,200 (1) |     1,200 (1) |      1,200 (1) |      3,024 (6) |      1,200 (1) |     1,200 (1) |             |
+| fixed-size record: serialize                       |         0 (0) |         0 (0) |        104 (5) |         16 (1) |         56 (3) |        16 (1) |       0 (0) |
+| fixed-size record: deserialize                     |         0 (0) |         0 (0) |          0 (0) |          0 (0) |          0 (0) |         0 (0) |       0 (0) |
+
+- tafla-gen writes the vector of 100 nested tables in 1.0 µs, against 9.4 µs
+  with tafla's builders, in 2 allocations against 208: the table's bytes, and
+  the `Vec` of the items' generated fields that the codec collects from the
+  workload's. It writes the record and the small document twice as fast, in
+  35 and 85 ns against 80 and 169 ns, each in one allocation of the table's
+  exact length.
+- The large document takes 19.0 µs against 18.0 µs, both copying the
+  columns' 1.2 MB into the table, which tafla-gen allocates once and the
+  builder grows into three allocations.
+- The array of structs takes 164 ns against 141 ns. The codec collects the
+  generated structs from the workload's items, the generated code writes them
+  into a `Vec`, and the writer copies that into the table: 3,608 bytes against
+  2,456.
+- tafla-gen reads the record's and the documents' fields 9% to 20% faster
+  than the hand-written reads, and sums the column in the same time. Its
+  reader of the vector collects the items' readers into a `Vec` of 3,200 bytes
+  first, so the vector takes 0.53 µs against 0.28 µs.
+- tafla-gen reads the fixed-size record with `from_le_bytes()`, in 0.77 ns,
+  against 1.17 ns with `ByteBuffer`'s getters and 0.67 ns with
+  `to_le_bytes`'s `from_le_bytes()`.
+
 `cargo run -p tafla-benchmarks --bin encoding` printed:
 
 ```
 Encoded size (bytes)
                         record     doc 100  doc 100000      vector     structs       fixed
   tafla                     60        1296     1200096        3208        1208          12
+  tafla-gen                 60        1296     1200096        3208        1208          12
   flatbuffers               72        1328     1200128        2832        1224          32
   prost                     47        1243     1187503        1900        1700          16
   rmp-serde                 53        1573     1499239        3510        1604          24
@@ -337,6 +438,8 @@ Encoded size (bytes)
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  returned an error: Read exceeds the supplied buffer: 400000 bytes at 400092 of
   tafla                 24 B  returned an error: Read exceeds the supplied buffer: 8 bytes at 24 of 24
+  tafla-gen         600048 B  returned an error: Read exceeds the supplied buffer: 400000 bytes at 400092 of
+  tafla-gen             24 B  returned an error: Read exceeds the supplied buffer: 8 bytes at 24 of 24
   flatbuffers       600064 B  returned an error: Range [800124, 800128) is out of bounds.
   flatbuffers           24 B  returned an error: Range [32, 40) is out of bounds.
   prost             593751 B  returned an error: failed to decode Protobuf message: Document.columns: buffer

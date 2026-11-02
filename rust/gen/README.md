@@ -313,6 +313,9 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/golden.rs`: the code generated from each example schema in
   `schemas/`, for each target, matches its golden files, and no golden
   directory is left of a schema or target that's gone.
+- `tests/benchmarks.rs`: the code generated from each language's comparison
+  suite's `workloads.tafla` matches the files in the suite, and the suites'
+  copies of the schema are the same.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it.
 - `tests/properties.rs`: any input parses or fails with errors that render,
@@ -346,8 +349,21 @@ The Java is generated with the package
 test module. The tests of the generated code lie beside the directories of
 the schemas, and in Java in the test module's package.
 
-After a change to the generator or the schemas, rewrite the golden files and
-the expected errors, review their diff, and run every language's tests:
+The comparison suites' generated codecs lie in each suite, which runs them
+against the hand-built `TableBuilder` codecs, and whose checks check them as
+they check the suite. `BENCHMARK_SCHEMAS` in `tests/common/mod.rs` lists
+where:
+
+| Target     | Schema and generated code, from the root of the repository                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| TypeScript | `typescript/benchmarks/comparison/workloads.tafla`, `typescript/benchmarks/comparison/generated/tafla/`                  |
+| Python     | `python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla`, `…/generated/tafla/`                                 |
+| Java       | `java/benchmarks/src/main/tafla/workloads.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/` |
+| Rust       | `rust/benchmarks/workloads.tafla`, `rust/benchmarks/src/codecs/tafla_gen/`                                               |
+
+After a change to the generator or the schemas, rewrite the golden files,
+the suites' generated code and the expected errors, review their diff, and
+run every language's tests:
 
 ```sh
 TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen
