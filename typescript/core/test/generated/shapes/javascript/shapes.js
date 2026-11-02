@@ -313,6 +313,15 @@ export class ItemList {
 
         return items;
     }
+
+    /**
+     * Views the items of `items()`, reading each one when it's asked for
+     *
+     * @returns {ItemVector}
+     */
+    itemsView() {
+        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+    }
 }
 
 /**
@@ -402,6 +411,50 @@ export class Item {
  * @property {number} value
  * @property {PairFields} pair
  */
+
+/** A vector of `Item`s, which reads each item when it's asked for */
+export class ItemVector {
+    /** @type {ByteBuffer} */
+    #buffer;
+    /** @type {number} */
+    #position;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Item}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index) {
+        return new Item(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
+}
 
 /** Two values of an item */
 export class Pair {

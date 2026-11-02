@@ -155,6 +155,20 @@ impl Schema {
         &self.definitions[index]
     }
 
+    /// Whether a vector or an array of structs holds the definition at
+    /// `index`, so that the generators write a view of its items
+    pub fn is_item(&self, index: usize) -> bool {
+        self.definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| {
+                matches!(
+                    field.field_type,
+                    FieldType::Vector(item) | FieldType::StructArray(item) if item == index
+                )
+            })
+    }
+
     /// The scalars of a struct in order, those of the structs in it in their
     /// place
     pub fn struct_scalars(&self, definition: &Definition) -> Vec<Scalar> {

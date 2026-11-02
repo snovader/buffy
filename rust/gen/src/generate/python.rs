@@ -4,7 +4,7 @@
 
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -56,7 +56,7 @@ pub fn generate(
     writer.blank();
     imports(&mut writer, schema, runtime);
 
-    for definition in &schema.definitions {
+    for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blanks(2);
         match definition.kind {
             Kind::Message(layout) => message(&mut writer, schema, definition, layout),
@@ -67,6 +67,15 @@ pub fn generate(
         if !definition.is_struct() {
             writer.blanks(2);
             fields_type(&mut writer, schema, definition);
+        }
+
+        if schema.is_item(index) {
+            writer.blanks(2);
+            if definition.is_struct() {
+                struct_array_view(&mut writer, schema, definition);
+            } else {
+                vector_view(&mut writer, definition);
+            }
         }
     }
 
@@ -90,10 +99,11 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
-    let has_sequence = has_struct
-        || has_field(|field_type| {
-            matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
-        });
+    // Vectors and arrays of structs have views, which iterate their items
+    let has_view = has_field(|field_type| {
+        matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
+    });
+    let has_sequence = has_struct || has_view;
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -110,6 +120,9 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     }
     if has_array {
         abc.push("Iterable");
+    }
+    if has_view {
+        abc.push("Iterator");
     }
     if has_sequence {
         abc.push("Sequence");
@@ -512,6 +525,174 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.dedent();
 }
 
+/// The view of a vector of a table, which reads each item when it's asked
+/// for, from the item's end and the end of the item before it
+fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
+    let table = &definition.name;
+
+    writer.open(format!("class {table}Vector:"));
+    docstring(
+        writer,
+        &[format!(
+            "A vector of `{table}`s, which reads each item when it's asked for"
+        )],
+    );
+    writer.blank();
+    writer.line("__slots__ = (\"_buffer\", \"_length\", \"_position\")");
+    writer.blank();
+
+    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    docstring(
+        writer,
+        &[
+            "Views the vector at `position`, as its parent's getter finds it.".to_owned(),
+            String::new(),
+            "Raises `DecodeError` if the vector's count or the ends of its items lie".to_owned(),
+            "outside the bytes.".to_owned(),
+        ],
+    );
+    writer.line("self._buffer = buffer");
+    writer.line("self._position = position");
+    writer.line("self._length = buffer.get_vector_length(position)");
+    writer.dedent();
+    writer.blank();
+
+    view_length(writer);
+
+    writer.open(format!("def __getitem__(self, index: int) -> {table}:"));
+    docstring(
+        writer,
+        &[
+            "Reads item `index`, without reading the others, counting from the end if".to_owned(),
+            "it's negative.".to_owned(),
+            String::new(),
+            "Raises `IndexError` if the vector has no item `index`, and".to_owned(),
+            "`DecodeError` if the item lies outside the bytes.".to_owned(),
+        ],
+    );
+    writer.open("if index < 0:");
+    writer.line("index += self._length");
+    writer.dedent();
+    writer.line("offset = self._buffer.get_vector_offset(self._position, index)");
+    writer.line(format!("return {table}(self._buffer, offset)"));
+    writer.dedent();
+    writer.blank();
+
+    writer.open(format!("def __iter__(self) -> Iterator[{table}]:"));
+    docstring(
+        writer,
+        &[
+            "Reads the items one after another, after reading every item's end.".to_owned(),
+            String::new(),
+            "Raises `DecodeError` if an item lies outside the bytes, before reading any."
+                .to_owned(),
+        ],
+    );
+    writer.line("buffer = self._buffer");
+    writer.open("for offset in buffer.get_vector_offsets(self._position):");
+    writer.line(format!("yield {table}(buffer, offset)"));
+    writer.dedent();
+    writer.dedent();
+    writer.dedent();
+}
+
+/// The view of an array of a struct, which reads each struct when it's
+/// asked for, from a view of their bytes
+fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let structure = &definition.name;
+
+    writer.open(format!("class {structure}Array:"));
+    docstring(
+        writer,
+        &[format!(
+            "An array of `{structure}`s, which reads each struct when it's asked for"
+        )],
+    );
+    writer.blank();
+    writer.line("__slots__ = (\"_data\", \"_length\")");
+    writer.blank();
+
+    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    docstring(
+        writer,
+        &[
+            "Views the array at `position`, as its parent's getter finds it.".to_owned(),
+            String::new(),
+            "Raises `DecodeError` if the array lies outside the bytes.".to_owned(),
+        ],
+    );
+    writer.line(format!(
+        "self._data = buffer.get_struct_array(position, {structure}.SIZE)"
+    ));
+    writer.line(format!(
+        "self._length = len(self._data) // {structure}.SIZE"
+    ));
+    writer.dedent();
+    writer.blank();
+
+    view_length(writer);
+
+    writer.open(format!("def __getitem__(self, index: int) -> {structure}:"));
+    docstring(
+        writer,
+        &[
+            "Reads struct `index`, counting from the end if it's negative.".to_owned(),
+            String::new(),
+            "Raises `IndexError` if the array has no struct `index`.".to_owned(),
+        ],
+    );
+    writer.open("if index < 0:");
+    writer.line("index += self._length");
+    writer.dedent();
+    writer.open("if not 0 <= index < self._length:");
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call(
+            "IndexError",
+            vec![text(
+                "f\"Struct {index} is outside the array of {self._length}\"",
+            )],
+        ),
+        "",
+    );
+    writer.dedent();
+    writer.line(format!(
+        "return {structure}.read(self._data, index * {structure}.SIZE)"
+    ));
+    writer.dedent();
+    writer.blank();
+
+    // The structs' values as their Struct unpacks them, as read_array()
+    // reads them
+    let is_flat = definition
+        .fields
+        .iter()
+        .all(|field| matches!(field.field_type, FieldType::Scalar(_)));
+    let construction = if is_flat {
+        call(structure.clone(), vec![text("*values")])
+    } else {
+        construction(schema, definition, structure, &mut 0)
+    };
+    writer.open(format!("def __iter__(self) -> Iterator[{structure}]:"));
+    docstring(writer, &["Reads the structs one after another".to_owned()]);
+    writer.open(format!(
+        "for values in {structure}._STRUCT.iter_unpack(self._data):"
+    ));
+    writer.statement(&STYLE, "yield ", &construction, "");
+    writer.dedent();
+    writer.dedent();
+    writer.dedent();
+}
+
+/// A view's `__len__()`, of the length that it read when it was made
+fn view_length(writer: &mut CodeWriter) {
+    writer.open("def __len__(self) -> int:");
+    writer.line("return self._length");
+    writer.dedent();
+    writer.blank();
+}
+
 /// The call that makes a struct of the values that its `Struct` unpacks, from
 /// `values[*index]` on, which it moves past them
 fn construction(
@@ -642,14 +823,7 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
 
 fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
     for (index, field) in definition.fields.iter().enumerate() {
-        let offset = if is_root {
-            call("self._buffer.root_offset", vec![text(index.to_string())])
-        } else {
-            call(
-                "self._buffer.field_offset",
-                vec![text("self._position"), text(index.to_string())],
-            )
-        };
+        let offset = offset_expression(is_root, index);
 
         writer.blank();
         writer.open(format!(
@@ -716,6 +890,47 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
         }
         writer.dedent();
+
+        if let Some(view) = view_type(field.field_type, schema) {
+            view_getter(writer, field, &view, offset_expression(is_root, index));
+        }
+    }
+}
+
+/// The getter of a view of a vector or an array of structs, which reads each
+/// item when it's asked for, rather than all of them as the field's own
+/// getter does
+fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: Expr) {
+    let mut docs = field.docs.clone();
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.push(format!(
+        "Views the items of `{}()`, reading each one when it's asked for",
+        identifier(&field.name)
+    ));
+
+    writer.blank();
+    writer.open(format!("def {}_view(self) -> {view}:", field.name));
+    docstring(writer, &docs);
+    writer.statement(
+        &STYLE,
+        "return ",
+        &call(view.to_owned(), vec![text("self._buffer"), offset]),
+        "",
+    );
+    writer.dedent();
+}
+
+/// The position of field `index`, in the root table or a nested one
+fn offset_expression(is_root: bool, index: usize) -> Expr {
+    if is_root {
+        call("self._buffer.root_offset", vec![text(index.to_string())])
+    } else {
+        call(
+            "self._buffer.field_offset",
+            vec![text("self._position"), text(index.to_string())],
+        )
     }
 }
 
@@ -789,6 +1004,16 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::StructArray(index) | FieldType::Vector(index) => {
             format!("list[{}]", schema.definition(index).name)
         }
+    }
+}
+
+/// The view of a vector or an array of structs, which their view getters
+/// return
+fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
+    match field_type {
+        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
+        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
+        _ => None,
     }
 }
 

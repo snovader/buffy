@@ -3,7 +3,7 @@ writes and reads tables with tafla."""
 
 import unittest
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists
 
 from tafla import DecodeError
@@ -25,6 +25,7 @@ from tests.generated.all_types.all_types import (
     StructsFields,
 )
 from tests.generated.all_types_tables import (
+    ViewItems,
     arrays_fields,
     describe_arrays,
     describe_documented,
@@ -37,15 +38,19 @@ from tests.generated.all_types_tables import (
     describe_structs,
     documented_bytes,
     documented_structs,
+    from_last,
+    in_order,
     nested_fields,
     packed_bytes,
     packed_structs,
     point_structs,
     read_arrays,
     read_nested,
+    read_nested_views,
     read_reserved,
     read_scalars,
     read_structs,
+    read_structs_views,
     reserved_fields,
     scalars_fields,
     segment_bytes,
@@ -234,6 +239,153 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_nested(Nested(data)))
         assert_values_or_decode_error(lambda: read_reserved(Reserved(data)))
         assert_values_or_decode_error(lambda: read_structs(Structs(data)))
+
+
+# Reading a view's items from the last by index, and in order by iterating it
+VIEW_ITEMS: list[ViewItems] = [from_last, in_order]
+
+
+class TestViews(unittest.TestCase):
+    @SETTINGS
+    @given(nested_fields, slices)
+    def test_reads_back_vectors_of_trees_through_their_views(
+        self, fields: NestedFields, slice: Slice
+    ) -> None:
+        data = slice.of(Nested.serialize(**fields))
+
+        for items in VIEW_ITEMS:
+            assert_same_table(
+                self,
+                describe_nested(read_nested_views(Nested(data), items)),
+                describe_nested(fields),
+                repr(items),
+            )
+
+    @SETTINGS
+    @given(structs_fields, slices)
+    def test_reads_back_arrays_of_structs_through_their_views(
+        self, fields: StructsFields, slice: Slice
+    ) -> None:
+        data = slice.of(Structs.serialize(**fields))
+
+        for items in VIEW_ITEMS:
+            assert_same_table(
+                self,
+                describe_structs(read_structs_views(Structs(data), items)),
+                describe_structs(fields),
+                repr(items),
+            )
+
+    @SETTINGS
+    @given(nested_fields, corruptions)
+    # Overwrites the last 4 of the 216 bytes, the count of the last tree's
+    # empty vector of children, with 2.5 billion, which list() allocated for
+    # when the view didn't check its count against the bytes
+    @example(
+        fields={
+            "label": "000\x80\x80\x80𐀀𐀀",
+            "outer": {"count": 0, "inner": {"name": "0\x80\x80𐀀", "values": [0.0] * 8}},
+            "trees": [{"value": 0, "children": []}] * 3,
+        },
+        corruption=Overwrite(312302300, b"\x00\x00\x00\x95"),
+    )
+    def test_reads_corrupted_trees_through_their_views_as_values_or_raises_decode_error(
+        self, fields: NestedFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(Nested.serialize(**fields)))
+
+        for items in VIEW_ITEMS:
+            assert_values_or_decode_error(
+                lambda items=items: read_nested_views(Nested(data), items)
+            )
+
+    @SETTINGS
+    @given(structs_fields, corruptions)
+    def test_reads_corrupted_structs_through_their_views_as_values_or_raises_decode_error(
+        self, fields: StructsFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(Structs.serialize(**fields)))
+
+        for items in VIEW_ITEMS:
+            assert_values_or_decode_error(
+                lambda items=items: read_structs_views(Structs(data), items)
+            )
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_arbitrary_bytes_through_the_views_or_raises_decode_error(
+        self, data: bytes
+    ) -> None:
+        for items in VIEW_ITEMS:
+            assert_values_or_decode_error(
+                lambda items=items: read_nested_views(Nested(data), items)
+            )
+            assert_values_or_decode_error(
+                lambda items=items: read_structs_views(Structs(data), items)
+            )
+
+    @SETTINGS
+    @given(nested_fields, structs_fields, integers(min_value=0))
+    def test_raises_index_error_for_an_item_outside_a_view(
+        self, nested_fields: NestedFields, structs_fields: StructsFields, past: int
+    ) -> None:
+        nested = Nested(Nested.serialize(**nested_fields))
+        structs = Structs(Structs.serialize(**structs_fields))
+
+        for view in [nested.trees_view(), structs.documented_view()]:
+            for index in [len(view) + past, -len(view) - 1 - past]:
+                with self.assertRaises(IndexError):
+                    view[index]
+
+    def test_raises_decode_error_for_a_vector_whose_count_the_bytes_cant_hold(
+        self,
+    ) -> None:
+        """A view checks its count against the bytes before ``len()`` gives it
+        to a caller that allocates for it"""
+        data = bytearray(
+            Nested.serialize(
+                label="",
+                outer={"count": 0, "inner": {"name": "", "values": []}},
+                trees=[{"value": 0, "children": []}],
+            )
+        )
+        # The tree's empty vector of children, its count alone, ends the bytes
+        data[-4:] = (2**31).to_bytes(4, "little")
+        tree = Nested(data).trees_view()[0]
+
+        with self.assertRaises(DecodeError):
+            tree.children_view()
+
+    def test_views_empty_vectors_and_arrays_of_structs(self) -> None:
+        point = Point(0.0, 0.0)
+        nested = Nested(
+            Nested.serialize(
+                label="",
+                outer={"count": 0, "inner": {"name": "", "values": []}},
+                trees=[],
+            )
+        )
+        structs = Structs(
+            Structs.serialize(
+                packed=Packed(0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0),
+                documented=[],
+                segment=Segment(point, point),
+                segments=[],
+                path={"start": point, "points": []},
+            )
+        )
+
+        views = [
+            nested.trees_view(),
+            structs.documented_view(),
+            structs.segments_view(),
+            structs.path().points_view(),
+        ]
+        for view in views:
+            self.assertEqual(len(view), 0)
+            self.assertEqual(list(view), [])
+            with self.assertRaises(IndexError):
+                view[0]
 
 
 class TestStructs(unittest.TestCase):

@@ -5,6 +5,7 @@ import {
     measure,
     type Variant
 } from './harness.ts';
+import { type ItemAccess, sumItem, writeItems } from './itemAccess.ts';
 import {
     DOCUMENT_ROWS,
     type DocumentInput,
@@ -12,6 +13,7 @@ import {
     documentInput,
     documentNumbers,
     LIST_ITEMS,
+    type ListInput,
     listInput,
     RECORD,
     SAMPLE
@@ -29,15 +31,21 @@ interface Group {
 }
 
 /**
- * Runs every workload through every codec. The groups with typed-array
- * inputs run first, since `number[]` inputs change the type feedback of the
- * code they share.
+ * Runs every workload through every codec, and reads the items of tafla's
+ * vector and array of structs with each of `accesses`. The groups with
+ * typed-array inputs run first, since `number[]` inputs change the type
+ * feedback of the code they share.
  */
-export function runSuite(codecs: Codec[], options: SuiteOptions): void {
+export function runSuite(
+    codecs: Codec[],
+    accesses: ItemAccess[],
+    options: SuiteOptions
+): void {
     const documents = DOCUMENT_ROWS.map(documentInput);
     const list = listInput(LIST_ITEMS);
 
     checkRoundTrips(codecs, documents, list);
+    checkItemAccess(accesses, list);
 
     const groups = [
         ...workloadGroups(codecs, 'record', c => c.record, RECORD),
@@ -69,6 +77,7 @@ export function runSuite(codecs: Codec[], options: SuiteOptions): void {
             c => c.structs,
             list
         ),
+        ...accessGroups(accesses, list),
         ...workloadGroups(codecs, 'fixed-size record', c => c.sample, SAMPLE),
         ...documents.map((input, i) =>
             serializeGroup(
@@ -121,16 +130,43 @@ function serializeGroup<I, O>(
     });
 }
 
-function group(
+/**
+ * Reads the last item of the vector of nested tables and of the array of
+ * structs, which a reader can find without reading the others, and sums
+ * every item, in tafla's bytes
+ */
+function accessGroups(accesses: ItemAccess[], list: ListInput): Group[] {
+    const { tables, structs } = writeItems(list);
+    const vector = `vector of ${LIST_ITEMS} nested tables`;
+    const array = `array of ${LIST_ITEMS} structs`;
+
+    return [
+        group(`${vector}: read the last item`, accesses, access => {
+            return () => access.lastTable(tables);
+        }),
+        group(`${vector}: sum every item`, accesses, access => {
+            return () => access.everyTable(tables);
+        }),
+        group(`${array}: read the last item`, accesses, access => {
+            return () => access.lastStruct(structs);
+        }),
+        group(`${array}: sum every item`, accesses, access => {
+            return () => access.everyStruct(structs);
+        })
+    ];
+}
+
+/** A group of a variant for each codec, or each other way of reading */
+function group<T extends { name: string }>(
     name: string,
-    codecs: Codec[],
-    createRun: (codec: Codec) => () => unknown
+    readers: T[],
+    createRun: (reader: T) => () => unknown
 ): Group {
     return {
         name,
-        variants: codecs.map(codec => ({
-            name: codec.name,
-            run: createRun(codec)
+        variants: readers.map(reader => ({
+            name: reader.name,
+            run: createRun(reader)
         }))
     };
 }
@@ -146,7 +182,7 @@ function printMeasurements(
     for (const { name: variant, microseconds, heapBytes } of measurements) {
         const ratio = microseconds / reference.microseconds;
         print(
-            `  ${variant.padEnd(16)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}× ${formatBytes(heapBytes).padStart(12)}`
+            `  ${variant.padEnd(18)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}× ${formatBytes(heapBytes).padStart(12)}`
         );
     }
 }
@@ -270,6 +306,30 @@ function checkRoundTrips(
             codec.sample.deserialize(codec.sample.serialize(SAMPLE)),
             SAMPLE
         );
+    }
+}
+
+/** Checks that every access reads the items' float32s, and sums them alike */
+function checkItemAccess(accesses: ItemAccess[], list: ListInput): void {
+    const { tables, structs } = writeItems(list);
+    const last = sumItem(list.items[list.items.length - 1]);
+    let every = 0;
+    for (const item of list.items) {
+        every += sumItem(item);
+    }
+
+    for (const access of accesses) {
+        const sums = [
+            access.lastTable(tables),
+            access.everyTable(tables),
+            access.lastStruct(structs),
+            access.everyStruct(structs)
+        ];
+        const expected = [last, every, last, every];
+
+        if (!sums.every((sum, i) => Object.is(sum, expected[i]))) {
+            throw new Error(`${access.name} didn't sum the items: ${sums}`);
+        }
     }
 }
 

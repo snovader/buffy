@@ -103,6 +103,60 @@ final class AllTypesTables {
         return new Path.Fields(path.start(), path.points());
     }
 
+    // Reading the vectors and arrays of structs through their views instead
+
+    /** Ways to read a view's items: by index from the last, and in order through its iterator */
+    enum ViewOrder {
+        /** As a reader that skips items would */
+        FROM_LAST {
+            @Override
+            <T> List<T> read(List<T> view) {
+                var items = new ArrayList<T>(view.size());
+                for (int i = view.size() - 1; i >= 0; i--) {
+                    items.add(view.get(i));
+                }
+
+                return items.reversed();
+            }
+        },
+        ITERATED {
+            @Override
+            <T> List<T> read(List<T> view) {
+                var items = new ArrayList<T>(view.size());
+                for (var item : view) {
+                    items.add(item);
+                }
+
+                return items;
+            }
+        };
+
+        /** {@return the view's items, in order} */
+        abstract <T> List<T> read(List<T> view);
+    }
+
+    static Nested.Fields readNestedViews(Nested nested, ViewOrder order) {
+        var trees = order.read(nested.treesView()).stream().map(tree -> readTreeViews(tree, order)).toList();
+        return new Nested.Fields(nested.label(), readOuter(nested.outer()), trees);
+    }
+
+    private static Tree.Fields readTreeViews(Tree tree, ViewOrder order) {
+        var children = order.read(tree.childrenView()).stream().map(child -> readTreeViews(child, order)).toList();
+        return new Tree.Fields(tree.value(), children);
+    }
+
+    static Structs.Fields readStructsViews(Structs structs, ViewOrder order) {
+        var path = structs.path();
+
+        return new Structs.Fields(
+            structs.packed(),
+            order.read(structs.documentedView()).toArray(Documented[]::new),
+            structs.segment(),
+            order.read(structs.segmentsView()).toArray(Segment[]::new),
+            new Path.Fields(path.start(), order.read(path.pointsView()).toArray(Point[]::new))
+        );
+    }
+
     private static Keywords.Fields readKeywords(Keywords keywords) {
         return new Keywords.Fields(
             keywords.class_(),

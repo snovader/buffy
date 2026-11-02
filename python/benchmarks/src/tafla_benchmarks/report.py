@@ -9,9 +9,15 @@ from statistics import fmean, median
 import pyperf
 
 from tafla_benchmarks.codecs import CODECS, STRUCT, TAFLA
+from tafla_benchmarks.item_access import ACCESSES
 from tafla_benchmarks.suite import groups
 
-_CODEC_NAMES = [codec.name for codec in CODECS] + [STRUCT]
+# The codecs, and the ways of reading tafla's items that aren't codecs
+_CODEC_NAMES = list(
+    dict.fromkeys(
+        [codec.name for codec in CODECS] + [STRUCT] + [a.name for a in ACCESSES]
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)

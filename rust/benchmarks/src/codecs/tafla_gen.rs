@@ -7,11 +7,14 @@ mod generated;
 
 use std::borrow::Cow;
 
+use tafla::DecodeError;
+
 use self::generated::{
     ColumnsFields, DocumentFields, ItemFields, ItemList, ItemListFields, PairFields, RecordFields,
     Triple, Triples, TriplesFields,
 };
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::item_access::{ItemAccess, no_items, sum_item};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -171,6 +174,96 @@ impl Workload<SampleShape> for TaflaGen {
             b: sample.b,
         })
     }
+}
+
+/// The generated getters, which collect the vector's items and iterate over
+/// the array's structs
+impl ItemAccess for TaflaGen {
+    const NAME: &'static str = "tafla-gen";
+
+    fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items()?;
+
+        Ok(sum_table(items.last().ok_or_else(no_items)?)?)
+    }
+
+    fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items()?;
+
+        let mut sum = 0.0;
+        for item in &items {
+            sum += sum_table(item)?;
+        }
+
+        Ok(sum)
+    }
+
+    fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let triple = Triples::new(bytes).items()?.last().ok_or_else(no_items)?;
+
+        Ok(sum_triple(triple))
+    }
+
+    fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let triples = Triples::new(bytes).items()?;
+
+        Ok(triples.map(sum_triple).fold(0.0, |sum, item| sum + item))
+    }
+}
+
+/// tafla-gen's views of the vector and of the array of structs, which read
+/// each item when it's asked for, rather than its getters
+#[derive(Clone, Copy, Debug)]
+pub struct TaflaGenView;
+
+impl ItemAccess for TaflaGenView {
+    const NAME: &'static str = "tafla-gen view";
+
+    fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items_view()?;
+        let last = items.len().checked_sub(1).ok_or_else(no_items)?;
+
+        Ok(sum_table(&items.get(last).ok_or_else(no_items)??)?)
+    }
+
+    fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items_view()?;
+
+        let mut sum = 0.0;
+        for item in items.iter() {
+            sum += sum_table(&item?)?;
+        }
+
+        Ok(sum)
+    }
+
+    fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let triples = Triples::new(bytes).items_view()?;
+        let last = triples.len().checked_sub(1).ok_or_else(no_items)?;
+
+        Ok(sum_triple(triples.get(last).ok_or_else(no_items)?))
+    }
+
+    fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let triples = Triples::new(bytes).items_view()?;
+
+        Ok(triples
+            .iter()
+            .map(sum_triple)
+            .fold(0.0, |sum, item| sum + item))
+    }
+}
+
+/// Sums an item of the vector, with the decode error that the hand-written
+/// `Tafla` returns from its own
+fn sum_table(item: &generated::Item<'_>) -> Result<f64, DecodeError> {
+    let pair = item.pair()?;
+
+    Ok(sum_item(item.value()?, pair.first()?, pair.second()?))
+}
+
+fn sum_triple(triple: Triple) -> f64 {
+    sum_item(triple.value, triple.first, triple.second)
 }
 
 const fn item_fields(item: &Item) -> ItemFields {

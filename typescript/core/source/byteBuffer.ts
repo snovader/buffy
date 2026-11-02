@@ -709,9 +709,19 @@ export class ByteBuffer {
         this.setBytes(bytes);
     }
 
-    /** Returns the number of items of the vector at `position` */
+    /**
+     * Returns the number of items of the vector at `position`. Every item
+     * has an end, so a count that the bytes can't hold fails before anything
+     * is allocated for it.
+     *
+     * @throws {DecodeError} If the count or the ends after it don't lie within
+     * the bytes.
+     */
     getVectorLength(position: number): number {
-        return this.#getSize(position);
+        const count = this.#getSize(position);
+        this.#assertRange(position + this.#size, count * this.#size);
+
+        return count;
     }
 
     /**
@@ -739,10 +749,8 @@ export class ByteBuffer {
     }
 
     getVectorOffsets(position: number): Uint32Array {
-        const count = this.#getSize(position);
-        // Validate the item ends before allocating the offset array from an
-        // untrusted count
-        this.#assertRange(position + this.#size, count * this.#size);
+        // Checking the ends bounds the count before allocating for it
+        const count = this.getVectorLength(position);
         const offsets = new Uint32Array(count);
 
         let start = (count + 1) * this.#size;
@@ -756,8 +764,7 @@ export class ByteBuffer {
     }
 
     getVector(position: number): Uint8Array[] {
-        const count = this.#getSize(position);
-        this.#assertRange(position + this.#size, count * this.#size);
+        const count = this.getVectorLength(position);
         const vector = new Array<Uint8Array>(count);
 
         let start = (count + 1) * this.#size;

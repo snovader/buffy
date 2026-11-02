@@ -42,6 +42,11 @@ public final class Triples {
         return items;
     }
 
+    /** Views the items of {@code items()}, reading each one when it's asked for */
+    public TripleArray itemsView() {
+        return new TripleArray(buffer, buffer.rootOffset(0));
+    }
+
     /** The fields of a {@code Triples}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(Triple[] items) {}

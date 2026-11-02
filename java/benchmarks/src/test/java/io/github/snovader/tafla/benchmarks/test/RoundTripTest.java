@@ -71,6 +71,31 @@ public class RoundTripTest {
         assertReadBack(Codecs.sample(codec), Workloads.SAMPLE);
     }
 
+    @Provide
+    Arbitrary<String> accesses() {
+        return Arbitraries.of(List.copyOf(ItemAccesses.all().keySet()));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_sum_the_last_item_and_every_item_in_order(@ForAll("accesses") String name) {
+        var access = ItemAccesses.named(name);
+        var input = Workloads.listInput(Workloads.LIST_ITEMS);
+        var tafla = TaflaCodec.create();
+        var tables = tafla.list().serialize(input);
+        var structs = tafla.structs().serialize(input);
+
+        double every = 0;
+        for (var item : input.items()) {
+            every += ItemAccesses.sum(item);
+        }
+        var last = ItemAccesses.sum(input.items().getLast());
+
+        assertEquals(last, access.lastTable(tables));
+        assertEquals(every, access.everyTable(tables));
+        assertEquals(last, access.lastStruct(structs));
+        assertEquals(every, access.everyStruct(structs));
+    }
+
     @Example
     void should_write_the_builders_tables_from_generated_code() {
         var built = TaflaCodec.create();

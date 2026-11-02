@@ -8,7 +8,7 @@ use std::fmt::Display;
 
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
 /// The runtime's crate, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -76,6 +76,15 @@ pub fn generate(
             writer.blank();
             generator.fields_struct(&mut writer, index);
         }
+
+        if schema.is_item(index) {
+            writer.blank();
+            if definition.is_struct() {
+                struct_array_view(&mut writer, definition);
+            } else {
+                vector_view(&mut writer, definition);
+            }
+        }
     }
 
     vec![GeneratedFile {
@@ -118,6 +127,10 @@ impl Generator<'_> {
                 .is_some_and(|layout| layout.offset_size != OffsetSize::U32)
         });
         let has_structs = definitions.iter().any(Definition::is_struct);
+        let has_vector = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| matches!(field.field_type, FieldType::Vector(_)));
 
         let mut names = Vec::new();
         // Arrays of structs and nested tables are padded to their alignment
@@ -144,15 +157,34 @@ impl Generator<'_> {
         if has_nested {
             names.push("TableWriter");
         }
+        if has_vector {
+            names.push("Vector");
+        }
 
         let statement = format!("use {runtime}::{{{}}};", names.join(", "));
         if statement.len() <= USE_LIST_WIDTH {
             writer.line(statement);
-        } else {
-            writer.open(format!("use {runtime}::{{"));
-            writer.line(format!("{},", names.join(", ")));
-            writer.close("};");
+            return;
         }
+
+        // rustfmt fills the lines of a list that doesn't fit, each as wide as
+        // a `use` statement on one line
+        writer.open(format!("use {runtime}::{{"));
+        let mut line = String::new();
+        for name in names {
+            let width = STYLE.indent.len() + line.len() + 1 + name.len() + 1;
+            if !line.is_empty() && width > USE_LIST_WIDTH {
+                writer.line(&line);
+                line.clear();
+            }
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(name);
+            line.push(',');
+        }
+        writer.line(line);
+        writer.close("};");
     }
 
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
@@ -718,18 +750,7 @@ impl Generator<'_> {
             rust_doc(writer, &docs);
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
-            let signature = format!("pub fn {name}(&self) -> {result} {{");
-            // rustfmt puts the parameters of a signature wider than its
-            // `max_width` on lines of their own
-            if STYLE.indent.len() + signature.len() <= STYLE.width {
-                writer.open(signature);
-            } else {
-                writer.line(format!("pub fn {name}("));
-                writer.indent();
-                writer.line("&self,");
-                writer.dedent();
-                writer.open(format!(") -> {result} {{"));
-            }
+            open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
@@ -800,7 +821,78 @@ impl Generator<'_> {
                 }
             }
             writer.close("}");
+
+            if matches!(
+                field.field_type,
+                FieldType::Vector(_) | FieldType::StructArray(_)
+            ) {
+                self.view_getter(writer, field, &offset);
+            }
         }
+    }
+
+    /// The getter of a view of a vector or an array of structs, which reads
+    /// each item when it's asked for, rather than all of them as the
+    /// field's own getter does
+    fn view_getter(&self, writer: &mut CodeWriter, field: &Field, offset: &str) {
+        let (view, errors) = match field.field_type {
+            FieldType::Vector(index) => (
+                format!("{}Vector", self.schema.definition(index).name),
+                "if the field, or the vector's count or the ends of its items, lie outside the bytes",
+            ),
+            FieldType::StructArray(index) => (
+                format!("{}Array", self.schema.definition(index).name),
+                "if the field or its structs lie outside the bytes",
+            ),
+            _ => unreachable!("only vectors and arrays of structs have views"),
+        };
+
+        let mut docs = field.docs.clone();
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(format!(
+            "Views the items of `{}()`, reading each one when it's asked for",
+            identifier(&field.name)
+        ));
+        docs.extend(errors_doc(errors));
+
+        writer.blank();
+        rust_doc(writer, &docs);
+        open_method(
+            writer,
+            &format!("pub fn {}_view", field.name),
+            &["&self"],
+            &format!("Result<{view}<'a>, DecodeError>"),
+        );
+        writer.line(format!("let position = {offset};"));
+        match field.field_type {
+            FieldType::Vector(_) => {
+                writer.open(format!("Ok({view} {{"));
+                writer.line("vector: self.buffer.get_vector(position)?,");
+                writer.close("})");
+            }
+            FieldType::StructArray(index) => {
+                let structure = &self.schema.definition(index).name;
+                writer.statement(
+                    &STYLE,
+                    "let bytes = ",
+                    &call(
+                        "self.buffer.get_struct_array",
+                        vec![text("position"), text(format!("{structure}::SIZE"))],
+                    ),
+                    "?;",
+                );
+                // The bytes are a whole number of structs
+                writer.line(format!(
+                    "let (structs, _) = bytes.as_chunks::<{{ {structure}::SIZE }}>();"
+                ));
+                writer.blank();
+                writer.line(format!("Ok({view} {{ structs }})"));
+            }
+            _ => unreachable!("only vectors and arrays of structs have views"),
+        }
+        writer.close("}");
     }
 
     fn value_type(&self, field_type: FieldType) -> String {
@@ -928,6 +1020,178 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
         });
     }
     writer.dedent();
+}
+
+/// The view of a vector of a table, which reads each item when it's asked
+/// for, from the item's end and the end of the item before it
+fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
+    let table = &definition.name;
+    let item = format!("Result<{table}<'a>, DecodeError>");
+
+    rust_doc(
+        writer,
+        &[format!(
+            "A vector of [`{table}`]s, which reads each item when it's asked for"
+        )],
+    );
+    writer.line("#[derive(Clone, Copy, Debug)]");
+    writer.open(format!("pub struct {table}Vector<'a> {{"));
+    writer.line("vector: Vector<'a>,");
+    writer.close("}");
+    writer.blank();
+
+    writer.open(format!("impl<'a> {table}Vector<'a> {{"));
+    view_length(writer, "vector", "items");
+
+    let mut docs = vec![
+        "Reads item `index`, without reading the others, or returns `None` past the end".to_owned(),
+    ];
+    docs.extend(error_doc(
+        "`Some` of a [`DecodeError`]",
+        "if the item lies outside the bytes",
+    ));
+    rust_doc(writer, &docs);
+    open_method(
+        writer,
+        "pub fn get",
+        &["&self", "index: usize"],
+        &format!("Option<{item}>"),
+    );
+    writer.line("self.vector.get(index).map(Self::item)");
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(
+        writer,
+        &["Iterates over the items, reading each item's end once".to_owned()],
+    );
+    open_method(
+        writer,
+        "pub fn iter",
+        &["&self"],
+        &format!("impl ExactSizeIterator<Item = {item}> + use<'a>"),
+    );
+    writer.line("self.vector.iter().map(Self::item)");
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(
+        writer,
+        &["Reads an item from its bytes, which are a table of their own".to_owned()],
+    );
+    open_method(
+        writer,
+        "fn item",
+        &["bytes: Result<&'a [u8], DecodeError>"],
+        &item,
+    );
+    writer.line(format!("Ok({table}::new(bytes?, 0))"));
+    writer.close("}");
+    writer.close("}");
+}
+
+/// The view of an array of a struct, which reads each struct when it's
+/// asked for, from their bytes
+fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
+    let structure = &definition.name;
+
+    rust_doc(
+        writer,
+        &[format!(
+            "An array of [`{structure}`]s, which reads each struct when it's asked for"
+        )],
+    );
+    writer.line("#[derive(Clone, Copy, Debug)]");
+    writer.open(format!("pub struct {structure}Array<'a> {{"));
+    writer.line(format!("structs: &'a [[u8; {structure}::SIZE]],"));
+    writer.close("}");
+    writer.blank();
+
+    writer.open(format!("impl<'a> {structure}Array<'a> {{"));
+    view_length(writer, "structs", "structs");
+
+    rust_doc(
+        writer,
+        &["Reads struct `index`, or returns `None` past the end".to_owned()],
+    );
+    open_method(
+        writer,
+        "pub fn get",
+        &["&self", "index: usize"],
+        &format!("Option<{structure}>"),
+    );
+    chain(
+        writer,
+        "self.structs",
+        &["get(index)", &format!("map({structure}::from_bytes)")],
+    );
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(writer, &["Iterates over the structs".to_owned()]);
+    open_method(
+        writer,
+        "pub fn iter",
+        &["&self"],
+        &format!("impl ExactSizeIterator<Item = {structure}> + use<'a>"),
+    );
+    chain(
+        writer,
+        "self.structs",
+        &["iter()", &format!("map({structure}::from_bytes)")],
+    );
+    writer.close("}");
+    writer.close("}");
+}
+
+/// Opens a method of an `impl` block, with its parameters on lines of their
+/// own when its signature is wider than rustfmt's `max_width`, as rustfmt
+/// breaks it
+fn open_method(writer: &mut CodeWriter, head: &str, parameters: &[&str], result: &str) {
+    let signature = format!("{head}({}) -> {result} {{", parameters.join(", "));
+    if STYLE.indent.len() + signature.len() <= STYLE.width {
+        writer.open(signature);
+        return;
+    }
+
+    writer.line(format!("{head}("));
+    writer.indent();
+    for parameter in parameters {
+        writer.line(format!("{parameter},"));
+    }
+    writer.dedent();
+    writer.open(format!(") -> {result} {{"));
+}
+
+/// The calls of a chain on `root`, on one line, or each on a line of its own
+/// when the chain is wider than rustfmt's `chain_width`
+fn chain(writer: &mut CodeWriter, root: &str, calls: &[&str]) {
+    let line = format!("{root}.{}", calls.join("."));
+    if line.len() <= CHAIN_WIDTH {
+        writer.line(line);
+        return;
+    }
+
+    writer.line(root);
+    writer.indent();
+    for call in calls {
+        writer.line(format!(".{call}"));
+    }
+    writer.dedent();
+}
+
+/// A view's `len()` and `is_empty()`, of the items that `field` holds
+fn view_length(writer: &mut CodeWriter, field: &str, items: &str) {
+    rust_doc(writer, &[format!("The number of {items}")]);
+    writer.open("pub const fn len(&self) -> usize {");
+    writer.line(format!("self.{field}.len()"));
+    writer.close("}");
+    writer.blank();
+
+    writer.open("pub const fn is_empty(&self) -> bool {");
+    writer.line(format!("self.{field}.is_empty()"));
+    writer.close("}");
+    writer.blank();
 }
 
 fn rust_doc(writer: &mut CodeWriter, docs: &[String]) {

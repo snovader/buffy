@@ -62,6 +62,11 @@ public final class Path {
         return items;
     }
 
+    /** Views the items of {@code points()}, reading each one when it's asked for */
+    public PointArray pointsView() {
+        return new PointArray(buffer, buffer.fieldOffset(position, 1));
+    }
+
     /** The fields of a {@code Path}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(Point start, Point[] points) {}

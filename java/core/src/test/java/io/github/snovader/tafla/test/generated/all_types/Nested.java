@@ -62,6 +62,15 @@ public final class Nested {
             .toList();
     }
 
+    /**
+     * A vector of tables that hold vectors of themselves
+     *
+     * Views the items of {@code trees()}, reading each one when it's asked for
+     */
+    public TreeVector treesView() {
+        return new TreeVector(buffer, buffer.rootOffset(2));
+    }
+
     /** The fields of a {@code Nested}, to write */
     public record Fields(String label, Outer.Fields outer, List<Tree.Fields> trees) {}
 }

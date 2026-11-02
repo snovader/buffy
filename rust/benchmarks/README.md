@@ -26,6 +26,23 @@ each document is also summed through each crate's per-element accessor.
 values, which `tests/workloads.rs` checks against values that the TypeScript
 generator printed.
 
+Four more groups time only tafla's bytes of the vector of nested tables and
+of the array of structs, read in three ways: **read the last item**, which a
+reader can find without reading the others, and **sum every item**. Each way
+sums the three float32s of the items it reads as `f64`s, rather than
+collecting items of its own, and `item_access.rs` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `Vector::get()` of the
+  last item or the `Vector`'s iterator, and `get_struct_array()`'s bytes with
+  `as_chunks()`.
+- **tafla-gen** reads with the generated getters, `items()`, which collect
+  the vector's items into a `Vec` first, and iterate over the array's
+  structs, whose `last()` the compiler finds without reading the others.
+- **tafla-gen view** reads with the generated views, `items_view()`, whose
+  `get(i)` reads one item and whose `iter()` reads every item.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  Criterion's noise.
+
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
 sizes and what it does with a truncated document, as the TypeScript comparison
 does, and `cargo run --release -p tafla-benchmarks --bin allocation` prints
@@ -460,3 +477,34 @@ The array of structs takes 1,208 bytes in tafla and rkyv, 1,200 of them the
 structs', and 1,224 in FlatBuffers. protobuf's 1,700 bytes give each struct a
 tag and a length, and each float a tag, and rmp-serde's 1,604 an array header
 for each struct and a type byte for each float.
+
+### Reading items through views
+
+One run of the four groups that read tafla's items, on 2026-11-02 on the same
+machine and rustc, of `cargo bench -p tafla-benchmarks --bench comparison --
+item`. The 1-minute load average was 2.7 at its start. The median sample was
+within 8% of the fastest for every benchmark.
+
+Fastest sample in µs, and its ratio to `ByteBuffer`'s by hand:
+
+| Benchmark                                       |   tafla |       tafla-gen |  tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ------: | --------------: | --------------: | -----------------: |
+| vector of 100 nested tables: read the last item | 0.00771 |   0.155 (20.1×) | 0.00922 (1.20×) |    0.00913 (1.18×) |
+| vector of 100 nested tables: sum every item     |   0.216 |   0.571 (2.65×) |   0.447 (2.07×) |      0.453 (2.10×) |
+| array of 100 structs: read the last item        | 0.00205 | 0.00206 (1.00×) | 0.00206 (1.00×) |    0.00205 (1.00×) |
+| array of 100 structs: sum every item            |  0.0601 |  0.0585 (0.97×) |  0.0578 (0.96×) |     0.0580 (0.97×) |
+
+Only tafla-gen's getter of the vector allocates: 3,200 bytes, a `Vec` of the
+100 items' readers.
+
+- `get()` of the vector's view reads the last item in 9.2 ns, against 155 ns
+  through the getter, which collects every item's reader first, and 7.7 ns by
+  hand.
+- `iter()` of the view sums every item in 447 ns, against 571 ns through the
+  getter, without the `Vec`. Both take twice as long as `ByteBuffer`'s
+  getters by hand, 216 ns, as the codecs' `deserialize()` does: reading each
+  item's fields through the generated readers costs that, not the view.
+- The getter of an array of structs already returns an iterator, and its
+  `last()` takes as long as `get()` of the view, 2.1 ns, as the compiler
+  reads only the last struct. Every way sums the array in 58 to 60 ns. The
+  view adds `get(i)` for any other struct.

@@ -12,8 +12,9 @@ from functools import cache, partial
 from time import perf_counter
 from typing import Any
 
-from tafla_benchmarks.check import serialize_checked
+from tafla_benchmarks.check import check_sum, serialize_checked
 from tafla_benchmarks.codecs import CODECS, DocumentWorkload, Workload, samples
+from tafla_benchmarks.item_access import ACCESSES, ItemAccess, sum_item, write_items
 from tafla_benchmarks.workloads import (
     DOCUMENT_ROWS,
     LIST_ITEMS,
@@ -69,6 +70,7 @@ def groups() -> list[Group]:
             [(c.name, c.structs) for c in CODECS],
             partial(list_input, LIST_ITEMS),
         ),
+        *_access_groups(),
         *_round_trip_groups(
             "fixed-size record", list(samples().items()), lambda: SAMPLE
         ),
@@ -94,6 +96,58 @@ def _round_trip_groups[I](
         Group(f"{name}: serialize", tuple(serialize)),
         Group(f"{name}: deserialize", tuple(deserialize)),
     ]
+
+
+def _access_groups() -> list[Group]:
+    """Reads the last item of the vector of nested tables and of the array of
+    structs, which a reader can find without reading the others, and sums every
+    item, in tafla's bytes"""
+    vector = f"vector of {LIST_ITEMS} nested tables"
+    array = f"array of {LIST_ITEMS} structs"
+
+    return [
+        _access_group(
+            f"{vector}: read the last item",
+            lambda access: access.last_table,
+            tables=True,
+            last=True,
+        ),
+        _access_group(
+            f"{vector}: sum every item",
+            lambda access: access.every_table,
+            tables=True,
+            last=False,
+        ),
+        _access_group(
+            f"{array}: read the last item",
+            lambda access: access.last_struct,
+            tables=False,
+            last=True,
+        ),
+        _access_group(
+            f"{array}: sum every item",
+            lambda access: access.every_struct,
+            tables=False,
+            last=False,
+        ),
+    ]
+
+
+def _access_group(
+    name: str,
+    select: Callable[[ItemAccess], Callable[[Buffer], float]],
+    *,
+    tables: bool,
+    last: bool,
+) -> Group:
+    variants = [
+        Variant(
+            access.name, partial(_accessing, select(access), tables=tables, last=last)
+        )
+        for access in ACCESSES
+    ]
+
+    return Group(name, tuple(variants))
 
 
 def _document_groups(rows: int) -> list[Group]:
@@ -146,6 +200,23 @@ def _summing(
     workload: DocumentWorkload, input: Callable[[], DocumentInput]
 ) -> Call[Buffer]:
     return Call(workload.sum_a, serialize_checked(workload, input()))
+
+
+def _accessing(
+    read: Callable[[Buffer], float], *, tables: bool, last: bool
+) -> Call[Buffer]:
+    """Reads the vector's items if ``tables``, or else the array of structs', and
+    the last one if ``last``, or else every one"""
+    input = list_input(LIST_ITEMS)
+    items = write_items(input)
+    data = items.tables if tables else items.structs
+
+    expected = 0.0
+    for item in input.items[-1:] if last else input.items:
+        expected += sum_item(item)
+    check_sum(read, data, expected)
+
+    return Call(read, data)
 
 
 @cache
