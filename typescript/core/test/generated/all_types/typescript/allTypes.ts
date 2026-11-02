@@ -13,8 +13,9 @@ import {
     readUint32,
     readUint64,
     StructWriter,
-    TableBuilder,
-    TableLayout
+    TableLayout,
+    TableSizer,
+    type TableWriter
 } from 'tafla';
 
 /** A field of every scalar type */
@@ -29,19 +30,31 @@ export class Scalars {
 
     /** Writes a `Scalars` with every field */
     static serialize(fields: ScalarsFields): Uint8Array {
-        const builder = new TableBuilder(10, Scalars.#LAYOUT);
-        builder.setInt8(fields.int8);
-        builder.setUint8(fields.uint8);
-        builder.setInt16(fields.int16);
-        builder.setUint16(fields.uint16);
-        builder.setInt32(fields.int32);
-        builder.setUint32(fields.uint32);
-        builder.setInt64(fields.int64);
-        builder.setUint64(fields.uint64);
-        builder.setFloat32(fields.float32);
-        builder.setFloat64(fields.float64);
+        const sizer = new TableSizer(10, Scalars.#LAYOUT);
+        sizer.addInt8();
+        sizer.addUint8();
+        sizer.addInt16();
+        sizer.addUint16();
+        sizer.addInt32();
+        sizer.addUint32();
+        sizer.addInt64();
+        sizer.addUint64();
+        sizer.addFloat32();
+        sizer.addFloat64();
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setInt8(0, fields.int8);
+        writer.setUint8(1, fields.uint8);
+        writer.setInt16(2, fields.int16);
+        writer.setUint16(3, fields.uint16);
+        writer.setInt32(4, fields.int32);
+        writer.setUint32(5, fields.uint32);
+        writer.setInt64(6, fields.int64);
+        writer.setUint64(7, fields.uint64);
+        writer.setFloat32(8, fields.float32);
+        writer.setFloat64(9, fields.float64);
+
+        return writer.bytes();
     }
 
     int8(): number {
@@ -111,19 +124,31 @@ export class Arrays {
 
     /** Writes a `Arrays` with every field */
     static serialize(fields: ArraysFields): Uint8Array {
-        const builder = new TableBuilder(10, Arrays.#LAYOUT);
-        builder.setInt8Array(fields.int8);
-        builder.setUint8Array(fields.uint8);
-        builder.setInt16Array(fields.int16);
-        builder.setUint16Array(fields.uint16);
-        builder.setInt32Array(fields.int32);
-        builder.setUint32Array(fields.uint32);
-        builder.setInt64Array(fields.int64);
-        builder.setUint64Array(fields.uint64);
-        builder.setFloat32Array(fields.float32);
-        builder.setFloat64Array(fields.float64);
+        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        sizer.addInt8Array(fields.int8.length);
+        sizer.addUint8Array(fields.uint8.length);
+        sizer.addInt16Array(fields.int16.length);
+        sizer.addUint16Array(fields.uint16.length);
+        sizer.addInt32Array(fields.int32.length);
+        sizer.addUint32Array(fields.uint32.length);
+        sizer.addInt64Array(fields.int64.length);
+        sizer.addUint64Array(fields.uint64.length);
+        sizer.addFloat32Array(fields.float32.length);
+        sizer.addFloat64Array(fields.float64.length);
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setInt8Array(0, fields.int8);
+        writer.setUint8Array(1, fields.uint8);
+        writer.setInt16Array(2, fields.int16);
+        writer.setUint16Array(3, fields.uint16);
+        writer.setInt32Array(4, fields.int32);
+        writer.setUint32Array(5, fields.uint32);
+        writer.setInt64Array(6, fields.int64);
+        writer.setUint64Array(7, fields.uint64);
+        writer.setFloat32Array(8, fields.float32);
+        writer.setFloat64Array(9, fields.float64);
+
+        return writer.bytes();
     }
 
     int8(): Int8Array {
@@ -193,12 +218,26 @@ export class Nested {
 
     /** Writes a `Nested` with every field */
     static serialize(fields: NestedFields): Uint8Array {
-        const builder = new TableBuilder(3, Nested.#LAYOUT);
-        builder.setString(fields.label);
-        builder.setTable(Outer.builder(fields.outer));
-        builder.setVector(fields.trees.map(Tree.builder));
+        const sizer = new TableSizer(3, Nested.#LAYOUT);
+        sizer.addString(fields.label);
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer);
+        sizer.addVector(fields.trees.length);
+        for (const item of fields.trees) {
+            Tree.size(sizer, item);
+        }
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setString(0, fields.label);
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer);
+        const vector2 = writer.setVector(2, fields.trees.length);
+        for (let i = 0; i < fields.trees.length; i++) {
+            Tree.write(writer, fields.trees[i]);
+            writer.setItemEnd(vector2, i);
+        }
+
+        return writer.bytes();
     }
 
     /** A string beside the tables */
@@ -224,6 +263,15 @@ export class Nested {
 
         return items;
     }
+
+    /**
+     * A vector of tables that hold vectors of themselves
+     *
+     * Views the items of `trees()`, reading each one when it's asked for
+     */
+    treesView(): TreeVector {
+        return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
+    }
 }
 
 /** The fields of a `Nested`, to write */
@@ -237,6 +285,12 @@ export interface NestedFields {
 }
 
 export class Outer {
+    /**
+     * The alignment that a parent pads an `Outer` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 8;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -247,15 +301,27 @@ export class Outer {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds an `Outer` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: OuterFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setUint32(fields.count);
-        builder.setTable(Inner.builder(fields.inner));
+    static size(sizer: TableSizer, fields: OuterFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addUint32();
+        sizer.addTable(Inner.ALIGNMENT);
+        Inner.size(sizer, fields.inner);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes an `Outer` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: OuterFields): void {
+        const parent = writer.startTable(2);
+        writer.setUint32(0, fields.count);
+        writer.setTable(1, Inner.ALIGNMENT);
+        Inner.write(writer, fields.inner);
+        writer.endTable(parent);
     }
 
     count(): number {
@@ -279,6 +345,12 @@ export interface OuterFields {
 }
 
 export class Inner {
+    /**
+     * The alignment that a parent pads an `Inner` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 8;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -289,15 +361,25 @@ export class Inner {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds an `Inner` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: InnerFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setString(fields.name);
-        builder.setFloat64Array(fields.values);
+    static size(sizer: TableSizer, fields: InnerFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addString(fields.name);
+        sizer.addFloat64Array(fields.values.length);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes an `Inner` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: InnerFields): void {
+        const parent = writer.startTable(2);
+        writer.setString(0, fields.name);
+        writer.setFloat64Array(1, fields.values);
+        writer.endTable(parent);
     }
 
     name(): string {
@@ -324,6 +406,12 @@ export interface InnerFields {
  * may be empty
  */
 export class Tree {
+    /**
+     * The alignment that a parent pads a `Tree` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 1;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -334,15 +422,32 @@ export class Tree {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds a `Tree` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: TreeFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setInt32(fields.value);
-        builder.setVector(fields.children.map(Tree.builder));
+    static size(sizer: TableSizer, fields: TreeFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addInt32();
+        sizer.addVector(fields.children.length);
+        for (const item of fields.children) {
+            Tree.size(sizer, item);
+        }
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a `Tree` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: TreeFields): void {
+        const parent = writer.startTable(2);
+        writer.setInt32(0, fields.value);
+        const vector1 = writer.setVector(1, fields.children.length);
+        for (let i = 0; i < fields.children.length; i++) {
+            Tree.write(writer, fields.children[i]);
+            writer.setItemEnd(vector1, i);
+        }
+        writer.endTable(parent);
     }
 
     value(): number {
@@ -363,6 +468,14 @@ export class Tree {
 
         return items;
     }
+
+    /** Views the items of `children()`, reading each one when it's asked for */
+    childrenView(): TreeVector {
+        return new TreeVector(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
 }
 
 /** The fields of a `Tree`, to write */
@@ -371,8 +484,51 @@ export interface TreeFields {
     children: readonly TreeFields[];
 }
 
+/** A vector of `Tree`s, which reads each item when it's asked for */
+export class TreeVector {
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+    readonly #length: number;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** The number of items */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index: number): Tree {
+        return new Tree(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
+}
+
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 export class Keywords {
+    /**
+     * The alignment that a parent pads a `Keywords` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 1;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -383,19 +539,33 @@ export class Keywords {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds a `Keywords` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: KeywordsFields): TableBuilder {
-        const builder = new TableBuilder(6);
-        builder.setUint8(fields.class);
-        builder.setUint8(fields.default);
-        builder.setUint8(fields.in);
-        builder.setUint8(fields.match);
-        builder.setUint8(fields.self);
-        builder.setString(fields.type);
+    static size(sizer: TableSizer, fields: KeywordsFields): void {
+        const parent = sizer.startTable(6);
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addUint8();
+        sizer.addString(fields.type);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a `Keywords` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: KeywordsFields): void {
+        const parent = writer.startTable(6);
+        writer.setUint8(0, fields.class);
+        writer.setUint8(1, fields.default);
+        writer.setUint8(2, fields.in);
+        writer.setUint8(3, fields.match);
+        writer.setUint8(4, fields.self);
+        writer.setString(5, fields.type);
+        writer.endTable(parent);
     }
 
     class(): number {
@@ -457,10 +627,15 @@ export class Reserved {
 
     /** Writes a `Reserved` with every field */
     static serialize(fields: ReservedFields): Uint8Array {
-        const builder = new TableBuilder(1, Reserved.#LAYOUT);
-        builder.setTable(Keywords.builder(fields.keywords));
+        const sizer = new TableSizer(1, Reserved.#LAYOUT);
+        sizer.addTable(Keywords.ALIGNMENT);
+        Keywords.size(sizer, fields.keywords);
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setTable(0, Keywords.ALIGNMENT);
+        Keywords.write(writer, fields.keywords);
+
+        return writer.bytes();
     }
 
     keywords(): Keywords {
@@ -488,22 +663,41 @@ export class Structs {
 
     /** Writes a `Structs` with every field */
     static serialize(fields: StructsFields): Uint8Array {
-        const builder = new TableBuilder(5, Structs.#LAYOUT);
-        builder.setStruct(Packed.serialize(fields.packed));
-        builder.setStructArray(
+        const sizer = new TableSizer(5, Structs.#LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(
+            fields.documented.length,
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(
+            fields.segments.length,
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path);
+
+        const writer = sizer.writer();
+        writer.setStruct(0, Packed.serialize(fields.packed));
+        writer.setStructArray(
+            1,
             Documented.serializeArray(fields.documented),
             Documented.SIZE,
             Documented.ALIGNMENT
         );
-        builder.setStruct(Segment.serialize(fields.segment));
-        builder.setStructArray(
+        writer.setStruct(2, Segment.serialize(fields.segment));
+        writer.setStructArray(
+            3,
             Segment.serializeArray(fields.segments),
             Segment.SIZE,
             Segment.ALIGNMENT
         );
-        builder.setTable(Path.builder(fields.path));
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path);
 
-        return builder.bytes();
+        return writer.bytes();
     }
 
     /** A struct of every scalar type */
@@ -526,6 +720,15 @@ export class Structs {
         return items;
     }
 
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * Views the items of `documented()`, reading each one when it's asked for
+     */
+    documentedView(): DocumentedArray {
+        return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
+    }
+
     /** A struct of structs */
     segment(): Segment {
         return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
@@ -543,6 +746,11 @@ export class Structs {
         }
 
         return items;
+    }
+
+    /** Views the items of `segments()`, reading each one when it's asked for */
+    segmentsView(): SegmentArray {
+        return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
     }
 
     /** A table nested in the message, which holds structs too */
@@ -565,6 +773,12 @@ export interface StructsFields {
 }
 
 export class Path {
+    /**
+     * The alignment that a parent pads a `Path` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 4;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -575,19 +789,30 @@ export class Path {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds a `Path` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: PathFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setStruct(Point.serialize(fields.start));
-        builder.setStructArray(
+    static size(sizer: TableSizer, fields: PathFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addStruct(Point.SIZE);
+        sizer.addStructArray(fields.points.length, Point.SIZE, Point.ALIGNMENT);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Path` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: PathFields): void {
+        const parent = writer.startTable(2);
+        writer.setStruct(0, Point.serialize(fields.start));
+        writer.setStructArray(
+            1,
             Point.serializeArray(fields.points),
             Point.SIZE,
             Point.ALIGNMENT
         );
-
-        return builder;
+        writer.endTable(parent);
     }
 
     start(): Point {
@@ -609,6 +834,14 @@ export class Path {
         }
 
         return items;
+    }
+
+    /** Views the items of `points()`, reading each one when it's asked for */
+    pointsView(): PointArray {
+        return new PointArray(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
     }
 }
 
@@ -683,6 +916,42 @@ export interface SegmentFields {
     end: PointFields;
 }
 
+/** An array of `Segment`s, which reads each struct when it's asked for */
+export class SegmentArray {
+    readonly #bytes: Uint8Array;
+    readonly #length: number;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#bytes = buffer.getStructArray(position, Segment.SIZE);
+        this.#length = this.#bytes.length / Segment.SIZE;
+    }
+
+    /** The number of structs */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index: number): Segment {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Segment(this.#bytes, index * Segment.SIZE);
+    }
+}
+
 export class Point {
     /** The byte length of a `Point` */
     static readonly SIZE = 8;
@@ -745,6 +1014,42 @@ export class Point {
 export interface PointFields {
     x: number;
     y: number;
+}
+
+/** An array of `Point`s, which reads each struct when it's asked for */
+export class PointArray {
+    readonly #bytes: Uint8Array;
+    readonly #length: number;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#bytes = buffer.getStructArray(position, Point.SIZE);
+        this.#length = this.#bytes.length / Point.SIZE;
+    }
+
+    /** The number of structs */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index: number): Point {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Point(this.#bytes, index * Point.SIZE);
+    }
 }
 
 /** A struct of every scalar type, at fixed offsets without padding */
@@ -963,4 +1268,40 @@ export interface DocumentedFields {
      */
     two: number;
     undocumented: number;
+}
+
+/** An array of `Documented`s, which reads each struct when it's asked for */
+export class DocumentedArray {
+    readonly #bytes: Uint8Array;
+    readonly #length: number;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#bytes = buffer.getStructArray(position, Documented.SIZE);
+        this.#length = this.#bytes.length / Documented.SIZE;
+    }
+
+    /** The number of structs */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @throws {RangeError} If the array has no struct `index`.
+     */
+    get(index: number): Documented {
+        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
+            throw new RangeError(
+                `Struct ${index} is outside the array of ${this.#length}`
+            );
+        }
+
+        return new Documented(this.#bytes, index * Documented.SIZE);
+    }
 }

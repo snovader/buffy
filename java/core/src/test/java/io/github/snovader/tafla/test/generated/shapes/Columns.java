@@ -2,10 +2,17 @@
 package io.github.snovader.tafla.test.generated.shapes;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 /** Columns with a value per key */
 public final class Columns {
+    /**
+     * The alignment that a parent pads a {@code Columns} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 4;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -15,17 +22,29 @@ public final class Columns {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds a {@code Columns} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(4);
-        builder.setInt64(fields.base());
-        builder.setUint32Array(fields.keys());
-        builder.setFloat32Array(fields.a());
-        builder.setFloat32Array(fields.b());
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(4);
+        sizer.addInt64();
+        sizer.addUint32Array(fields.keys().length);
+        sizer.addFloat32Array(fields.a().length);
+        sizer.addFloat32Array(fields.b().length);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a {@code Columns} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(4);
+        writer.setInt64(0, fields.base());
+        writer.setUint32Array(1, fields.keys());
+        writer.setFloat32Array(2, fields.a());
+        writer.setFloat32Array(3, fields.b());
+        writer.endTable(parent);
     }
 
     /** The value that {@code keys} count from */

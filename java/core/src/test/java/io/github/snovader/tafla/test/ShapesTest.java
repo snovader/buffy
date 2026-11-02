@@ -5,6 +5,9 @@ import io.github.snovader.tafla.test.generated.shapes.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
+import java.time.Duration;
+import java.util.LinkedList;
+
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
 import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
 import static io.github.snovader.tafla.test.ShapesTables.*;
@@ -62,6 +65,34 @@ public class ShapesTest {
         var byHand = Tables.build(describeItemList(fields)).bytes();
 
         assertArrayEquals(byHand, ItemList.serialize(fields), () -> describeItemList(fields).toString());
+    }
+
+    // A LinkedList, without random access, is what these tests write from
+    @Property
+    @SuppressWarnings("JdkObsolete")
+    void an_item_list_is_written_from_a_linked_list_as_from_any_other_list(
+        @ForAll("itemLists") ItemList.Fields fields
+    ) {
+        var linked = new ItemList.Fields(new LinkedList<>(fields.items()));
+
+        assertArrayEquals(ItemList.serialize(fields), ItemList.serialize(linked));
+    }
+
+    @Example
+    @SuppressWarnings("JdkObsolete")
+    void an_item_list_is_written_from_a_long_linked_list_in_time_proportional_to_its_length() {
+        // Getting each item by its index would walk the list for each, which
+        // would take minutes for these items rather than milliseconds
+        var items = new LinkedList<Item.Fields>();
+        for (int i = 0; i < 300_000; i++) {
+            items.add(new Item.Fields(i, new Pair.Fields(i, -i)));
+        }
+
+        var bytes = assertTimeoutPreemptively(
+            Duration.ofSeconds(5),
+            () -> ItemList.serialize(new ItemList.Fields(items))
+        );
+        assertEquals(300_000, new ItemList(bytes).items().size());
     }
 
     // Decode exceptions

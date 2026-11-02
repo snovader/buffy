@@ -10,11 +10,12 @@ use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
-use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
-    SAMPLE, SampleShape, Shape,
+    SAMPLE, SampleShape, Shape, StructsShape,
 };
+use tafla_benchmarks::{for_each_codec, for_each_item_access};
 
 type Group<'a> = BenchmarkGroup<'a, WallTime>;
 
@@ -25,7 +26,7 @@ criterion_group! {
     config = Criterion::default()
         .warm_up_time(Duration::from_secs(2))
         .measurement_time(Duration::from_secs(4));
-    targets = record, documents, list, sample
+    targets = record, documents, list, structs, item_access, sample
 }
 
 criterion_main!(comparison);
@@ -69,6 +70,60 @@ fn list(criterion: &mut Criterion) {
     });
     group(criterion, &format!("{name}: deserialize"), |group| {
         for_each_codec!(|codec| deserialize::<ListShape, _>(group, codec, &list));
+    });
+}
+
+fn structs(criterion: &mut Criterion) {
+    let list = workloads::list(LIST_ITEMS);
+    let name = format!("array of {LIST_ITEMS} structs");
+
+    group(criterion, &format!("{name}: serialize"), |group| {
+        for_each_codec!(|codec| serialize::<StructsShape, _>(group, codec, &list));
+    });
+    group(criterion, &format!("{name}: deserialize"), |group| {
+        for_each_codec!(|codec| deserialize::<StructsShape, _>(group, codec, &list));
+    });
+}
+
+/// Reads the last item of the vector of nested tables and of the array of
+/// structs, which a reader can find without reading the others, and sums
+/// every item, in tafla's bytes
+fn item_access(criterion: &mut Criterion) {
+    let list = workloads::list(LIST_ITEMS);
+    let bytes = checked(ItemBytes::write(&list));
+    for_each_item_access!(|access, _name| checked(item_access::check(access, &list, &bytes)));
+
+    let vector = format!("vector of {LIST_ITEMS} nested tables");
+    let array = format!("array of {LIST_ITEMS} structs");
+    let (tables, structs) = (bytes.tables.as_slice(), bytes.structs.as_slice());
+
+    group(
+        criterion,
+        &format!("{vector}: read the last item"),
+        |group| {
+            for_each_item_access!(
+                |access, name| read(group, name, || access.last_table(black_box(tables)))
+            );
+        },
+    );
+    group(criterion, &format!("{vector}: sum every item"), |group| {
+        for_each_item_access!(
+            |access, name| read(group, name, || access.every_table(black_box(tables)))
+        );
+    });
+    group(
+        criterion,
+        &format!("{array}: read the last item"),
+        |group| {
+            for_each_item_access!(
+                |access, name| read(group, name, || access.last_struct(black_box(structs)))
+            );
+        },
+    );
+    group(criterion, &format!("{array}: sum every item"), |group| {
+        for_each_item_access!(
+            |access, name| read(group, name, || access.every_struct(black_box(structs)))
+        );
     });
 }
 
@@ -119,6 +174,11 @@ fn sum_a<C: DocumentWorkload>(group: &mut Group<'_>, codec: C, input: &Document<
     group.bench_function(C::NAME, |bencher| {
         bencher.iter(|| codec.sum_a(black_box(bytes.as_ref())));
     });
+}
+
+/// Times a way of reading tafla's items
+fn read(group: &mut Group<'_>, name: &str, read: impl Fn() -> Result<f64, Error>) {
+    group.bench_function(name, |bencher| bencher.iter(&read));
 }
 
 /// Stops the benchmarks before timing a codec that failed its check

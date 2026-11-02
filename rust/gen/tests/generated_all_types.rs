@@ -13,7 +13,7 @@ use std::ops::Range;
 use all_types::{
     Arrays, ArraysFields, Documented, Inner, InnerFields, Keywords, KeywordsFields, Nested,
     NestedFields, Outer, OuterFields, Packed, Path, PathFields, Point, Reserved, ReservedFields,
-    Scalars, ScalarsFields, Segment, Structs, StructsFields, Tree, TreeFields,
+    Scalars, ScalarsFields, Segment, Structs, StructsFields, Tree, TreeFields, TreeVector,
 };
 use proptest::array::uniform5;
 use proptest::collection::vec;
@@ -23,7 +23,7 @@ use tables::{
     expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
     to_vec, truncations, vector,
 };
-use tafla::{Alignment, DecodeError, TableLayout};
+use tafla::{Alignment, BuildError, DecodeError, TableLayout};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
@@ -144,6 +144,114 @@ fn read_path(path: &Path) -> Fields {
             .map(|start| Value::Struct(describe_point(start))),
         path.points()
             .map(|items| struct_array(Point::SIZE, Point::ALIGNMENT, items.map(describe_point))),
+    ]
+}
+
+// Reading the vectors and arrays of structs through their views instead
+
+/// Ways to read a view's items: by index from the last, as a reader that
+/// skips items would, and in order with its iterator
+#[derive(Clone, Copy, Debug)]
+enum ViewOrder {
+    FromLast,
+    Iterated,
+}
+
+impl ViewOrder {
+    const ALL: [Self; 2] = [Self::FromLast, Self::Iterated];
+
+    /// The view's items in order, from `get()` or `iter()`
+    fn items<T>(
+        self,
+        len: usize,
+        get: impl Fn(usize) -> Option<T>,
+        iter: impl Iterator<Item = T>,
+    ) -> Vec<T> {
+        match self {
+            Self::FromLast => {
+                let mut items: Vec<T> = (0..len)
+                    .rev()
+                    .map(|index| get(index).expect("an item within the view"))
+                    .collect();
+                items.reverse();
+                items
+            }
+            Self::Iterated => iter.collect(),
+        }
+    }
+}
+
+fn read_nested_views(nested: &Nested, order: ViewOrder) -> Fields {
+    vec![
+        nested.label().map(Value::string),
+        nested.outer().and_then(|outer| table(read_outer(&outer))),
+        nested
+            .trees_view()
+            .and_then(|trees| tree_vector(trees, order)),
+    ]
+}
+
+fn read_tree_views(tree: &Tree, order: ViewOrder) -> Fields {
+    vec![
+        tree.value().map(Value::I32),
+        tree.children_view()
+            .and_then(|children| tree_vector(children, order)),
+    ]
+}
+
+/// The value of a vector of trees, or the first error of its items, as the
+/// getter of the vector reads it
+fn tree_vector(view: TreeVector<'_>, order: ViewOrder) -> Result<Value, DecodeError> {
+    let trees: Vec<Tree> = order
+        .items(view.len(), |index| view.get(index), view.iter())
+        .into_iter()
+        .collect::<Result<_, _>>()?;
+
+    vector(trees.iter().map(|tree| read_tree_views(tree, order)))
+}
+
+fn read_structs_views(structs: &Structs, order: ViewOrder) -> Fields {
+    vec![
+        structs
+            .packed()
+            .map(|packed| Value::Struct(describe_packed(&packed))),
+        structs.documented_view().map(|view| {
+            let items = order.items(view.len(), |index| view.get(index), view.iter());
+            struct_array(
+                Documented::SIZE,
+                Documented::ALIGNMENT,
+                items.into_iter().map(describe_documented),
+            )
+        }),
+        structs
+            .segment()
+            .map(|segment| Value::Struct(describe_segment(segment))),
+        structs.segments_view().map(|view| {
+            let items = order.items(view.len(), |index| view.get(index), view.iter());
+            struct_array(
+                Segment::SIZE,
+                Segment::ALIGNMENT,
+                items.into_iter().map(describe_segment),
+            )
+        }),
+        structs
+            .path()
+            .and_then(|path| table(read_path_views(&path, order))),
+    ]
+}
+
+fn read_path_views(path: &Path, order: ViewOrder) -> Fields {
+    vec![
+        path.start()
+            .map(|start| Value::Struct(describe_point(start))),
+        path.points_view().map(|view| {
+            let items = order.items(view.len(), |index| view.get(index), view.iter());
+            struct_array(
+                Point::SIZE,
+                Point::ALIGNMENT,
+                items.into_iter().map(describe_point),
+            )
+        }),
     ]
 }
 
@@ -521,7 +629,7 @@ fn with_levels<R>(
 }
 
 /// The values of a `Nested`'s fields and of the tables it nests
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct OwnedNested {
     label: String,
     count: u32,
@@ -531,6 +639,14 @@ struct OwnedNested {
 }
 
 impl OwnedNested {
+    /// Writes the `Nested`
+    // `NestedFields::serialize` itself isn't general enough over the fields'
+    // lifetimes, which clippy doesn't see
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    fn serialize(&self) -> Result<Vec<u8>, BuildError> {
+        self.with_fields(|fields| fields.serialize())
+    }
+
     /// Calls `f` with the fields, which borrow those of the trees
     fn with_fields<R>(&self, f: impl FnOnce(&NestedFields<'_>) -> R) -> R {
         with_tree_fields(&self.trees, |trees| {
@@ -875,6 +991,82 @@ proptest! {
         read_structs(&Structs::new(&bytes));
     }
 
+    // Views
+
+    #[test]
+    fn nested_reads_back_its_trees_item_by_item_through_their_views(
+        nested in owned_nested(),
+        placement in placements(),
+    ) {
+        nested.with_fields(|fields| -> Result<(), TestCaseError> {
+            let bytes = placement.place(&fields.serialize()?);
+
+            for order in ViewOrder::ALL {
+                let read = read_nested_views(&Nested::new(bytes.bytes()), order);
+                prop_assert_eq!(read, expected(describe_nested(fields)), "{:?}", order);
+            }
+            Ok(())
+        })?;
+    }
+
+    #[test]
+    fn structs_read_back_their_arrays_struct_by_struct_through_their_views(
+        structs in owned_structs(),
+        placement in placements(),
+    ) {
+        let fields = structs.fields();
+        let bytes = placement.place(&fields.serialize()?);
+
+        for order in ViewOrder::ALL {
+            let read = read_structs_views(&Structs::new(bytes.bytes()), order);
+            prop_assert_eq!(read, expected(describe_structs(&fields)), "{:?}", order);
+        }
+    }
+
+    #[test]
+    fn views_read_corrupted_bytes_as_the_getters_read_them(
+        nested in owned_nested(),
+        structs in owned_structs(),
+        overwrite in overwrites(),
+    ) {
+        let nested = nested.serialize()?;
+        let structs = structs.fields().serialize()?;
+
+        for order in ViewOrder::ALL {
+            for bytes in truncations(&nested).chain([&overwrite.apply(&nested)[..]]) {
+                let nested = Nested::new(bytes);
+                prop_assert_eq!(read_nested_views(&nested, order), read_nested(&nested));
+            }
+            for bytes in truncations(&structs).chain([&overwrite.apply(&structs)[..]]) {
+                let structs = Structs::new(bytes);
+                prop_assert_eq!(read_structs_views(&structs, order), read_structs(&structs));
+            }
+        }
+    }
+
+    #[test]
+    fn views_read_arbitrary_bytes_as_the_getters_read_them(bytes in arbitrary_bytes()) {
+        for order in ViewOrder::ALL {
+            prop_assert_eq!(read_nested_views(&Nested::new(&bytes), order), read_nested(&Nested::new(&bytes)));
+            prop_assert_eq!(read_structs_views(&Structs::new(&bytes), order), read_structs(&Structs::new(&bytes)));
+        }
+    }
+
+    #[test]
+    fn views_have_no_item_past_their_last(
+        nested in owned_nested(),
+        structs in owned_structs(),
+        past in 0..1000_usize,
+    ) {
+        let nested = nested.serialize()?;
+        let structs = structs.fields().serialize()?;
+
+        let trees = Nested::new(&nested).trees_view()?;
+        prop_assert!(trees.get(trees.len() + past).is_none());
+        let documented = Structs::new(&structs).documented_view()?;
+        prop_assert!(documented.get(documented.len() + past).is_none());
+    }
+
     // The structs
 
     #[test]
@@ -966,4 +1158,48 @@ proptest! {
         prop_assert_eq!(describe_segment(read), describe_segment(segment));
         prop_assert_eq!(describe_segment(Segment::from_bytes(&bytes)), describe_segment(segment));
     }
+}
+
+#[test]
+fn views_of_empty_vectors_and_arrays_of_structs_hold_no_items()
+-> Result<(), Box<dyn std::error::Error>> {
+    let nested = OwnedNested::default().serialize()?;
+    let structs = OwnedStructs {
+        packed: Packed::from_bytes(&[0; Packed::SIZE]),
+        documented: vec![],
+        segment: Segment::from_bytes(&[0; Segment::SIZE]),
+        segments: vec![],
+        start: Point::from_bytes(&[0; Point::SIZE]),
+        points: vec![],
+    }
+    .fields()
+    .serialize()?;
+
+    let trees = Nested::new(&nested).trees_view()?;
+    assert!(trees.is_empty() && trees.get(0).is_none() && trees.iter().len() == 0);
+
+    let structs = Structs::new(&structs);
+    let documented = structs.documented_view()?;
+    assert!(documented.is_empty() && documented.get(0).is_none());
+    let segments = structs.segments_view()?;
+    assert!(segments.is_empty() && segments.get(0).is_none());
+    let points = structs.path()?.points_view()?;
+    assert!(points.is_empty() && points.iter().len() == 0);
+    Ok(())
+}
+
+/// A nested table is padded to the largest alignment of its arrays, of
+/// scalars and of structs, and of the tables nested in it, as `TableBuilder`
+/// pads one from its builder. The items of a vector aren't padded, so they
+/// don't count, and a table of none of them is aligned to 1.
+#[test]
+fn tables_are_aligned_to_their_arrays_and_nested_tables() {
+    // An array of float64s, and the table that nests it
+    assert_eq!(InnerFields::ALIGNMENT, Alignment::Eight);
+    assert_eq!(OuterFields::ALIGNMENT, Alignment::Eight);
+    // An array of structs of float32s, after a struct of them
+    assert_eq!(PathFields::ALIGNMENT, Alignment::Four);
+    // A vector of itself, and scalars and a string
+    assert_eq!(TreeFields::ALIGNMENT, Alignment::One);
+    assert_eq!(KeywordsFields::ALIGNMENT, Alignment::One);
 }

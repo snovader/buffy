@@ -12,6 +12,8 @@ from tafla_benchmarks.generated.flatbuffers import (
     Pair,
     Record,
     Sample,
+    Triple,
+    Triples,
 )
 from tafla_benchmarks.workloads import (
     DocumentInput,
@@ -137,6 +139,33 @@ def deserialize_list(data: Buffer) -> ListInput:
     return ListInput(items)
 
 
+def serialize_structs(input: ListInput) -> bytes:
+    builder = flatbuffers.Builder()
+
+    # Builders write back to front, so the last item is prepended first
+    Triples.StartItemsVector(builder, len(input.items))
+    for item in reversed(input.items):
+        Triple.CreateTriple(builder, item.value, item.first, item.second)
+    items = builder.EndVector()
+
+    Triples.Start(builder)
+    Triples.AddItems(builder, items)
+    builder.Finish(Triples.End(builder))
+
+    return builder.Output()
+
+
+def deserialize_structs(data: Buffer) -> ListInput:
+    triples = Triples.Triples.GetRootAs(data, 0)
+
+    items: list[ItemInput] = []
+    for i in range(triples.ItemsLength()):
+        triple = triples.Items(i)
+        items.append(ItemInput(triple.Value(), triple.First(), triple.Second()))
+
+    return ListInput(items)
+
+
 def serialize_sample(input: SampleInput) -> bytes:
     builder = flatbuffers.Builder()
 
@@ -160,10 +189,13 @@ FLATBUFFERS = Codec(
     record=Workload(serialize_record, deserialize_record),
     document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
     list=Workload(serialize_list, deserialize_list),
+    structs=Workload(serialize_structs, deserialize_structs),
     sample=Workload(serialize_sample, deserialize_sample),
 )
 """flatc's generated code, used as its documentation shows: a builder of the
 default size, tables built field by field and read with the generated
 accessors. Columns are written with ``CreateNumpyVector()`` and read with the
 generated ``AsNumpy()`` accessors, which is how FlatBuffers' Python runtime
-copies vectors in bulk; without numpy it has only a call per element."""
+copies vectors in bulk; without numpy it has only a call per element. A vector
+of structs has no numpy accessors, so its structs are created and read one by
+one with the generated functions."""

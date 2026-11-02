@@ -6,8 +6,9 @@ import {
     readFloat32,
     readUint32,
     StructWriter,
-    TableBuilder,
-    TableLayout
+    TableLayout,
+    TableSizer,
+    type TableWriter
 } from 'tafla';
 
 /** A small table of two coordinates, an identifier and a name */
@@ -22,13 +23,19 @@ export class Point {
 
     /** Writes a `Point` with every field */
     static serialize(fields: PointFields): Uint8Array {
-        const builder = new TableBuilder(4, Point.#LAYOUT);
-        builder.setFloat64(fields.x);
-        builder.setFloat64(fields.y);
-        builder.setInt64(fields.id);
-        builder.setString(fields.name);
+        const sizer = new TableSizer(4, Point.#LAYOUT);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addInt64();
+        sizer.addString(fields.name);
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setInt64(2, fields.id);
+        writer.setString(3, fields.name);
+
+        return writer.bytes();
     }
 
     x(): number {
@@ -88,17 +95,25 @@ export class Document {
 
     /** Writes a `Document` with every field */
     static serialize(fields: DocumentFields): Uint8Array {
-        const builder = new TableBuilder(
+        const sizer = new TableSizer(
             4,
             Document.#LAYOUT,
             Document.FORMAT_VERSION
         );
-        builder.setFloat64(fields.x);
-        builder.setFloat64(fields.y);
-        builder.setString(fields.name);
-        builder.setTable(Columns.builder(fields.columns));
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.name);
+        sizer.addTable(Columns.ALIGNMENT);
+        Columns.size(sizer, fields.columns);
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setString(2, fields.name);
+        writer.setTable(3, Columns.ALIGNMENT);
+        Columns.write(writer, fields.columns);
+
+        return writer.bytes();
     }
 
     x(): number {
@@ -128,6 +143,12 @@ export interface DocumentFields {
 
 /** Columns with a value per key */
 export class Columns {
+    /**
+     * The alignment that a parent pads a `Columns` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 4;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -138,17 +159,29 @@ export class Columns {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds a `Columns` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: ColumnsFields): TableBuilder {
-        const builder = new TableBuilder(4);
-        builder.setInt64(fields.base);
-        builder.setUint32Array(fields.keys);
-        builder.setFloat32Array(fields.a);
-        builder.setFloat32Array(fields.b);
+    static size(sizer: TableSizer, fields: ColumnsFields): void {
+        const parent = sizer.startTable(4);
+        sizer.addInt64();
+        sizer.addUint32Array(fields.keys.length);
+        sizer.addFloat32Array(fields.a.length);
+        sizer.addFloat32Array(fields.b.length);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a `Columns` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: ColumnsFields): void {
+        const parent = writer.startTable(4);
+        writer.setInt64(0, fields.base);
+        writer.setUint32Array(1, fields.keys);
+        writer.setFloat32Array(2, fields.a);
+        writer.setFloat32Array(3, fields.b);
+        writer.endTable(parent);
     }
 
     /** The value that `keys` count from */
@@ -198,10 +231,20 @@ export class ItemList {
 
     /** Writes a `ItemList` with every field */
     static serialize(fields: ItemListFields): Uint8Array {
-        const builder = new TableBuilder(1, ItemList.#LAYOUT);
-        builder.setVector(fields.items.map(Item.builder));
+        const sizer = new TableSizer(1, ItemList.#LAYOUT);
+        sizer.addVector(fields.items.length);
+        for (const item of fields.items) {
+            Item.size(sizer, item);
+        }
 
-        return builder.bytes();
+        const writer = sizer.writer();
+        const vector0 = writer.setVector(0, fields.items.length);
+        for (let i = 0; i < fields.items.length; i++) {
+            Item.write(writer, fields.items[i]);
+            writer.setItemEnd(vector0, i);
+        }
+
+        return writer.bytes();
     }
 
     items(): Item[] {
@@ -216,6 +259,11 @@ export class ItemList {
 
         return items;
     }
+
+    /** Views the items of `items()`, reading each one when it's asked for */
+    itemsView(): ItemVector {
+        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+    }
 }
 
 /** The fields of a `ItemList`, to write */
@@ -224,6 +272,12 @@ export interface ItemListFields {
 }
 
 export class Item {
+    /**
+     * The alignment that a parent pads an `Item` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 1;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -234,15 +288,27 @@ export class Item {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds an `Item` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: ItemFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setFloat32(fields.value);
-        builder.setTable(Pair.builder(fields.pair));
+    static size(sizer: TableSizer, fields: ItemFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addFloat32();
+        sizer.addTable(Pair.ALIGNMENT);
+        Pair.size(sizer, fields.pair);
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes an `Item` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: ItemFields): void {
+        const parent = writer.startTable(2);
+        writer.setFloat32(0, fields.value);
+        writer.setTable(1, Pair.ALIGNMENT);
+        Pair.write(writer, fields.pair);
+        writer.endTable(parent);
     }
 
     value(): number {
@@ -265,8 +331,51 @@ export interface ItemFields {
     pair: PairFields;
 }
 
+/** A vector of `Item`s, which reads each item when it's asked for */
+export class ItemVector {
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+    readonly #length: number;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** The number of items */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index: number): Item {
+        return new Item(
+            this.#buffer,
+            this.#buffer.getVectorOffset(this.#position, index)
+        );
+    }
+}
+
 /** Two values of an item */
 export class Pair {
+    /**
+     * The alignment that a parent pads a `Pair` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 1;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -277,15 +386,25 @@ export class Pair {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes
-     * straight into its own bytes
+     * Adds a `Pair` to its parent's sizer, after the field or
+     * vector that holds it
      */
-    static builder(fields: PairFields): TableBuilder {
-        const builder = new TableBuilder(2);
-        builder.setFloat32(fields.first);
-        builder.setFloat32(fields.second);
+    static size(sizer: TableSizer, _fields: PairFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addFloat32();
+        sizer.addFloat32();
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes a `Pair` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: PairFields): void {
+        const parent = writer.startTable(2);
+        writer.setFloat32(0, fields.first);
+        writer.setFloat32(1, fields.second);
+        writer.endTable(parent);
     }
 
     first(): number {

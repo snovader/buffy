@@ -1,0 +1,36 @@
+/// Fields named after the views of vectors and arrays of structs, which the
+/// generated code reads them lazily with
+message Views {
+    items: [Item];
+    items_view: uint8;
+    // `a1View` in camelCase, as `a_1_view` is
+    a_1: [Point];
+    a1_view: uint8;
+    // An array of scalars has no view
+    values: [float32];
+    values_view: uint8;
+}
+
+/// A view's name that a vector of its own takes, before the vector
+table Item {
+    children_view: [Item];
+    children: [Item];
+}
+
+struct Point {
+    x: float32;
+}
+
+/// Declarations named after the views of vectors and arrays of structs
+table ItemVector {
+    value: uint8;
+}
+
+struct PointArray {
+    x: float32;
+}
+
+/// A name that a view would take, if anything held a vector of `Point`s
+table PointVector {
+    value: uint8;
+}

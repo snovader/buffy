@@ -26,6 +26,7 @@ public final class EncodingReport {
             columns.add("doc " + rows);
         }
         columns.add("vector");
+        columns.add("structs");
         columns.add("fixed");
 
         System.out.printf("Encoded size (bytes)%n  %-16s", "");
@@ -39,12 +40,20 @@ public final class EncodingReport {
                 System.out.printf("%12d", codec.document().serialize(document).length);
             }
             System.out.printf("%12d", codec.list().serialize(list).length);
+            System.out.printf("%12d", codec.structs().serialize(list).length);
             System.out.printf("%12d%n", codec.sample().serialize(Workloads.SAMPLE).length);
         }
 
-        // SBE, which encodes only the fixed-size record
-        var sbe = Codecs.sample(Codecs.SBE).serialize(Workloads.SAMPLE);
-        System.out.printf("  %-16s%" + 12 * (columns.size() - 1) + "s%12d%n", Codecs.SBE, "", sbe.length);
+        // SBE, which encodes only the array of structs and the fixed-size record
+        var sbeStructs = Codecs.structs(Codecs.SBE).serialize(list);
+        var sbeSample = Codecs.sample(Codecs.SBE).serialize(Workloads.SAMPLE);
+        System.out.printf(
+            "  %-16s%" + 12 * (columns.size() - 2) + "s%12d%12d%n",
+            Codecs.SBE,
+            "",
+            sbeStructs.length,
+            sbeSample.length
+        );
     }
 
     /**

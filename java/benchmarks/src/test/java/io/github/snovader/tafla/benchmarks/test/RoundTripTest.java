@@ -24,6 +24,11 @@ public class RoundTripTest {
     }
 
     @Provide
+    Arbitrary<String> structsCodecs() {
+        return Arbitraries.of(List.copyOf(Codecs.structs().keySet()));
+    }
+
+    @Provide
     Arbitrary<Integer> documentRows() {
         return Arbitraries.of(Workloads.DOCUMENT_ROWS);
     }
@@ -57,8 +62,54 @@ public class RoundTripTest {
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_the_array_of_structs(@ForAll("structsCodecs") String codec) {
+        assertReadBack(Codecs.structs(codec), Workloads.listInput(Workloads.LIST_ITEMS));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
     void should_read_back_the_fixed_size_record(@ForAll("sampleCodecs") String codec) {
         assertReadBack(Codecs.sample(codec), Workloads.SAMPLE);
+    }
+
+    @Provide
+    Arbitrary<String> accesses() {
+        return Arbitraries.of(List.copyOf(ItemAccesses.all().keySet()));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_sum_the_last_item_and_every_item_in_order(@ForAll("accesses") String name) {
+        var access = ItemAccesses.named(name);
+        var input = Workloads.listInput(Workloads.LIST_ITEMS);
+        var tafla = TaflaCodec.create();
+        var tables = tafla.list().serialize(input);
+        var structs = tafla.structs().serialize(input);
+
+        double every = 0;
+        for (var item : input.items()) {
+            every += ItemAccesses.sum(item);
+        }
+        var last = ItemAccesses.sum(input.items().getLast());
+
+        assertEquals(last, access.lastTable(tables));
+        assertEquals(every, access.everyTable(tables));
+        assertEquals(last, access.lastStruct(structs));
+        assertEquals(every, access.everyStruct(structs));
+    }
+
+    @Example
+    void should_write_the_builders_tables_from_generated_code() {
+        var built = TaflaCodec.create();
+        var generated = TaflaGenCodec.create();
+        var list = Workloads.listInput(Workloads.LIST_ITEMS);
+
+        assertArrayEquals(built.record().serialize(Workloads.RECORD), generated.record().serialize(Workloads.RECORD));
+        for (var rows : Workloads.DOCUMENT_ROWS) {
+            var document = Workloads.documentInput(rows);
+            assertArrayEquals(built.document().serialize(document), generated.document().serialize(document));
+        }
+        assertArrayEquals(built.list().serialize(list), generated.list().serialize(list));
+        assertArrayEquals(built.structs().serialize(list), generated.structs().serialize(list));
+        assertArrayEquals(built.sample().serialize(Workloads.SAMPLE), generated.sample().serialize(Workloads.SAMPLE));
     }
 
     @Example

@@ -20,6 +20,8 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
         .map(|declaration| check_declaration(declaration, declarations, &indices, &mut errors))
         .collect();
 
+    check_view_declarations(&definitions, declarations, &indices, &mut errors);
+
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
         check_nested_offsets(&definitions, declarations, &mut errors);
@@ -131,6 +133,8 @@ fn check_declaration(
         }
     }
 
+    check_view_names(declaration, &fields, errors);
+
     Definition {
         name: declaration.name.text.clone(),
         docs: declaration.docs.clone(),
@@ -188,6 +192,81 @@ fn check_field_names(declaration: &Declaration, errors: &mut Vec<Diagnostic>) {
                 .with_help("TypeScript, JavaScript and Java name fields in camelCase"),
             ),
         }
+    }
+}
+
+/// Checks that no field takes the name of the view of a vector or an array
+/// of structs, `<name>_view`, which the generated code reads it lazily with,
+/// in `camelCase` too, as [`check_field_names()`] compares names
+fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Vec<Diagnostic>) {
+    for field in fields {
+        if !matches!(
+            field.field_type,
+            FieldType::Vector(_) | FieldType::StructArray(_)
+        ) {
+            continue;
+        }
+
+        let view = format!("{}View", camel_case(&field.name));
+        let clashes = declaration.fields.iter().filter(|other| {
+            is_snake_case(&other.name.text) && camel_case(&other.name.text) == view
+        });
+        for other in clashes {
+            errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` clashes with the view of `{}`",
+                        other.name.text, field.name
+                    ),
+                    other.name.span,
+                )
+                .with_help(format!(
+                    "the generated code reads `{}` lazily with `{}_view()`, or `{view}()` in camelCase",
+                    field.name, field.name
+                )),
+            );
+        }
+    }
+}
+
+/// Checks that no declaration takes the name of the view of a vector or an
+/// array of structs, `<Table>Vector` or `<Struct>Array`, which the generated
+/// code declares beside the tables and structs that they hold
+fn check_view_declarations(
+    definitions: &[Definition],
+    declarations: &[Declaration],
+    indices: &HashMap<&str, usize>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let mut views = HashSet::new();
+    let items = definitions
+        .iter()
+        .flat_map(|definition| &definition.fields)
+        .filter_map(|field| match field.field_type {
+            FieldType::Vector(index) => Some(("Vector", "a vector", index)),
+            FieldType::StructArray(index) => Some(("Array", "an array", index)),
+            _ => None,
+        });
+
+    for (suffix, kind, index) in items {
+        let item = &definitions[index].name;
+        let view = format!("{item}{suffix}");
+        let Some(&clash) = indices.get(view.as_str()) else {
+            continue;
+        };
+        if !views.insert(clash) {
+            continue;
+        }
+
+        errors.push(
+            Diagnostic::new(
+                format!("`{view}` clashes with the view of {kind} of `{item}`"),
+                declarations[clash].name.span,
+            )
+            .with_help(format!(
+                "the generated code declares `{view}` to read {kind} of `{item}` lazily"
+            )),
+        );
     }
 }
 

@@ -11,6 +11,9 @@
  *     table Item { value: float; pair: Pair; }
  *     table List { items: [Item]; }
  *
+ *     struct Triple { value: float; first: float; second: float; }
+ *     table Triples { items: [Triple]; }
+ *
  *     table Sample { key: uint; a: float; b: float; }
  */
 
@@ -344,6 +347,89 @@ export class List {
     }
 
     static createList(builder: Builder, itemsOffset: Offset): Offset {
+        builder.startObject(1);
+        builder.addFieldOffset(0, itemsOffset, 0);
+        return builder.endObject();
+    }
+}
+
+export class Triple {
+    bb: ByteBuffer | null = null;
+    bb_pos = 0;
+
+    __init(i: number, bb: ByteBuffer): Triple {
+        this.bb_pos = i;
+        this.bb = bb;
+        return this;
+    }
+
+    value(): number {
+        return this.bb!.readFloat32(this.bb_pos);
+    }
+
+    first(): number {
+        return this.bb!.readFloat32(this.bb_pos + 4);
+    }
+
+    second(): number {
+        return this.bb!.readFloat32(this.bb_pos + 8);
+    }
+
+    static sizeOf(): number {
+        return 12;
+    }
+
+    static createTriple(
+        builder: Builder,
+        value: number,
+        first: number,
+        second: number
+    ): Offset {
+        builder.prep(4, 12);
+        builder.writeFloat32(second);
+        builder.writeFloat32(first);
+        builder.writeFloat32(value);
+        return builder.offset();
+    }
+}
+
+export class Triples {
+    bb: ByteBuffer | null = null;
+    bb_pos = 0;
+
+    __init(i: number, bb: ByteBuffer): Triples {
+        this.bb_pos = i;
+        this.bb = bb;
+        return this;
+    }
+
+    static getRootAsTriples(bb: ByteBuffer, obj?: Triples): Triples {
+        return (obj || new Triples()).__init(
+            bb.readInt32(bb.position()) + bb.position(),
+            bb
+        );
+    }
+
+    items(index: number, obj?: Triple): Triple | null {
+        const offset = this.bb!.__offset(this.bb_pos, 4);
+        return offset
+            ? (obj || new Triple()).__init(
+                  this.bb!.__vector(this.bb_pos + offset) + index * 12,
+                  this.bb!
+              )
+            : null;
+    }
+
+    itemsLength(): number {
+        const offset = this.bb!.__offset(this.bb_pos, 4);
+        return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+    }
+
+    static startItemsVector(builder: Builder, numElems: number): void {
+        builder.startVector(12, numElems, 4);
+    }
+
+    static createTriples(builder: Builder, itemsOffset: Offset): Offset {
         builder.startObject(1);
         builder.addFieldOffset(0, itemsOffset, 0);
         return builder.endObject();

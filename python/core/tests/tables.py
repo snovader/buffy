@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import ByteBuffer, TableBuilder, TableLayout
+from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -188,7 +188,96 @@ def _array_values(element: str, field: Description) -> list[Any]:
     return values
 
 
-def alignment_of(field: Description) -> int:
+def write_table(table: Description) -> memoryview[int]:
+    """Writes a table with a ``TableWriter`` as its description sets it out.
+    The writer writes the tables nested in it in place, so they must have no
+    header and its offset size, as ``nested_in_place()`` makes them."""
+    layout = table["layout"]
+    sized, offset_size = layout["sized"], layout["offsetSize"]
+    fields = len(table["fields"])
+
+    if layout["versioned"]:
+        writer = TableWriter(
+            fields,
+            TableLayout(sized=sized, versioned=True, offset_size=offset_size),
+            table["version"],
+        )
+    else:
+        writer = TableWriter(fields, TableLayout(sized=sized, offset_size=offset_size))
+
+    for index, field in enumerate(table["fields"]):
+        write_field(writer, index, field)
+
+    return writer.bytes()
+
+
+def write_field(writer: TableWriter, index: int, field: Description) -> None:
+    kind = field["type"]
+
+    if kind == "table":
+        writer.set_table(index, alignment_of(field))
+        _write_nested(writer, field["table"])
+    elif kind == "vector":
+        vector = writer.set_vector(index, len(field["items"]))
+        for item, nested in enumerate(field["items"]):
+            _write_nested(writer, nested["table"])
+            writer.set_item_end(vector, item)
+    elif kind == "struct":
+        scalars = field["fields"]
+        packing = struct_of(scalar["type"] for scalar in scalars)
+        writer.set_struct(index, packing.pack(*_struct_values(scalars)))
+    elif kind == "struct[]":
+        types = field["fields"]
+        packing = struct_of(types)
+        data = b"".join(
+            packing.pack(*_item_values(types, item)) for item in field["items"]
+        )
+        writer.set_struct_array(index, data, packing.size, struct_alignment(types))
+    elif kind.endswith("[]"):
+        element = kind.removesuffix("[]")
+        getattr(writer, f"set_{element}_array")(index, _array_values(element, field))
+    else:
+        getattr(writer, f"set_{kind}")(index, from_json(kind, field["value"]))
+
+
+def _write_nested(writer: TableWriter, table: Description) -> None:
+    parent = writer.start_table(len(table["fields"]))
+    for index, field in enumerate(table["fields"]):
+        write_field(writer, index, field)
+    writer.end_table(parent)
+
+
+def nested_in_place(table: Description) -> Description:
+    """Returns a table's description with every table nested in it made one
+    that a ``TableWriter`` writes in place: from its builder, without a header,
+    and with the root's offset size"""
+    offset_size = table["layout"]["offsetSize"]
+
+    def in_place(nested: Description) -> Description:
+        layout = {"sized": False, "versioned": False, "offsetSize": offset_size}
+        return {"layout": layout, "fields": [field(each) for each in nested["fields"]]}
+
+    def field(description: Description) -> Description:
+        if description["type"] == "table":
+            return {
+                **description,
+                "from": "builder",
+                "table": in_place(description["table"]),
+            }
+
+        if description["type"] == "vector":
+            items = [
+                {"from": "builder", "table": in_place(item["table"])}
+                for item in description["items"]
+            ]
+            return {**description, "items": items}
+
+        return description
+
+    return {**table, "fields": [field(each) for each in table["fields"]]}
+
+
+def alignment_of(field: Description) -> Alignment:
     """The alignment that ``set_table()`` pads a nested table's field to: the
     one passed, or by default 4 for bytes, and for a builder the largest
     alignment of its arrays, of scalars and of structs, and of its nested
@@ -209,7 +298,7 @@ def alignment_of(field: Description) -> int:
         elif kind.endswith("[]"):
             alignments.append(ELEMENT_SIZES[kind.removesuffix("[]")])
 
-    return max(alignments)
+    return cast(Alignment, max(alignments))
 
 
 def comparable_table(table: Description) -> Description:

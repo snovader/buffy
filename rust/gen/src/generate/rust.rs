@@ -1,13 +1,14 @@
 //! Rust for `tafla`. Messages and tables are `Copy` views that read
 //! fields lazily, borrowing strings and arrays from the bytes; they're written
-//! from structs of their fields, with tables nested from their builders.
-//! Structs are plain structs read and written at fixed offsets.
+//! from structs of their fields, which a `TableSizer` sizes and a
+//! `TableWriter` writes, nested tables in place. Structs are plain structs
+//! read and written at fixed offsets.
 
 use std::fmt::Display;
 
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
 
 /// The runtime's crate, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -75,6 +76,15 @@ pub fn generate(
             writer.blank();
             generator.fields_struct(&mut writer, index);
         }
+
+        if schema.is_item(index) {
+            writer.blank();
+            if definition.is_struct() {
+                struct_array_view(&mut writer, definition);
+            } else {
+                vector_view(&mut writer, definition);
+            }
+        }
     }
 
     vec![GeneratedFile {
@@ -99,6 +109,12 @@ impl Generator<'_> {
         }
 
         let has_tables = definitions.iter().any(|definition| !definition.is_struct());
+        let has_messages = definitions
+            .iter()
+            .any(|definition| matches!(definition.kind, Kind::Message(_)));
+        let has_nested = definitions
+            .iter()
+            .any(|definition| definition.kind == Kind::Table);
         let has_array_view = definitions
             .iter()
             .flat_map(|definition| &definition.fields)
@@ -111,15 +127,20 @@ impl Generator<'_> {
                 .is_some_and(|layout| layout.offset_size != OffsetSize::U32)
         });
         let has_structs = definitions.iter().any(Definition::is_struct);
+        let has_vector = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| matches!(field.field_type, FieldType::Vector(_)));
 
         let mut names = Vec::new();
-        if has_structs {
+        // Arrays of structs and nested tables are padded to their alignment
+        if has_structs || has_nested {
             names.push("Alignment");
         }
         if has_array_view {
             names.push("ArrayView");
         }
-        if has_tables {
+        if has_messages {
             names.push("BuildError");
         }
         if has_tables {
@@ -129,18 +150,41 @@ impl Generator<'_> {
         if has_offset_size {
             names.push("OffsetSize");
         }
+        // Messages make sizers, and tables take them and their writers
         if has_tables {
-            names.extend(["TableBuilder", "TableLayout"]);
+            names.extend(["TableLayout", "TableSizer"]);
+        }
+        if has_nested {
+            names.push("TableWriter");
+        }
+        if has_vector {
+            names.push("Vector");
         }
 
         let statement = format!("use {runtime}::{{{}}};", names.join(", "));
         if statement.len() <= USE_LIST_WIDTH {
             writer.line(statement);
-        } else {
-            writer.open(format!("use {runtime}::{{"));
-            writer.line(format!("{},", names.join(", ")));
-            writer.close("};");
+            return;
         }
+
+        // rustfmt fills the lines of a list that doesn't fit, each as wide as
+        // a `use` statement on one line
+        writer.open(format!("use {runtime}::{{"));
+        let mut line = String::new();
+        for name in names {
+            let width = STYLE.indent.len() + line.len() + 1 + name.len() + 1;
+            if !line.is_empty() && width > USE_LIST_WIDTH {
+                writer.line(&line);
+                line.clear();
+            }
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(name);
+            line.push(',');
+        }
+        writer.line(line);
+        writer.close("};");
     }
 
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
@@ -151,11 +195,7 @@ impl Generator<'_> {
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug)]");
         writer.open(format!("pub struct {name}<'a> {{"));
-        if versioned {
-            writer.line("buffer: ByteBuffer<'a, true>,");
-        } else {
-            writer.line("buffer: ByteBuffer<'a>,");
-        }
+        writer.line("bytes: &'a [u8],");
         writer.close("}");
         writer.blank();
 
@@ -192,14 +232,12 @@ impl Generator<'_> {
             writer.close("});");
             writer.close("}");
             writer.blank();
-            writer.line("Ok(Self { buffer })");
+            writer.line("Ok(Self { bytes })");
             writer.close("}");
         } else {
             rust_doc(writer, &[format!("Reads {} from `bytes`", article(name))]);
             writer.open("pub const fn new(bytes: &'a [u8]) -> Self {");
-            writer.open("Self {");
-            writer.line("buffer: ByteBuffer::new(bytes, Self::LAYOUT),");
-            writer.close("}");
+            writer.line("Self { bytes }");
             writer.close("}");
         }
 
@@ -213,7 +251,7 @@ impl Generator<'_> {
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug)]");
         writer.open(format!("pub struct {name}<'a> {{"));
-        writer.line("buffer: ByteBuffer<'a>,");
+        writer.line("bytes: &'a [u8],");
         writer.line("position: usize,");
         writer.close("}");
         writer.blank();
@@ -227,10 +265,7 @@ impl Generator<'_> {
             ],
         );
         writer.open("const fn new(bytes: &'a [u8], position: usize) -> Self {");
-        writer.open("Self {");
-        writer.line("buffer: ByteBuffer::new(bytes, TableLayout::DEFAULT),");
-        writer.line("position,");
-        writer.close("}");
+        writer.line("Self { bytes, position }");
         writer.close("}");
 
         self.getters(writer, definition, false);
@@ -418,8 +453,8 @@ impl Generator<'_> {
         }
     }
 
-    /// The struct of the values that write a definition, with the method that
-    /// writes them
+    /// The struct of the values that write a definition, with the methods
+    /// that write them
     fn fields_struct(&self, writer: &mut CodeWriter, index: usize) {
         let definition = self.schema.definition(index);
         let name = &definition.name;
@@ -443,141 +478,263 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        if let Kind::Message(layout) = definition.kind {
-            if borrows {
-                writer.open(format!("impl {name}Fields<'_> {{"));
-            } else {
-                writer.open(format!("impl {name}Fields {{"));
-            }
-            let mut docs = vec![format!("Writes {} with every field", article(name))];
-            docs.extend(error_doc(
-                "a [`BuildError`]",
-                &format!(
-                    "if it's longer than its {}-bit offsets address",
-                    layout.offset_size.bytes() * 8
-                ),
-            ));
-            rust_doc(writer, &docs);
-            writer.open("pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {");
-            let (constructor, arguments) = if layout.version.is_some() {
-                let arguments = vec![
-                    text(integer(&definition.fields.len())),
-                    text(format!("{name}::LAYOUT")),
-                    text(format!("{name}::FORMAT_VERSION")),
-                ];
-                ("TableBuilder::versioned", arguments)
-            } else {
-                let arguments = vec![
-                    text(integer(&definition.fields.len())),
-                    text(format!("{name}::LAYOUT")),
-                ];
-                ("TableBuilder::new", arguments)
-            };
-            writer.statement(
-                &STYLE,
-                "let mut builder = ",
-                &call(constructor, arguments),
-                "?;",
-            );
-            Self::setters(self.schema, writer, definition);
-            writer.blank();
-            writer.line("builder.to_bytes()");
+        if borrows {
+            writer.open(format!("impl {name}Fields<'_> {{"));
         } else {
-            writer.open(format!("impl{generics} {name}Fields{generics} {{"));
-            let mut docs = vec![
-                "Returns a builder with every field set, which a parent writes straight into"
-                    .to_owned(),
-                "its own bytes".to_owned(),
-            ];
-            docs.extend(error_doc(
-                "a [`BuildError`]",
-                "if the table is longer than its 32-bit offsets address",
-            ));
-            rust_doc(writer, &docs);
-            let lifetime = if borrows { "'a" } else { "'static" };
-            writer.open(format!(
-                "pub fn builder(&self) -> Result<TableBuilder<{lifetime}>, BuildError> {{"
-            ));
-            let arguments = vec![
-                text(integer(&definition.fields.len())),
-                text("TableLayout::DEFAULT"),
-            ];
-            writer.statement(
-                &STYLE,
-                "let mut builder = ",
-                &call("TableBuilder::new", arguments),
-                "?;",
-            );
-            Self::setters(self.schema, writer, definition);
-            writer.blank();
-            writer.line("Ok(builder)");
+            writer.open(format!("impl {name}Fields {{"));
         }
-        writer.close("}");
+        match definition.kind {
+            Kind::Message(layout) => self.serialize(writer, definition, layout),
+            Kind::Table => self.nested_size_and_write(writer, definition),
+            Kind::Struct(_) => unreachable!("structs are written by their own methods"),
+        }
         writer.close("}");
     }
 
-    fn setters(schema: &Schema, writer: &mut CodeWriter, definition: &Definition) {
+    /// A message's `serialize()`, which sizes its fields and then writes them
+    /// into bytes of that length
+    fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
+        let name = &definition.name;
+
+        let mut docs = vec![format!("Writes {} with every field", article(name))];
+        docs.extend(error_doc(
+            "a [`BuildError`]",
+            &format!(
+                "if it's longer than its {}-bit offsets address",
+                layout.offset_size.bytes() * 8
+            ),
+        ));
+        rust_doc(writer, &docs);
+        writer.open("pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {");
+        let fields = text(integer(&definition.fields.len()));
+        let layout_constant = text(format!("{name}::LAYOUT"));
+        let sizer = if layout.version.is_some() {
+            let version = text(format!("{name}::FORMAT_VERSION"));
+            call(
+                "TableSizer::versioned",
+                vec![fields, layout_constant, version],
+            )
+        } else {
+            call("TableSizer::new", vec![fields, layout_constant])
+        };
+        writer.statement(&STYLE, "let mut sizer = ", &sizer, "?;");
+        self.sizes(writer, definition, "&mut sizer");
+        writer.blank();
+        writer.line("let mut writer = sizer.writer()?;");
+        self.writes(writer, definition, "&mut writer");
+        writer.blank();
+        writer.line("writer.into_bytes()");
+        writer.close("}");
+    }
+
+    /// The alignment of a nested table, and the methods with which its
+    /// parent sizes and writes it
+    fn nested_size_and_write(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+        let fields = integer(&definition.fields.len());
+        // The length of a table of scalars and structs doesn't depend on
+        // their values
+        let sized_by_values = definition.fields.iter().any(|field| {
+            !matches!(
+                field.field_type,
+                FieldType::Scalar(_) | FieldType::Struct(_)
+            )
+        });
+
+        rust_doc(
+            writer,
+            &[
+                format!(
+                    "The alignment that a parent pads {} to: the largest alignment of its",
+                    article(name)
+                ),
+                "arrays and nested tables, or 1".to_owned(),
+            ],
+        );
+        writer.line(format!(
+            "pub const ALIGNMENT: Alignment = Alignment::{};",
+            alignment_variant(self.schema.table_alignment(definition))
+        ));
+        writer.blank();
+
+        rust_doc(
+            writer,
+            &[format!(
+                "Adds {} to its parent's sizer, after the field or vector that holds it",
+                article(name)
+            )],
+        );
+        if !sized_by_values {
+            writer.line("#[allow(clippy::unused_self)]");
+        }
+        writer.open("pub fn size(&self, sizer: &mut TableSizer) {");
+        writer.line(format!("let parent = sizer.start_table({fields});"));
+        self.sizes(writer, definition, "sizer");
+        writer.line("sizer.end_table(parent);");
+        writer.close("}");
+        writer.blank();
+
+        rust_doc(
+            writer,
+            &[format!(
+                "Writes {} where its parent's writer is, after the field or vector that holds it",
+                article(name)
+            )],
+        );
+        writer.open("pub fn write(&self, writer: &mut TableWriter) {");
+        writer.line(format!("let parent = writer.start_table({fields});"));
+        self.writes(writer, definition, "writer");
+        writer.line("writer.end_table(parent);");
+        writer.close("}");
+    }
+
+    /// The calls that add a table's fields to its sizer, in order, with
+    /// `sizer`, the expression of the sizer that nested tables take. The
+    /// locals don't clash with fields, whose values are `self`'s.
+    fn sizes(&self, writer: &mut CodeWriter, definition: &Definition, sizer: &str) {
         for field in &definition.fields {
             let value = format!("self.{}", identifier(&field.name));
-            let (method, argument) = match field.field_type {
-                FieldType::Scalar(scalar) => (format!("set_{}", scalar_type(scalar)), value),
-                FieldType::Array(scalar) => (format!("set_{}_array", scalar_type(scalar)), value),
-                FieldType::String => ("set_str".to_owned(), value),
-                FieldType::Struct(_) => (
-                    "set_struct".to_owned(),
-                    format!("{value}.to_bytes().to_vec()"),
+            let (method, arguments) = match field.field_type {
+                FieldType::Scalar(scalar) => (format!("add_{}", scalar_type(scalar)), vec![]),
+                FieldType::Array(scalar) => (
+                    format!("add_{}_array", scalar_type(scalar)),
+                    vec![text(format!("{value}.len()"))],
                 ),
+                FieldType::String => ("add_str".to_owned(), vec![text(value)]),
+                FieldType::Struct(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    (
+                        "add_struct".to_owned(),
+                        vec![text(format!("{structure}::SIZE"))],
+                    )
+                }
                 FieldType::StructArray(index) => {
-                    let structure = &schema.definition(index).name;
+                    let structure = &self.schema.definition(index).name;
+                    (
+                        "add_struct_array".to_owned(),
+                        vec![
+                            text(format!("{value}.len()")),
+                            text(format!("{structure}::SIZE")),
+                            text(format!("{structure}::ALIGNMENT")),
+                        ],
+                    )
+                }
+                FieldType::Table(index) => {
+                    let table = &self.schema.definition(index).name;
+                    let alignment = text(format!("{table}Fields::ALIGNMENT"));
+                    writer.statement(&STYLE, "", &call("sizer.add_table", vec![alignment]), ";");
                     writer.statement(
                         &STYLE,
                         "",
-                        &call(
-                            "builder.set_struct_array",
-                            vec![
-                                call(format!("{structure}::array_to_bytes"), vec![text(value)]),
-                                text(format!("{structure}::SIZE")),
-                                text(format!("{structure}::ALIGNMENT")),
-                            ],
-                        ),
-                        "?;",
+                        &call(format!("{value}.size"), vec![text(sizer)]),
+                        ";",
                     );
                     continue;
                 }
-                FieldType::Table(_) => ("set_table".to_owned(), format!("{value}.builder()?")),
                 FieldType::Vector(_) => {
-                    // Collecting the fallible builders into a `Result` would
-                    // grow the vector from nothing, since its size hint
-                    // starts at zero. Reserving it took 7% less time to write
-                    // 100 items, with 5 fewer allocations.
-                    writer.line(format!(
-                        "let mut items = Vec::with_capacity({value}.len());"
-                    ));
-                    writer.open(format!("for item in {value} {{"));
-                    writer.line("items.push(item.builder()?);");
+                    let count = text(format!("{value}.len()"));
+                    writer.statement(&STYLE, "", &call("sizer.add_vector", vec![count]), ";");
+                    writer.open(format!("for fields in {value} {{"));
+                    writer.line(format!("fields.size({sizer});"));
                     writer.close("}");
-                    writer.line("builder.set_vector(items)?;");
+                    continue;
+                }
+            };
+            writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
+        }
+    }
+
+    /// The calls that write a table's fields, each with its index, in the
+    /// order that `sizes()` added them, with `table_writer`, the expression of
+    /// the writer that nested tables take
+    fn writes(&self, writer: &mut CodeWriter, definition: &Definition, table_writer: &str) {
+        for (index, field) in definition.fields.iter().enumerate() {
+            let value = format!("self.{}", identifier(&field.name));
+            let position = text(integer(&index));
+            let (method, arguments) = match field.field_type {
+                FieldType::Scalar(scalar) => (
+                    format!("set_{}", scalar_type(scalar)),
+                    vec![position, text(value)],
+                ),
+                FieldType::Array(scalar) => (
+                    format!("set_{}_array", scalar_type(scalar)),
+                    vec![position, text(value)],
+                ),
+                FieldType::String => ("set_str".to_owned(), vec![position, text(value)]),
+                FieldType::Struct(_) => (
+                    "set_struct".to_owned(),
+                    vec![position, text(format!("&{value}.to_bytes()"))],
+                ),
+                FieldType::StructArray(struct_index) => {
+                    let structure = &self.schema.definition(struct_index).name;
+                    (
+                        "set_struct_array".to_owned(),
+                        vec![
+                            position,
+                            call(format!("&{structure}::array_to_bytes"), vec![text(value)]),
+                            text(format!("{structure}::SIZE")),
+                            text(format!("{structure}::ALIGNMENT")),
+                        ],
+                    )
+                }
+                FieldType::Table(table_index) => {
+                    let table = &self.schema.definition(table_index).name;
+                    let alignment = text(format!("{table}Fields::ALIGNMENT"));
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call("writer.set_table", vec![position, alignment]),
+                        ";",
+                    );
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call(format!("{value}.write"), vec![text(table_writer)]),
+                        ";",
+                    );
+                    continue;
+                }
+                FieldType::Vector(_) => {
+                    let count = text(format!("{value}.len()"));
+                    writer.statement(
+                        &STYLE,
+                        "let vector = ",
+                        &call("writer.set_vector", vec![position, count]),
+                        ";",
+                    );
+                    writer.open(format!(
+                        "for (item, fields) in {value}.iter().enumerate() {{"
+                    ));
+                    writer.line(format!("fields.write({table_writer});"));
+                    writer.line("writer.set_item_end(vector, item);");
+                    writer.close("}");
                     continue;
                 }
             };
             writer.statement(
                 &STYLE,
                 "",
-                &call(format!("builder.{method}"), vec![text(argument)]),
-                "?;",
+                &call(format!("writer.{method}"), arguments),
+                ";",
             );
         }
     }
 
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
+        // Each getter reads with a buffer in the table's layout, a constant,
+        // rather than one that the reader holds, so that its reads compile
+        // for that layout's offset size wherever the reader is passed
+        let buffer = if is_root {
+            "let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);"
+        } else {
+            "let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);"
+        };
+
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if is_root {
-                format!("self.buffer.root_offset({})?", integer(&index))
+                format!("buffer.root_offset({})?", integer(&index))
             } else {
-                format!(
-                    "self.buffer.field_offset(self.position, {})?",
-                    integer(&index)
-                )
+                format!("buffer.field_offset(self.position, {})?", integer(&index))
             };
 
             let mut docs = field.docs.clone();
@@ -590,33 +747,23 @@ impl Generator<'_> {
             rust_doc(writer, &docs);
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
-            let signature = format!("pub fn {name}(&self) -> {result} {{");
-            // rustfmt puts the parameters of a signature wider than its
-            // `max_width` on lines of their own
-            if STYLE.indent.len() + signature.len() <= STYLE.width {
-                writer.open(signature);
-            } else {
-                writer.line(format!("pub fn {name}("));
-                writer.indent();
-                writer.line("&self,");
-                writer.dedent();
-                writer.open(format!(") -> {result} {{"));
-            }
+            open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
+            writer.line(buffer);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("self.buffer.get_{}(position)", scalar_type(scalar)));
+                    writer.line(format!("buffer.get_{}(position)", scalar_type(scalar)));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "self.buffer.get_{}_array(position)",
+                        "buffer.get_{}_array(position)",
                         scalar_type(scalar)
                     ));
                 }
-                FieldType::String => writer.line("self.buffer.get_str(position)"),
+                FieldType::String => writer.line("buffer.get_str(position)"),
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
-                    let read = format!("{table}::new(self.buffer.bytes(), position)");
+                    let read = format!("{table}::new(self.bytes, position)");
 
                     // rustfmt breaks a call wider than its `fn_call_width`
                     // as `Ok`'s argument
@@ -625,7 +772,7 @@ impl Generator<'_> {
                     } else {
                         writer.line(format!("Ok({table}::new("));
                         writer.indent();
-                        writer.line("self.buffer.bytes(),");
+                        writer.line("self.bytes,");
                         writer.line("position,");
                         writer.dedent();
                         writer.line("))");
@@ -634,7 +781,7 @@ impl Generator<'_> {
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     writer.line(format!(
-                        "let bytes = self.buffer.get_struct(position, {structure}::SIZE)?;"
+                        "let bytes = buffer.get_struct(position, {structure}::SIZE)?;"
                     ));
                     writer.blank();
                     writer.line(format!("{structure}::read(bytes)"));
@@ -645,7 +792,7 @@ impl Generator<'_> {
                         &STYLE,
                         "let bytes = ",
                         &call(
-                            "self.buffer.get_struct_array",
+                            "buffer.get_struct_array",
                             vec![text("position"), text(format!("{structure}::SIZE"))],
                         ),
                         "?;",
@@ -659,7 +806,7 @@ impl Generator<'_> {
                 }
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
-                    writer.line("let vector = self.buffer.get_vector(position)?;");
+                    writer.line("let vector = buffer.get_vector(position)?;");
                     // Collecting into a `Result` would grow the items from
                     // nothing, since its size hint starts at zero
                     writer.line("let mut items = Vec::with_capacity(vector.len());");
@@ -672,7 +819,80 @@ impl Generator<'_> {
                 }
             }
             writer.close("}");
+
+            if matches!(
+                field.field_type,
+                FieldType::Vector(_) | FieldType::StructArray(_)
+            ) {
+                self.view_getter(writer, field, buffer, &offset);
+            }
         }
+    }
+
+    /// The getter of a view of a vector or an array of structs, which reads
+    /// each item when it's asked for, rather than all of them as the
+    /// field's own getter does. It finds the field as the field's getter
+    /// does, with `buffer`'s line and the `offset` it reads.
+    fn view_getter(&self, writer: &mut CodeWriter, field: &Field, buffer: &str, offset: &str) {
+        let (view, errors) = match field.field_type {
+            FieldType::Vector(index) => (
+                format!("{}Vector", self.schema.definition(index).name),
+                "if the field, or the vector's count or the ends of its items, lie outside the bytes",
+            ),
+            FieldType::StructArray(index) => (
+                format!("{}Array", self.schema.definition(index).name),
+                "if the field or its structs lie outside the bytes",
+            ),
+            _ => unreachable!("only vectors and arrays of structs have views"),
+        };
+
+        let mut docs = field.docs.clone();
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(format!(
+            "Views the items of `{}()`, reading each one when it's asked for",
+            identifier(&field.name)
+        ));
+        docs.extend(errors_doc(errors));
+
+        writer.blank();
+        rust_doc(writer, &docs);
+        open_method(
+            writer,
+            &format!("pub fn {}_view", field.name),
+            &["&self"],
+            &format!("Result<{view}<'a>, DecodeError>"),
+        );
+        writer.line(buffer);
+        writer.line(format!("let position = {offset};"));
+        match field.field_type {
+            FieldType::Vector(_) => {
+                writer.open(format!("Ok({view} {{"));
+                writer.line("vector: buffer.get_vector(position)?,");
+                writer.close("})");
+            }
+            FieldType::StructArray(index) => {
+                let structure = &self.schema.definition(index).name;
+                writer.statement(
+                    &STYLE,
+                    "let bytes = ",
+                    &call(
+                        "buffer.get_struct_array",
+                        vec![text("position"), text(format!("{structure}::SIZE"))],
+                    ),
+                    "?;",
+                );
+                // The bytes are a whole number of structs
+                writer.line(format!(
+                    "let (structs, _) = bytes.as_chunks::<{{ {structure}::SIZE }}>();"
+                ));
+                writer.blank();
+                writer.line(format!("Ok({view} {{ structs }})"));
+            }
+            _ => unreachable!("only vectors and arrays of structs have views"),
+        }
+        writer.close("}");
     }
 
     fn value_type(&self, field_type: FieldType) -> String {
@@ -800,6 +1020,178 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
         });
     }
     writer.dedent();
+}
+
+/// The view of a vector of a table, which reads each item when it's asked
+/// for, from the item's end and the end of the item before it
+fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
+    let table = &definition.name;
+    let item = format!("Result<{table}<'a>, DecodeError>");
+
+    rust_doc(
+        writer,
+        &[format!(
+            "A vector of [`{table}`]s, which reads each item when it's asked for"
+        )],
+    );
+    writer.line("#[derive(Clone, Copy, Debug)]");
+    writer.open(format!("pub struct {table}Vector<'a> {{"));
+    writer.line("vector: Vector<'a>,");
+    writer.close("}");
+    writer.blank();
+
+    writer.open(format!("impl<'a> {table}Vector<'a> {{"));
+    view_length(writer, "vector", "items");
+
+    let mut docs = vec![
+        "Reads item `index`, without reading the others, or returns `None` past the end".to_owned(),
+    ];
+    docs.extend(error_doc(
+        "`Some` of a [`DecodeError`]",
+        "if the item lies outside the bytes",
+    ));
+    rust_doc(writer, &docs);
+    open_method(
+        writer,
+        "pub fn get",
+        &["&self", "index: usize"],
+        &format!("Option<{item}>"),
+    );
+    writer.line("self.vector.get(index).map(Self::item)");
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(
+        writer,
+        &["Iterates over the items, reading each item's end once".to_owned()],
+    );
+    open_method(
+        writer,
+        "pub fn iter",
+        &["&self"],
+        &format!("impl ExactSizeIterator<Item = {item}> + use<'a>"),
+    );
+    writer.line("self.vector.iter().map(Self::item)");
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(
+        writer,
+        &["Reads an item from its bytes, which are a table of their own".to_owned()],
+    );
+    open_method(
+        writer,
+        "fn item",
+        &["bytes: Result<&'a [u8], DecodeError>"],
+        &item,
+    );
+    writer.line(format!("Ok({table}::new(bytes?, 0))"));
+    writer.close("}");
+    writer.close("}");
+}
+
+/// The view of an array of a struct, which reads each struct when it's
+/// asked for, from their bytes
+fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
+    let structure = &definition.name;
+
+    rust_doc(
+        writer,
+        &[format!(
+            "An array of [`{structure}`]s, which reads each struct when it's asked for"
+        )],
+    );
+    writer.line("#[derive(Clone, Copy, Debug)]");
+    writer.open(format!("pub struct {structure}Array<'a> {{"));
+    writer.line(format!("structs: &'a [[u8; {structure}::SIZE]],"));
+    writer.close("}");
+    writer.blank();
+
+    writer.open(format!("impl<'a> {structure}Array<'a> {{"));
+    view_length(writer, "structs", "structs");
+
+    rust_doc(
+        writer,
+        &["Reads struct `index`, or returns `None` past the end".to_owned()],
+    );
+    open_method(
+        writer,
+        "pub fn get",
+        &["&self", "index: usize"],
+        &format!("Option<{structure}>"),
+    );
+    chain(
+        writer,
+        "self.structs",
+        &["get(index)", &format!("map({structure}::from_bytes)")],
+    );
+    writer.close("}");
+    writer.blank();
+
+    rust_doc(writer, &["Iterates over the structs".to_owned()]);
+    open_method(
+        writer,
+        "pub fn iter",
+        &["&self"],
+        &format!("impl ExactSizeIterator<Item = {structure}> + use<'a>"),
+    );
+    chain(
+        writer,
+        "self.structs",
+        &["iter()", &format!("map({structure}::from_bytes)")],
+    );
+    writer.close("}");
+    writer.close("}");
+}
+
+/// Opens a method of an `impl` block, with its parameters on lines of their
+/// own when its signature is wider than rustfmt's `max_width`, as rustfmt
+/// breaks it
+fn open_method(writer: &mut CodeWriter, head: &str, parameters: &[&str], result: &str) {
+    let signature = format!("{head}({}) -> {result} {{", parameters.join(", "));
+    if STYLE.indent.len() + signature.len() <= STYLE.width {
+        writer.open(signature);
+        return;
+    }
+
+    writer.line(format!("{head}("));
+    writer.indent();
+    for parameter in parameters {
+        writer.line(format!("{parameter},"));
+    }
+    writer.dedent();
+    writer.open(format!(") -> {result} {{"));
+}
+
+/// The calls of a chain on `root`, on one line, or each on a line of its own
+/// when the chain is wider than rustfmt's `chain_width`
+fn chain(writer: &mut CodeWriter, root: &str, calls: &[&str]) {
+    let line = format!("{root}.{}", calls.join("."));
+    if line.len() <= CHAIN_WIDTH {
+        writer.line(line);
+        return;
+    }
+
+    writer.line(root);
+    writer.indent();
+    for call in calls {
+        writer.line(format!(".{call}"));
+    }
+    writer.dedent();
+}
+
+/// A view's `len()` and `is_empty()`, of the items that `field` holds
+fn view_length(writer: &mut CodeWriter, field: &str, items: &str) {
+    rust_doc(writer, &[format!("The number of {items}")]);
+    writer.open("pub const fn len(&self) -> usize {");
+    writer.line(format!("self.{field}.len()"));
+    writer.close("}");
+    writer.blank();
+
+    writer.open("pub const fn is_empty(&self) -> bool {");
+    writer.line(format!("self.{field}.is_empty()"));
+    writer.close("}");
+    writer.blank();
 }
 
 fn rust_doc(writer: &mut CodeWriter, docs: &[String]) {

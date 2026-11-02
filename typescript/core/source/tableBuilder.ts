@@ -1,7 +1,7 @@
 import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
-import { TableLayout } from './layout.ts';
+import { headerLength, maxLength, TableLayout } from './layout.ts';
 import type { AddressableSpace, ElementSize } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
@@ -85,9 +85,9 @@ export class TableBuilder {
      * before reading any field.
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
-     * @throws {RangeError} If `version` isn't an integer that fits in the
-     * layout's offset size, or the header alone is longer than the layout
-     * addresses.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
+     * isn't an integer that fits in the layout's offset size, or the header
+     * alone is longer than the layout addresses.
      */
     constructor(fields: number, layout?: TableLayout<false>);
     constructor(fields: number, layout: TableLayout<true>, version: number);
@@ -98,32 +98,12 @@ export class TableBuilder {
     ) {
         const size = layout.offsetSize();
 
-        if (layout.versioned() !== (version !== undefined)) {
-            throw new TypeError(
-                layout.versioned()
-                    ? 'A versioned layout needs a version'
-                    : 'The layout has no version slot'
-            );
-        }
-
-        if (version !== undefined && !fitsIn(version, size)) {
-            throw new RangeError(
-                `Version ${version} doesn't fit in a ${size}-byte slot`
-            );
-        }
-
         this.#layout = layout;
         this.#version = version;
         this.#size = size;
         this.#fields = fields;
-        this.#maxLength = maxValue(size);
-        this.#offset = layout.headerSize() + fields * size;
-
-        if (!(this.#offset <= this.#maxLength)) {
-            throw new RangeError(
-                `A header of ${fields} fields doesn't fit in ${size}-byte offsets`
-            );
-        }
+        this.#maxLength = maxLength(size);
+        this.#offset = headerLength(fields, layout, version);
 
         this.#records = new Array(fields * 4);
     }
@@ -721,25 +701,6 @@ function tooLong(index: number, length: number, size: number): RangeError {
     return new RangeError(
         `Field ${index + 1} makes the table ${length} bytes, too long for ${size}-byte offsets`
     );
-}
-
-/** Whether `value` is a whole number that `size` bytes hold unsigned */
-function fitsIn(value: number, size: AddressableSpace): boolean {
-    return Number.isInteger(value) && value >= 0 && value <= maxValue(size);
-}
-
-/** The largest number that `size` bytes hold unsigned, without a power */
-function maxValue(size: AddressableSpace): number {
-    switch (size) {
-        case SIZEOF_8:
-            return 0xff;
-
-        case SIZEOF_16:
-            return 0xffff;
-
-        case SIZEOF_32:
-            return 0xffff_ffff;
-    }
 }
 
 function getPadding(offset: number, alignment: ElementSize): number {

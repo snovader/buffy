@@ -1,6 +1,7 @@
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::workloads::{
-    Document, DocumentShape, List, ListShape, Record, RecordShape, Sample, SampleShape, sum_column,
+    Document, DocumentShape, List, ListShape, Record, RecordShape, Sample, SampleShape,
+    StructsShape, sum_column,
 };
 
 /// rmp-serde, which packs the workloads' own types through their serde derives.
@@ -10,6 +11,10 @@ use crate::workloads::{
 /// document packs as one map. Columns pack as arrays of float32s and uint32s,
 /// element by element, since msgpack has no typed arrays. Reading borrows
 /// strings from the bytes and copies columns into `Vec`s.
+///
+/// Structs have a fixed shape, so an array of them packs with `to_vec()`,
+/// which packs a struct as an array of its fields in order, without their
+/// names: each item, and the table that holds them.
 #[derive(Clone, Copy, Debug)]
 pub struct RmpSerde;
 
@@ -53,6 +58,18 @@ impl Workload<ListShape> for RmpSerde {
 
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
         Ok(rmp_serde::to_vec_named(input)?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        Ok(rmp_serde::from_slice(bytes)?)
+    }
+}
+
+impl Workload<StructsShape> for RmpSerde {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
+        Ok(rmp_serde::to_vec(input)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {

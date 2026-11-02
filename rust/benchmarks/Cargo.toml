@@ -20,6 +20,10 @@ bench = false
 name = "encoding"
 bench = false
 
+[[bin]]
+name = "allocation"
+bench = false
+
 [[bench]]
 name = "comparison"
 harness = false

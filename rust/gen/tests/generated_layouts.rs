@@ -266,3 +266,40 @@ proptest! {
         }
     }
 }
+
+/// Names of every length from 64 bytes short of the limit of 8- and 16-bit
+/// offsets to past it, so that each message's longest table that fits is
+/// written as `TableBuilder` writes it, and those longer fail as it fails.
+/// Each byte of the name makes the table a byte longer, or two with the
+/// padding of the array after it, so the longest is at the limit or a byte
+/// short of it.
+#[test]
+fn every_layout_of_short_offsets_is_written_up_to_their_limit_and_fails_past_it() {
+    for message in messages() {
+        let max = message.header.layout.offset_size().max_value() as usize;
+        if max > usize::from(u16::MAX) {
+            continue;
+        }
+
+        let mut longest = 0;
+        let mut rejected = false;
+        for length in max - 64..=max {
+            let owned = Owned {
+                id: u32::MAX,
+                name: "a".repeat(length),
+                values: vec![1, u16::MAX],
+            };
+
+            let written = (message.serialize)(&owned);
+            let by_hand = build(message.header, &describe(&owned));
+            assert_eq!(written, by_hand, "{}", message.name);
+            match written {
+                Ok(bytes) => longest = longest.max(bytes.len()),
+                Err(_) => rejected = true,
+            }
+        }
+
+        assert!(max - 1 <= longest, "{}: {longest} bytes", message.name);
+        assert!(rejected, "{}", message.name);
+    }
+}

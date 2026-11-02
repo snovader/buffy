@@ -2,9 +2,16 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
+import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 public final class Outer {
+    /**
+     * The alignment that a parent pads an {@code Outer} to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    public static final int ALIGNMENT = 8;
+
     private final ByteBuffer buffer;
     private final int position;
 
@@ -14,15 +21,27 @@ public final class Outer {
     }
 
     /**
-     * Returns a builder with every field set, which a parent writes straight into its own
-     * bytes
+     * Adds an {@code Outer} to its parent's sizer, after the field or
+     * vector that holds it
      */
-    public static TableBuilder builder(Fields fields) {
-        var builder = new TableBuilder(2);
-        builder.setUint32(fields.count());
-        builder.setTable(Inner.builder(fields.inner()));
+    public static void size(TableSizer sizer, Fields fields) {
+        var parent = sizer.startTable(2);
+        sizer.addUint32();
+        sizer.addTable(Inner.ALIGNMENT);
+        Inner.size(sizer, fields.inner());
+        sizer.endTable(parent);
+    }
 
-        return builder;
+    /**
+     * Writes an {@code Outer} where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    public static void write(TableWriter writer, Fields fields) {
+        var parent = writer.startTable(2);
+        writer.setUint32(0, fields.count());
+        writer.setTable(1, Inner.ALIGNMENT);
+        Inner.write(writer, fields.inner());
+        writer.endTable(parent);
     }
 
     public long count() {

@@ -1,4 +1,5 @@
 from collections.abc import Buffer
+from struct import Struct
 
 from tafla import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
@@ -15,6 +16,9 @@ DOCUMENT_LAYOUT = TableLayout(sized=True, versioned=True)
 DOCUMENT_VERSION = 1
 
 SAMPLE_SIZE = 3 * SIZEOF_32
+
+ITEM_STRUCT = Struct("<fff")
+"""An item as a struct: its three float32s, aligned to 4 in an array"""
 
 
 def serialize_record(input: RecordInput) -> memoryview:
@@ -130,6 +134,32 @@ def deserialize_list(data: Buffer) -> ListInput:
     return ListInput(items)
 
 
+def serialize_structs(input: ListInput) -> memoryview:
+    """Packs the structs one after another with ``struct``, as tafla-gen's code
+    writes an array of them"""
+    items = input.items
+    size = ITEM_STRUCT.size
+
+    data = bytearray(len(items) * size)
+    for index, item in enumerate(items):
+        ITEM_STRUCT.pack_into(data, index * size, item.value, item.first, item.second)
+
+    builder = TableBuilder(1)
+    builder.set_struct_array(data, size, SIZEOF_32)
+
+    return builder.bytes()
+
+
+def deserialize_structs(data: Buffer) -> ListInput:
+    """Unpacks the array's view with ``struct``, as tafla-gen's code reads it"""
+    buffer = ByteBuffer(data)
+    structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
+
+    return ListInput(
+        [ItemInput(*values) for values in ITEM_STRUCT.iter_unpack(structs)]
+    )
+
+
 def serialize_sample(input: SampleInput) -> memoryview:
     """Writes the fields one after another with ``ByteBuffer``'s setters, since
     tafla's Python runtime has no writer of fixed-size records"""
@@ -156,8 +186,10 @@ TAFLA = Codec(
     record=Workload(serialize_record, deserialize_record),
     document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
     list=Workload(serialize_list, deserialize_list),
+    structs=Workload(serialize_structs, deserialize_structs),
     sample=Workload(serialize_sample, deserialize_sample),
 )
 """tafla's tables, nested from their builders, with columns read back as
 views. The fixed-size record is written with ``ByteBuffer``'s setters and read
-with its getters at fixed positions."""
+with its getters at fixed positions, and an array of structs is packed and
+unpacked with ``struct``, as tafla-gen's code does."""

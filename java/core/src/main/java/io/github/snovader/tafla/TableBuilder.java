@@ -22,12 +22,6 @@ import java.util.function.*;
  * 255 bytes, 64 KiB, or for 32-bit offsets, as long as a Java array can be.</p>
  */
 public final class TableBuilder {
-    /**
-     * The longest array that the JDK's own collections allocate, which limits a table of 32-bit
-     * offsets to about 2 GiB rather than their 4 GiB
-     */
-    private static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
-
     private static final Consumer<ByteBuffer>[] NO_WRITERS = newWriters(0);
 
     private @Nullable ByteBuffer buffer;
@@ -79,37 +73,12 @@ public final class TableBuilder {
     }
 
     private TableBuilder(int fields, TableLayout layout, boolean versioned, long version) {
-        var size = layout.offsetSize();
-
-        if (layout.versioned() != versioned) {
-            throw new IllegalArgumentException(
-                layout.versioned() ? "A versioned layout needs a version" : "The layout has no version slot"
-            );
-        }
-
-        if (versioned && (version < 0 || version > size.maxValue())) {
-            throw new IllegalArgumentException(
-                String.format("Version %d doesn't fit in a %d-byte slot", version, size.valueOf())
-            );
-        }
-
-        if (fields < 0) {
-            throw new IllegalArgumentException(String.format("A table can't hold %d fields", fields));
-        }
-
+        this.offset = layout.headerLength(fields, versioned, version);
         this.layout = layout;
         this.version = version;
-        this.size = size;
-        this.maxLength = Math.min(size.maxValue(), MAX_ARRAY_LENGTH);
+        this.size = layout.offsetSize();
+        this.maxLength = layout.maxLength();
 
-        var headerLength = layout.headerSize() + (long) fields * size.valueOf();
-        if (headerLength > maxLength) {
-            throw new IllegalArgumentException(
-                String.format("A header of %d fields doesn't fit in %d-byte offsets", fields, size.valueOf())
-            );
-        }
-
-        this.offset = (int) headerLength;
         this.positions = new int[fields];
         this.paddings = new int[fields];
         this.writers = newWriters(fields);
@@ -277,7 +246,7 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the builder has fields left to set
      */
     public void setTable(TableBuilder table, int alignment) {
-        var padding = paddingTo(offset, alignment);
+        var padding = TableLayout.padding(offset, alignment);
         addField(lengthOf(table), padding, buffer -> writeTable(buffer, table));
         alignTo(alignment);
     }
@@ -304,7 +273,7 @@ public final class TableBuilder {
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
      */
     public void setTable(byte[] table, int alignment) {
-        var padding = paddingTo(offset, alignment);
+        var padding = TableLayout.padding(offset, alignment);
         addField(table.length, padding, buffer -> buffer.setBytes(table));
         alignTo(alignment);
     }
@@ -359,7 +328,7 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
      */
     private void addElements(long byteLength, int alignment, Consumer<ByteBuffer> writer) {
-        var padding = paddingTo(offset + size.valueOf(), alignment);
+        var padding = TableLayout.padding(offset + size.valueOf(), alignment);
         addField(size.valueOf() + byteLength, padding, writer);
         alignTo(alignment);
     }
@@ -424,7 +393,7 @@ public final class TableBuilder {
     }
 
     private String tooLong(int index, long length) {
-        if (maxLength == MAX_ARRAY_LENGTH) {
+        if (maxLength == TableLayout.MAX_ARRAY_LENGTH) {
             return String.format(
                 "Field %d makes the table %d bytes, longer than a Java array can be",
                 index + 1,
@@ -492,21 +461,5 @@ public final class TableBuilder {
         } else {
             buffer.setBytes(table.bytes());
         }
-    }
-
-    /**
-     * The padding that brings {@code offset} to a multiple of {@code alignment}
-     *
-     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
-     */
-    private static int paddingTo(int offset, int alignment) {
-        if (alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8) {
-            throw new IllegalArgumentException(
-                String.format("An alignment of %d isn't 1, 2, 4 or 8 bytes", alignment)
-            );
-        }
-
-        var remainder = offset % alignment;
-        return remainder == 0 ? 0 : alignment - remainder;
     }
 }

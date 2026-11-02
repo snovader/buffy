@@ -64,6 +64,22 @@ class List(_message.Message):
     items: _containers.RepeatedCompositeFieldContainer[Item]
     def __init__(self, items: _Optional[_Iterable[_Union[Item, _Mapping]]] = ...) -> None: ...
 
+class Triple(_message.Message):
+    __slots__ = ("value", "first", "second")
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FIELD_NUMBER: _ClassVar[int]
+    SECOND_FIELD_NUMBER: _ClassVar[int]
+    value: float
+    first: float
+    second: float
+    def __init__(self, value: _Optional[float] = ..., first: _Optional[float] = ..., second: _Optional[float] = ...) -> None: ...
+
+class Triples(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[Triple]
+    def __init__(self, items: _Optional[_Iterable[_Union[Triple, _Mapping]]] = ...) -> None: ...
+
 class Sample(_message.Message):
     __slots__ = ("key", "a", "b")
     KEY_FIELD_NUMBER: _ClassVar[int]

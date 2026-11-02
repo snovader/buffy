@@ -101,11 +101,16 @@ or read its tables, or a target couldn't generate its code:
   even within another struct. Arrays of strings aren't supported.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
+- A field can't take the name of the view of a vector or an array of structs
+  beside it, `<field>_view`, in `camelCase` too, and a declaration can't take
+  the name of a view that the schema's vectors and arrays of structs need,
+  `<Table>Vector` or `<Struct>Array`, which the generated code below
+  declares.
 
 It doesn't check yet for declarations whose names clash with a target's own,
 such as one named after a class that the generated code imports, like `List`
-in Java. Fields named after a member of the generated code are renamed
-instead, as the generated code below describes.
+in Java, or another's `<Name>Fields`. Fields named after a member of the
+generated code are renamed instead, as the generated code below describes.
 
 Errors point at their cause, as compilers print them, and the checker reports
 every error it finds, after the first syntax error if there's one:
@@ -121,8 +126,14 @@ error: unknown type `flaot64`
 ## Generated code
 
 Messages and tables read their fields lazily from the bytes, and are written
-from their fields in one call; tables nested from builders are written
-straight into their parent. Structs are read and written whole, and arrays of
+from their fields in one call, without the runtime's `TableBuilder`: the
+generated code adds each field to the runtime's `TableSizer`, which counts the
+table's length, and then writes them into bytes of that length with its
+`TableWriter`, with nested tables in place in their parent. Python appends
+the fields to its `TableWriter`'s bytes instead, without sizing them first,
+since a call there costs more than the bytes' growth. Each nested table has an
+`ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
+and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
@@ -135,11 +146,56 @@ when the bytes are in another version.
 | Java       | `<package>/<Name>.java`                  | Final classes, written from a nested `Fields` record                     | Records, read and written in place with `VarHandle`s |
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
 
-A table's getter of an array of structs returns an array of them in
-TypeScript, JavaScript and Java, as Java's getters of arrays of scalars
-return Java arrays, a `list` in Python, and an iterator that reads each from
-the bytes in Rust. Each struct writes an array
-of them with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+A table's getter of a vector or an array of structs reads every item at once.
+Vectors return an array of tables in TypeScript and JavaScript, a `List` in
+Java, a `list` in Python and a `Vec` in Rust. Arrays of structs return an
+array of structs in TypeScript, JavaScript and Java, as Java's getters of
+arrays of scalars return Java arrays, a `list` in Python, and an iterator
+that reads each from the bytes in Rust. Each struct writes an array of them
+with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+
+### Views
+
+Beside each getter of a vector or an array of structs, `<field>View()`, or
+`<field>_view()` in Python and Rust, returns a view of its items, which reads
+an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
+which the generated code declares for each table that a vector holds and
+each struct that an array holds. A view finds item `i` without reading the
+others: a vector's from the ends of that item and the one before it, with the
+runtime's `getVectorOffset()`, or `Vector::get()` in Rust, and an array's at
+`i` times its struct's size. When it's made, it checks that the bytes hold
+the vector's count and an end for each item, or the array's structs, so that
+its length is never more than the bytes can hold. It reads each item when
+it's asked for, which fails with the decode error if the item's bytes are
+corrupt.
+
+| Target                 | Length                | Item `i`                                                                                    | Every item                                             |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`                                                                 | A loop of `get(i)`                                     |
+| Python                 | `len(view)`           | `view[i]`, from the end if `i` is negative, or an `IndexError`                              | `for item in view`, which reads every item's end first |
+| Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`                                |
+| Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
+
+A view creates the reader of each item that it reads, as the getter does, but
+not those of the items it skips, nor an array of them. TypeScript's views
+aren't iterable, since a loop of `for...of` over them took twice as long as a
+loop of `get(i)` in V8. The comparison suites time reading the last item and
+every item through views, against the getters and `ByteBuffer` by hand.
+
+```rust
+# mod shapes {
+#     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/shapes/rust/shapes.rs"));
+# }
+use shapes::{ItemFields, ItemList, ItemListFields, PairFields};
+
+let item = |value| ItemFields { value, pair: PairFields { first: 0.5, second: 1.5 } };
+let bytes = ItemListFields { items: &[item(1.0), item(2.0), item(3.0)] }.serialize()?;
+
+let items = ItemList::new(&bytes).items_view()?; // an ItemVector
+let last = items.get(items.len() - 1).ok_or("no items")??; // reads the last item alone
+assert_eq!(last.value()?, 3.0);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
 
 Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
@@ -274,7 +330,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 230 KB. It has no imports, so any host runs it with an empty import
+about 280 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
@@ -307,6 +363,9 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/golden.rs`: the code generated from each example schema in
   `schemas/`, for each target, matches its golden files, and no golden
   directory is left of a schema or target that's gone.
+- `tests/benchmarks.rs`: the code generated from each language's comparison
+  suite's `workloads.tafla` matches the files in the suite, and the suites'
+  copies of the schema are the same.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it.
 - `tests/properties.rs`: any input parses or fails with errors that render,
@@ -321,7 +380,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/generated_<schema>.rs`: the golden Rust, compiled against
   `tafla` so that clippy and rustfmt check it, reads back what it
   writes, writes the tables that `TableBuilder` writes by hand, rejects other
-  versions, and reads corrupted bytes as values or decode errors.
+  versions, and reads corrupted bytes as values or decode errors, through
+  its views as through its getters.
 - `tests/shapes_cases.rs`: the golden Rust of `shapes.tafla` writes and reads
   the tables of `conformance/generated`, as the code generated in every
   language does.
@@ -342,8 +402,21 @@ The Java is generated with the package
 test module. The tests of the generated code lie beside the directories of
 the schemas, and in Java in the test module's package.
 
-After a change to the generator or the schemas, rewrite the golden files and
-the expected errors, review their diff, and run every language's tests:
+The comparison suites' generated codecs lie in each suite, which runs them
+against the hand-built `TableBuilder` codecs, and whose checks check them as
+they check the suite. `BENCHMARK_SCHEMAS` in `tests/common/mod.rs` lists
+where:
+
+| Target     | Schema and generated code, from the root of the repository                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| TypeScript | `typescript/benchmarks/comparison/workloads.tafla`, `typescript/benchmarks/comparison/generated/tafla/`                  |
+| Python     | `python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla`, `…/generated/tafla/`                                 |
+| Java       | `java/benchmarks/src/main/tafla/workloads.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/` |
+| Rust       | `rust/benchmarks/workloads.tafla`, `rust/benchmarks/src/codecs/tafla_gen/`                                               |
+
+After a change to the generator or the schemas, rewrite the golden files,
+the suites' generated code and the expected errors, review their diff, and
+run every language's tests:
 
 ```sh
 TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen

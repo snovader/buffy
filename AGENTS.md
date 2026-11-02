@@ -84,9 +84,10 @@ intent, not a requirement to preserve every detail.
   so that no commit has implementations that disagree.
 - The code that tafla-gen generates from the example schemas in `schemas/`
   lies in each language's test tree, whose checks and tests run it, and is
-  the generator's golden output. Regenerate it rather than edit it, as
-  `rust/gen/README.md` describes; a check or test that it fails is a bug of
-  the generator.
+  the generator's golden output. So is the code that it generates from each
+  comparison suite's `workloads.tafla`, in the suite. Regenerate it rather
+  than edit it, as `rust/gen/README.md` describes; a check or test that it
+  fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
   offset size, vector, builder, and decode error. Make the syntax idiomatic for
   each language.
@@ -132,7 +133,8 @@ intent, not a requirement to preserve every detail.
   MessagePack.
 - Every language runs the same workloads with the same values, so that its
   numbers compare with the other languages': a record, documents of 100 and
-  100,000 rows, a vector of 100 nested tables, and a fixed-size record.
+  100,000 rows, a vector of 100 nested tables, an array of 100 structs, and a
+  fixed-size record.
 - Before timing, every codec must read back exactly what it wrote.
 - Run variants interleaved, in alternating order, over many rounds after a
   warm-up, and report the fastest. Give each variant its own timing loop, so

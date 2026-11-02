@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /**
  * Structs as fields, in place like scalars, and in arrays, which are aligned
@@ -20,22 +20,33 @@ public final class Structs {
 
     /** Writes a {@code Structs} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(5, LAYOUT);
-        builder.setStruct(fields.packed().serialize());
-        builder.setStructArray(
+        var sizer = new TableSizer(5, LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(fields.documented().length, Documented.SIZE, Documented.ALIGNMENT);
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(fields.segments().length, Segment.SIZE, Segment.ALIGNMENT);
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path());
+
+        var writer = sizer.writer();
+        writer.setStruct(0, fields.packed().serialize());
+        writer.setStructArray(
+            1,
             Documented.serializeArray(fields.documented()),
             Documented.SIZE,
             Documented.ALIGNMENT
         );
-        builder.setStruct(fields.segment().serialize());
-        builder.setStructArray(
+        writer.setStruct(2, fields.segment().serialize());
+        writer.setStructArray(
+            3,
             Segment.serializeArray(fields.segments()),
             Segment.SIZE,
             Segment.ALIGNMENT
         );
-        builder.setTable(Path.builder(fields.path()));
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path());
 
-        return builder.bytes();
+        return writer.bytes();
     }
 
     /** A struct of every scalar type */
@@ -55,6 +66,15 @@ public final class Structs {
         return items;
     }
 
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * Views the items of {@code documented()}, reading each one when it's asked for
+     */
+    public DocumentedArray documentedView() {
+        return new DocumentedArray(buffer, buffer.rootOffset(1));
+    }
+
     /** A struct of structs */
     public Segment segment() {
         return Segment.read(buffer.bytes(), buffer.rootOffset(2));
@@ -69,6 +89,11 @@ public final class Structs {
         }
 
         return items;
+    }
+
+    /** Views the items of {@code segments()}, reading each one when it's asked for */
+    public SegmentArray segmentsView() {
+        return new SegmentArray(buffer, buffer.rootOffset(3));
     }
 
     /** A table nested in the message, which holds structs too */

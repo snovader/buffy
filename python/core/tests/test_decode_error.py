@@ -110,6 +110,7 @@ class TestDecodeError(unittest.TestCase):
         buffer = ByteBuffer((2**32 - 1).to_bytes(4, "little") + bytes(4))
 
         reads: list[tuple[str, Callable[[], object]]] = [
+            ("get_vector_length", lambda: buffer.get_vector_length(0)),
             ("get_vector_offsets", lambda: buffer.get_vector_offsets(0)),
             ("get_vector", lambda: buffer.get_vector(0)),
             ("get_struct_array", lambda: buffer.get_struct_array(0, 8)),

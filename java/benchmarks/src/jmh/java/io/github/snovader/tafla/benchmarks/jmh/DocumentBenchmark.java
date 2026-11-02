@@ -10,7 +10,7 @@ import org.openjdk.jmh.annotations.*;
  */
 @State(Scope.Benchmark)
 public class DocumentBenchmark {
-    @Param({"tafla", "flatbuffers", "protobuf", "msgpack"})
+    @Param({"tafla", "tafla-gen", "flatbuffers", "protobuf", "msgpack"})
     public String codec;
 
     @Param({"100", "100000"})

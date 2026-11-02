@@ -1,17 +1,22 @@
 use std::borrow::Cow;
 
-use tafla::{BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::item_access::{ItemAccess, no_items, sum_item};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    sum_column,
+    StructsShape, sum_column,
 };
 
 const DOCUMENT_LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const DOCUMENT_VERSION: u32 = 1;
 
 const SAMPLE_SIZE: usize = 12;
+
+/// An item as a struct: its three float32s, aligned to 4 in an array
+const ITEM_SIZE: usize = 12;
+const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 
 /// tafla's runtime, as its README shows.
 ///
@@ -21,8 +26,9 @@ const SAMPLE_SIZE: usize = 12;
 ///
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
-/// `to_le_bytes()` and read with `ByteBuffer`'s getters, as tafla-gen
-/// generates a struct's code.
+/// `to_le_bytes()` and read with `ByteBuffer`'s getters, and an array of
+/// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen's code
+/// writes and reads an array of them.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 
@@ -108,8 +114,8 @@ impl DocumentWorkload for Tafla {
 impl Workload<ListShape> for Tafla {
     type Bytes = Vec<u8>;
 
-    /// Nests each item from its builder, collected first as tafla-gen's code
-    /// collects them, since creating a builder can fail
+    /// Nests each item from its builder, collected first, since creating a
+    /// builder can fail
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
         let items = input
             .items
@@ -131,6 +137,34 @@ impl Workload<ListShape> for Tafla {
         for item in &vector {
             items.push(read_item(item?)?);
         }
+
+        Ok(List { items })
+    }
+}
+
+impl Workload<StructsShape> for Tafla {
+    type Bytes = Vec<u8>;
+
+    /// Writes the structs one after another into a `Vec`, which the builder
+    /// owns, as tafla-gen's code writes an array of them
+    fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
+        let mut structs = Vec::with_capacity(input.items.len() * ITEM_SIZE);
+        for item in &input.items {
+            structs.extend_from_slice(&item_struct(item));
+        }
+
+        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+        builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
+
+        Ok(builder.to_bytes()?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        let items = structs.iter().map(read_item_struct).collect();
 
         Ok(List { items })
     }
@@ -160,6 +194,51 @@ impl Workload<SampleShape> for Tafla {
 }
 
 /// Reads a document's header, which must carry the version it's written in
+/// `ByteBuffer`'s getters by hand, as the codec reads the list
+impl ItemAccess for Tafla {
+    const NAME: &'static str = "tafla";
+
+    fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
+        let item = vector.get(last).ok_or_else(no_items)??;
+
+        Ok(sum_table(item)?)
+    }
+
+    fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+
+        let mut sum = 0.0;
+        for item in &vector {
+            sum += sum_table(item?)?;
+        }
+
+        Ok(sum)
+    }
+
+    fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        Ok(sum_struct(structs.last().ok_or_else(no_items)?))
+    }
+
+    fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
+
+        Ok(structs
+            .iter()
+            .map(sum_struct)
+            .fold(0.0, |sum, item| sum + item))
+    }
+}
+
 fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
     let buffer = ByteBuffer::new(bytes, DOCUMENT_LAYOUT);
 
@@ -197,4 +276,38 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
         first: item.get_f32(item.field_offset(pair, 0)?)?,
         second: item.get_f32(item.field_offset(pair, 1)?)?,
     })
+}
+
+/// Sums an item of the vector, as [`read_item()`] reads it
+fn sum_table(bytes: &[u8]) -> Result<f64, DecodeError> {
+    let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let pair = item.root_offset(1)?;
+
+    Ok(sum_item(
+        item.get_f32(item.root_offset(0)?)?,
+        item.get_f32(item.field_offset(pair, 0)?)?,
+        item.get_f32(item.field_offset(pair, 1)?)?,
+    ))
+}
+
+fn sum_struct(bytes: &[u8; ITEM_SIZE]) -> f64 {
+    let item = read_item_struct(bytes);
+    sum_item(item.value, item.first, item.second)
+}
+
+fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
+    let mut bytes = [0; ITEM_SIZE];
+    bytes[0..4].copy_from_slice(&item.value.to_le_bytes());
+    bytes[4..8].copy_from_slice(&item.first.to_le_bytes());
+    bytes[8..12].copy_from_slice(&item.second.to_le_bytes());
+
+    bytes
+}
+
+fn read_item_struct(bytes: &[u8; ITEM_SIZE]) -> Item {
+    Item {
+        value: f32::from_le_bytes(bytes[0..4].try_into().unwrap_or_default()),
+        first: f32::from_le_bytes(bytes[4..8].try_into().unwrap_or_default()),
+        second: f32::from_le_bytes(bytes[8..12].try_into().unwrap_or_default()),
+    }
 }

@@ -16,6 +16,7 @@ message Members {
     int: uint8;
     equals: uint8;
     read: uint8;
+    write: uint8;
 }
 
 struct Frame {
@@ -78,7 +79,8 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
         "python",
         &[
             "    def serialize_(self) -> int:",
-            "    def builder_(self) -> int:",
+            "    def builder(self) -> int:",
+            "    def write_(self) -> int:",
             "    def cls_(self) -> int:",
             "    def int_(self) -> int:",
             "    def read_(self) -> int:",

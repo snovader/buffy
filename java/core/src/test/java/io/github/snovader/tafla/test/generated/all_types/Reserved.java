@@ -2,8 +2,8 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.TableLayout;
+import io.github.snovader.tafla.TableSizer;
 
 /** A message that nests the table of keywords, so that it's written */
 public final class Reserved {
@@ -17,10 +17,15 @@ public final class Reserved {
 
     /** Writes a {@code Reserved} with every field */
     public static byte[] serialize(Fields fields) {
-        var builder = new TableBuilder(1, LAYOUT);
-        builder.setTable(Keywords.builder(fields.keywords()));
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addTable(Keywords.ALIGNMENT);
+        Keywords.size(sizer, fields.keywords());
 
-        return builder.bytes();
+        var writer = sizer.writer();
+        writer.setTable(0, Keywords.ALIGNMENT);
+        Keywords.write(writer, fields.keywords());
+
+        return writer.bytes();
     }
 
     public Keywords keywords() {

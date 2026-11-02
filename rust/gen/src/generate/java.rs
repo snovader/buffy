@@ -1,7 +1,8 @@
 //! Java for `io.github.snovader.tafla`, one file per class. Messages
 //! and tables read fields lazily from their bytes and are written from
-//! records of their fields, with tables nested from their builders. Structs
-//! are records, read and written in place with `VarHandle`s.
+//! records of their fields, which a `TableSizer` counts and a `TableWriter`
+//! then writes, nested tables in place. Structs are records, read and
+//! written in place with `VarHandle`s.
 
 use std::fmt::Write;
 
@@ -53,42 +54,179 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         .as_ref()
         .map_or(PACKAGE, JavaPackage::as_str);
 
-    schema
-        .definitions
-        .iter()
-        .map(|definition| {
+    let file = |name: &str, contents: String| GeneratedFile {
+        path: format!("{}/{name}.java", package.replace('.', "/")),
+        contents,
+    };
+
+    let mut files = Vec::new();
+    for (index, definition) in schema.definitions.iter().enumerate() {
+        let mut writer = CodeWriter::new(STYLE.indent);
+        writer.line(format!("// {header}"));
+        writer.line(format!("package {package};"));
+        writer.blank();
+
+        match definition.kind {
+            Kind::Message(layout) => {
+                imports(&mut writer, runtime, definition, Some(layout));
+                message(&mut writer, schema, definition, layout);
+            }
+            Kind::Table => {
+                imports(&mut writer, runtime, definition, None);
+                table(&mut writer, schema, definition);
+            }
+            Kind::Struct(_) => {
+                writer.line(format!("import {runtime}.DecodeException;"));
+                writer.blank();
+                writer.line("import java.lang.invoke.MethodHandles;");
+                writer.line("import java.lang.invoke.VarHandle;");
+                writer.line("import java.nio.ByteBuffer;");
+                writer.line("import java.nio.ByteOrder;");
+                writer.blank();
+                structure(&mut writer, schema, definition);
+            }
+        }
+        files.push(file(&definition.name, writer.finish()));
+
+        if schema.is_item(index) {
             let mut writer = CodeWriter::new(STYLE.indent);
             writer.line(format!("// {header}"));
             writer.line(format!("package {package};"));
             writer.blank();
 
-            match definition.kind {
-                Kind::Message(layout) => {
-                    imports(&mut writer, runtime, definition, Some(layout));
-                    message(&mut writer, schema, definition, layout);
-                }
-                Kind::Table => {
-                    imports(&mut writer, runtime, definition, None);
-                    table(&mut writer, schema, definition);
-                }
-                Kind::Struct(_) => {
-                    writer.line(format!("import {runtime}.DecodeException;"));
-                    writer.blank();
-                    writer.line("import java.lang.invoke.MethodHandles;");
-                    writer.line("import java.lang.invoke.VarHandle;");
-                    writer.line("import java.nio.ByteBuffer;");
-                    writer.line("import java.nio.ByteOrder;");
-                    writer.blank();
-                    structure(&mut writer, schema, definition);
-                }
-            }
+            let view = if definition.is_struct() {
+                struct_array_view(&mut writer, runtime, definition)
+            } else {
+                vector_view(&mut writer, runtime, definition)
+            };
+            files.push(file(&view, writer.finish()));
+        }
+    }
 
-            GeneratedFile {
-                path: format!("{}/{}.java", package.replace('.', "/"), definition.name),
-                contents: writer.finish(),
-            }
-        })
-        .collect()
+    files
+}
+
+/// The view of a vector of a table, a lazy `List` whose `get()` reads an
+/// item from its end and the end of the item before it, and returns the
+/// view's class name
+fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) -> String {
+    let table = &definition.name;
+    let name = format!("{table}Vector");
+
+    writer.line(format!("import {runtime}.ByteBuffer;"));
+    writer.line(format!("import {runtime}.DecodeException;"));
+    writer.blank();
+    writer.line("import java.util.AbstractList;");
+    writer.line("import java.util.RandomAccess;");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "A vector of `{table}`s, which reads each item when it's asked for"
+    )]));
+    writer.open(format!(
+        "public final class {name} extends AbstractList<{table}> implements RandomAccess {{"
+    ));
+    writer.line("private final ByteBuffer buffer;");
+    writer.line("private final int position;");
+    writer.line("private final int size;");
+    writer.blank();
+    writer.lines(&javadoc(&[
+        "Views the vector at `position`, as its parent's getter finds it".to_owned(),
+        String::new(),
+        "@throws DecodeException if the vector's count or the ends of its items aren't within the"
+            .to_owned(),
+        "    bytes".to_owned(),
+    ]));
+    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
+    writer.line("this.buffer = buffer;");
+    writer.line("this.position = position;");
+    writer.line("this.size = buffer.getVectorLength(position);");
+    writer.close("}");
+    writer.blank();
+
+    view_size(writer, "items");
+
+    writer.lines(&javadoc(&[
+        "Reads item `index`, without reading the others".to_owned(),
+        String::new(),
+        "@throws DecodeException if the item ends before it starts or past the bytes".to_owned(),
+        "@throws IndexOutOfBoundsException if the vector has no item `index`".to_owned(),
+    ]));
+    writer.line("@Override");
+    writer.open(format!("public {table} get(int index) {{"));
+    writer.line(format!(
+        "return new {table}(buffer, buffer.getVectorOffset(position, index));"
+    ));
+    writer.close("}");
+    writer.close("}");
+
+    name
+}
+
+/// The view of an array of a struct, a lazy `List` whose `get()` reads a
+/// struct from a view of their bytes, and returns the view's class name
+fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) -> String {
+    let structure = &definition.name;
+    let name = format!("{structure}Array");
+
+    writer.line(format!("import {runtime}.ByteBuffer;"));
+    writer.line(format!("import {runtime}.DecodeException;"));
+    writer.blank();
+    writer.line("import java.util.AbstractList;");
+    writer.line("import java.util.Objects;");
+    writer.line("import java.util.RandomAccess;");
+    writer.blank();
+
+    writer.lines(&javadoc(&[format!(
+        "An array of `{structure}`s, which reads each struct when it's asked for"
+    )]));
+    writer.open(format!(
+        "public final class {name} extends AbstractList<{structure}> implements RandomAccess {{"
+    ));
+    writer.line("private final java.nio.ByteBuffer view;");
+    writer.line("private final int size;");
+    writer.blank();
+    writer.lines(&javadoc(&[
+        "Views the array at `position`, as its parent's getter finds it".to_owned(),
+        String::new(),
+        "@throws DecodeException if the array's count or its structs aren't within the bytes"
+            .to_owned(),
+    ]));
+    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
+    writer.line(format!(
+        "this.view = buffer.getStructArray(position, {structure}.SIZE);"
+    ));
+    writer.line(format!("this.size = view.remaining() / {structure}.SIZE;"));
+    writer.close("}");
+    writer.blank();
+
+    view_size(writer, "structs");
+
+    writer.lines(&javadoc(&[
+        "Reads struct `index`".to_owned(),
+        String::new(),
+        "@throws IndexOutOfBoundsException if the array has no struct `index`".to_owned(),
+    ]));
+    writer.line("@Override");
+    writer.open(format!("public {structure} get(int index) {{"));
+    writer.line("Objects.checkIndex(index, size);");
+    writer.line(format!(
+        "return {structure}.read(view, index * {structure}.SIZE);"
+    ));
+    writer.close("}");
+    writer.close("}");
+
+    name
+}
+
+/// A view's `size()`, of the number of items that it read when it was made
+fn view_size(writer: &mut CodeWriter, items: &str) {
+    writer.lines(&javadoc(&[format!("{{@return the number of {items}}}")]));
+    writer.line("@Override");
+    writer.open("public int size() {");
+    writer.line("return size;");
+    writer.close("}");
+    writer.blank();
 }
 
 fn imports(
@@ -113,9 +251,13 @@ fn imports(
     if layout.is_some_and(|layout| layout.version.is_some()) {
         names.push("DecodeException");
     }
-    names.push("TableBuilder");
+    // Messages make a sizer, and tables take a sizer and a writer
     if layout.is_some() {
         names.push("TableLayout");
+    }
+    names.push("TableSizer");
+    if layout.is_none() {
+        names.push("TableWriter");
     }
     for name in names {
         writer.line(format!("import {runtime}.{name};"));
@@ -192,13 +334,16 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     }
     writer.statement(
         &STYLE,
-        "var builder = ",
-        &call("new TableBuilder", arguments),
+        "var sizer = ",
+        &call("new TableSizer", arguments),
         ";",
     );
-    setters(writer, schema, definition);
+    sizes(writer, schema, definition);
     writer.blank();
-    writer.line("return builder.bytes();");
+    writer.line("var writer = sizer.writer();");
+    writes(writer, schema, definition);
+    writer.blank();
+    writer.line("return writer.bytes();");
     writer.close("}");
 
     getters(writer, schema, definition, true);
@@ -241,6 +386,18 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
 
     writer.lines(&javadoc(&definition.docs));
     writer.open(format!("public final class {name} {{"));
+    writer.lines(&javadoc(&[
+        format!(
+            "The alignment that a parent pads {} to: the largest",
+            article(name)
+        ),
+        "alignment of its arrays and nested tables, or 1".to_owned(),
+    ]));
+    writer.line(format!(
+        "public static final int ALIGNMENT = {};",
+        schema.table_alignment(definition)
+    ));
+    writer.blank();
     writer.line("private final ByteBuffer buffer;");
     writer.line("private final int position;");
     writer.blank();
@@ -250,24 +407,43 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     writer.close("}");
     writer.blank();
 
-    writer.lines(&javadoc(&[
-        "Returns a builder with every field set, which a parent writes straight into its own"
-            .to_owned(),
-        "bytes".to_owned(),
-    ]));
-    writer.open("public static TableBuilder builder(Fields fields) {");
-    writer.line(format!(
-        "var builder = new TableBuilder({});",
-        definition.fields.len()
-    ));
-    setters(writer, schema, definition);
-    writer.blank();
-    writer.line("return builder;");
-    writer.close("}");
-
+    nested_size_and_write(writer, schema, definition);
     getters(writer, schema, definition, false);
     writer.blank();
     fields_record(writer, schema, definition);
+    writer.close("}");
+}
+
+/// The static methods with which a parent sizes and writes a nested table
+fn nested_size_and_write(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let name = &definition.name;
+    let fields = definition.fields.len();
+
+    writer.lines(&javadoc(&[
+        format!(
+            "Adds {} to its parent's sizer, after the field or",
+            article(name)
+        ),
+        "vector that holds it".to_owned(),
+    ]));
+    writer.open("public static void size(TableSizer sizer, Fields fields) {");
+    writer.line(format!("var parent = sizer.startTable({fields});"));
+    sizes(writer, schema, definition);
+    writer.line("sizer.endTable(parent);");
+    writer.close("}");
+    writer.blank();
+
+    writer.lines(&javadoc(&[
+        format!(
+            "Writes {} where its parent's writer is, after the",
+            article(name)
+        ),
+        "field or vector that holds it".to_owned(),
+    ]));
+    writer.open("public static void write(TableWriter writer, Fields fields) {");
+    writer.line(format!("var parent = writer.startTable({fields});"));
+    writes(writer, schema, definition);
+    writer.line("writer.endTable(parent);");
     writer.close("}");
 }
 
@@ -470,26 +646,30 @@ fn fields_record(writer: &mut CodeWriter, schema: &Schema, definition: &Definiti
     writer.statement(&STYLE, "public ", &call("record Fields", components), " {}");
 }
 
-fn setters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+/// The calls that add a table's fields to its sizer, in order
+fn sizes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields.{}()", identifier(&field.name));
         let (method, arguments) = match field.field_type {
-            FieldType::Scalar(scalar) => (format!("set{}", method_name(scalar)), vec![text(value)]),
+            FieldType::Scalar(scalar) => (format!("add{}", method_name(scalar)), vec![]),
             FieldType::Array(scalar) => (
-                format!("set{}Array", method_name(scalar)),
-                vec![text(value)],
+                format!("add{}Array", method_name(scalar)),
+                vec![text(format!("{value}.length"))],
             ),
-            FieldType::String => ("setString".to_owned(), vec![text(value)]),
-            FieldType::Struct(_) => (
-                "setStruct".to_owned(),
-                vec![text(format!("{value}.serialize()"))],
-            ),
+            FieldType::String => ("addString".to_owned(), vec![text(value)]),
+            FieldType::Struct(index) => {
+                let structure = &schema.definition(index).name;
+                (
+                    "addStruct".to_owned(),
+                    vec![text(format!("{structure}.SIZE"))],
+                )
+            }
             FieldType::StructArray(index) => {
                 let structure = &schema.definition(index).name;
                 (
-                    "setStructArray".to_owned(),
+                    "addStructArray".to_owned(),
                     vec![
-                        call(format!("{structure}.serializeArray"), vec![text(value)]),
+                        text(format!("{value}.length")),
                         text(format!("{structure}.SIZE")),
                         text(format!("{structure}.ALIGNMENT")),
                     ],
@@ -497,19 +677,99 @@ fn setters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
             }
             FieldType::Table(index) => {
                 let table = &schema.definition(index).name;
-                let builder = call(format!("{table}.builder"), vec![text(value)]);
-                ("setTable".to_owned(), vec![builder])
+                writer.line(format!("sizer.addTable({table}.ALIGNMENT);"));
+                writer.statement(
+                    &STYLE,
+                    "",
+                    &call(format!("{table}.size"), vec![text("sizer"), text(value)]),
+                    ";",
+                );
+                continue;
             }
             FieldType::Vector(index) => {
                 let table = &schema.definition(index).name;
-                let builders = format!("{value}.stream().map({table}::builder).toList()");
-                ("setVector".to_owned(), vec![text(builders)])
+                writer.line(format!("sizer.addVector({value}.size());"));
+                writer.open(format!("for (var item : {value}) {{"));
+                writer.line(format!("{table}.size(sizer, item);"));
+                writer.close("}");
+                continue;
+            }
+        };
+        writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
+    }
+}
+
+/// The calls that write a table's fields, in order, each with its index
+fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    for (index, field) in definition.fields.iter().enumerate() {
+        let value = format!("fields.{}()", identifier(&field.name));
+        let position = text(index.to_string());
+        let (method, arguments) = match field.field_type {
+            FieldType::Scalar(scalar) => (
+                format!("set{}", method_name(scalar)),
+                vec![position, text(value)],
+            ),
+            FieldType::Array(scalar) => (
+                format!("set{}Array", method_name(scalar)),
+                vec![position, text(value)],
+            ),
+            FieldType::String => ("setString".to_owned(), vec![position, text(value)]),
+            FieldType::Struct(_) => (
+                "setStruct".to_owned(),
+                vec![position, text(format!("{value}.serialize()"))],
+            ),
+            FieldType::StructArray(struct_index) => {
+                let structure = &schema.definition(struct_index).name;
+                (
+                    "setStructArray".to_owned(),
+                    vec![
+                        position,
+                        call(format!("{structure}.serializeArray"), vec![text(value)]),
+                        text(format!("{structure}.SIZE")),
+                        text(format!("{structure}.ALIGNMENT")),
+                    ],
+                )
+            }
+            FieldType::Table(table_index) => {
+                let table = &schema.definition(table_index).name;
+                writer.line(format!("writer.setTable({index}, {table}.ALIGNMENT);"));
+                writer.statement(
+                    &STYLE,
+                    "",
+                    &call(format!("{table}.write"), vec![text("writer"), text(value)]),
+                    ";",
+                );
+                continue;
+            }
+            FieldType::Vector(table_index) => {
+                // The vector's locals are named after the field's index, since
+                // its name may be a keyword or another local's
+                let table = &schema.definition(table_index).name;
+                let vector = format!("vector{index}");
+                let written = format!("written{index}");
+                writer.statement(
+                    &STYLE,
+                    &format!("var {vector} = "),
+                    &call(
+                        "writer.setVector",
+                        vec![position, text(format!("{value}.size()"))],
+                    ),
+                    ";",
+                );
+                // Iterated rather than indexed, since get() of a List without
+                // random access, such as a LinkedList, walks the list
+                writer.line(format!("var {written} = 0;"));
+                writer.open(format!("for (var item : {value}) {{"));
+                writer.line(format!("{table}.write(writer, item);"));
+                writer.line(format!("writer.setItemEnd({vector}, {written}++);"));
+                writer.close("}");
+                continue;
             }
         };
         writer.statement(
             &STYLE,
             "",
-            &call(format!("builder.{method}"), arguments),
+            &call(format!("writer.{method}"), arguments),
             ";",
         );
     }
@@ -586,6 +846,36 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
         }
         writer.close("}");
+
+        if let Some(view) = view_type(field.field_type, schema) {
+            let mut docs = field.docs.clone();
+            if !docs.is_empty() {
+                docs.push(String::new());
+            }
+            docs.push(format!(
+                "Views the items of `{}()`, reading each one when it's asked for",
+                identifier(&field.name)
+            ));
+
+            writer.blank();
+            writer.lines(&javadoc(&docs));
+            writer.open(format!(
+                "public {view} {}View() {{",
+                camel_case(&field.name)
+            ));
+            writer.line(format!("return new {view}(buffer, {offset});"));
+            writer.close("}");
+        }
+    }
+}
+
+/// The view of a vector or an array of structs, which their view getters
+/// return
+fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
+    match field_type {
+        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
+        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
+        _ => None,
     }
 }
 

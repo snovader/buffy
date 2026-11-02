@@ -14,6 +14,8 @@ from `python/`.
   uint32 and two float32.
 - **vector of 100 nested tables**: a table holding a vector of tables, each a
   float32 and a nested table of two float32s.
+- **array of 100 structs**: a table holding the same items as an array of
+  structs of their three float32s, 12 bytes each.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets.
 
 Each shape is serialized and deserialized, with columns read back as each
@@ -26,8 +28,27 @@ library's per-element accessor. `workloads.py` ports the TypeScript generator,
 so the inputs are the same values, which `tests/test_workloads.py` checks
 against values that the TypeScript generator printed.
 
+Four more groups time only tafla's bytes of the vector of nested tables and
+of the array of structs, read in three ways: **read the last item**, which a
+reader can find without reading the others, and **sum every item**. Each way
+sums the three float32s of the items it reads, rather than creating objects
+of its own, and `item_access.py` holds them:
+
+- **tafla** reads with `ByteBuffer`'s getters by hand: `get_vector_offset()`
+  of the last item or `get_vector_offsets()` of every item, and
+  `get_struct_array()` with `Struct("<fff")`.
+- **tafla-gen** reads with the generated getters, `items()`, which read every
+  item into a list first, a `Triple` for each struct.
+- **tafla-gen view** reads with the generated views, `items_view()`: `[-1]`
+  reads the last item alone, and `for` iterates over every item, creating its
+  reader or `Triple` as it reaches it.
+- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+  the harness's noise.
+
 `python -m tafla_benchmarks.encoding` prints each library's encoded sizes and
-what it does with a truncated document, as the TypeScript comparison does.
+what it does with a truncated document, as the TypeScript comparison does, and
+`python -m tafla_benchmarks.allocation` prints the memory that each
+benchmark's call allocates.
 
 ### What differs from TypeScript
 
@@ -44,7 +65,7 @@ what it does with a truncated document, as the TypeScript comparison does.
   `struct` for such records, which is compared too.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
-  has only a call per element.
+  has only a call per element, which is all it has for a vector of structs.
 - msgpack's columns are extension types of their arrays' bytes, which this
   suite defines, as msgpackr's typed arrays are msgpackr's own.
 - flatbuffers' latest Python release is 25.12.19, where the TypeScript
@@ -58,6 +79,7 @@ what it does with a truncated document, as the TypeScript comparison does.
 | Library                                    | Why it's comparable                                                                                                                        |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tafla` (`core/`)                          | The reference that the others are compared with.                                                                                           |
+| tafla-gen's code                           | tafla's tables, written and read by the code that tafla-gen generates.                                                                     |
 | `flatbuffers` 25.12.19, with `numpy` 2.5.4 | Zero-copy tables with offsets and vectors, like tafla.                                                                                     |
 | `protobuf` 7.36.2                          | The most used schema-based codec, with packed repeated floats. Its wheels parse and serialize in C, with upb.                              |
 | `msgpack` 1.2.4                            | MessagePack's Python implementation, with a C extension: a schemaless format, whose tables are maps with their keys.                       |
@@ -69,23 +91,44 @@ comparison uses its counterpart:
 - **tafla** nests tables from their builders and reads columns as views of the
   bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
-  as tafla's documentation advises over a getter call per element.
+  as tafla's documentation advises over a getter call per element. The array
+  of structs is packed into a `bytearray` and unpacked from
+  `get_struct_array()`'s view with a precompiled `Struct("<fff")`, as
+  tafla-gen's code does.
+- **tafla-gen** is the code that tafla-gen generates from
+  `generated/workloads.tafla`, in `generated/tafla/`. A message's
+  `serialize()` appends every field, nested tables included, to a
+  `TableWriter`'s `bytearray` in one call, and returns a view of it. Its
+  readers read each field with a getter, columns as views. It takes the
+  workloads' dataclasses, as the other codecs do, so it creates the
+  generated fields' dicts, and the frozen `Triple` and `Sample` dataclasses
+  that the generated structs are, from them in each call, as the protobuf
+  codec builds its messages. Reading creates the workloads' dataclasses from
+  the generated readers, after the generated reader of the array of structs
+  creates a `Triple` for each. Every suite has a copy of the schema; after
+  changing them, regenerate the code as `rust/gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
   with the generated accessors. Columns are written with
   `CreateNumpyVector()`, from numpy arrays that view the `array`s or convert
   the lists, and read with the generated `AsNumpy()` accessors, which view the
-  bytes. The modules in `generated/flatbuffers/` are written by hand in the
-  shape that `flatc --python` generates from `generated/workloads.fbs`, with
-  only what the benchmarks use, since the FlatBuffers project doesn't publish
-  flatc on PyPI, where uv installs tools from. As in flatc's, an accessor of a
-  nested table imports the table's class on every call.
+  bytes. A vector of structs, which has no numpy accessors, is started, filled
+  with `CreateTriple()` from its last item to its first, and ended, and its
+  structs are read one at a time. The modules in `generated/flatbuffers/` are
+  written by hand in the shape that `flatc --python` generates from
+  `generated/workloads.fbs`, with only what the benchmarks use, since the
+  FlatBuffers project doesn't publish flatc on PyPI, where uv installs tools
+  from. As in flatc's, an accessor of a nested table or of a struct in a vector
+  imports its class on every call.
 - **protobuf** builds messages from keyword arguments and parses them with
   `FromString()`. Nested messages are built in place, as protobuf's tutorial
   builds them: passing a nested message to its parent's constructor copies it,
   which made writing the vector of nested tables 2.6 times slower and the
   large document 13% slower. Repeated fields are extended from the columns,
-  which converts them element by element.
+  which converts them element by element. protobuf has no structs, so the
+  array of them is a repeated message of the three floats, which protobuf
+  writes as fixed32s; packed repeated floats would make a column of each field,
+  which the documents time already.
 - **MessagePack** packs a table as a map with its keys, and a document as one
   map without a nested one for its columns, as msgpackr packs them. Floats pack
   as float64s, as msgpack packs Python's floats and msgpackr packs numbers. One
@@ -94,7 +137,9 @@ comparison uses its counterpart:
   as msgpack's documentation packs an `array`, and lists are converted to
   arrays first. The extension hook returns a memoryview of the bytes that the
   unpacker copied out, which took half the time of copying them again into an
-  `array` for 100,000 rows.
+  `array` for 100,000 rows. The array of structs packs each struct, and the
+  table that holds them, as an array of its fields in order, without their
+  keys, as rmp-serde's `to_vec()` packs them.
 - **struct** packs and unpacks the fixed-size record with one precompiled
   `Struct("<Iff")`.
 
@@ -123,6 +168,14 @@ the fastest round, since load from other processes only slows values down.
   from positional arguments, which took 65 ns for the fixed-size record,
   against 190 ns from keywords.
 - The garbage collector stays enabled, as it is for callers.
+- `tafla_benchmarks.allocation` runs each benchmark's call with tracemalloc
+  tracing, apart from the timings, since tracing slows every allocation. It
+  prints the most bytes that a call held at once above what was allocated
+  before it, its result included, less what reading the traced memory takes:
+  the fewest over 5 calls, after 20 that let CPython specialize the code.
+  tracemalloc traces every block that Python's allocators hand out, objects and
+  buffers alike, but what is held at once, not every allocation: a call that
+  frees a buffer before allocating the next counts only the larger.
 
 pyperf doesn't interleave the codecs as the TypeScript harness does: it runs
 one benchmark's workers after another's. Within a run, a burst of load can slow
@@ -139,9 +192,11 @@ for order in "" --reverse "" --reverse; do
     uv run --python 3.14+gil python -m tafla_benchmarks --processes 5 --append results.json $order
 done
 uv run --python 3.14+gil python -m tafla_benchmarks.report results.json
+uv run --python 3.14+gil python -m tafla_benchmarks.allocation
 ```
 
-The full run takes about 18 minutes. `--append` adds to an existing file, so
+The full run takes about 26 minutes, and the allocation report about 10
+seconds, which CI runs too. `--append` adds to an existing file, so
 remove the last run's `results.json` first. `--filter <regex>` runs only the
 groups whose name matches, and `--reverse` runs each group's codecs in reverse
 order. pyperf's own options apply too, and its commands read the results:
@@ -149,7 +204,7 @@ order. pyperf's own options apply too, and its commands read the results:
 example.
 
 A quick run of one worker per benchmark, which calls each operation once,
-checks that every benchmark works in about 10 seconds, most of which its 58
+checks that every benchmark works in about 14 seconds, most of which its 82
 workers spend starting and importing numpy. CI runs it after the round-trip
 test, on Python 3.14. Its numbers mean little.
 
@@ -202,6 +257,13 @@ generated code:
 - FlatBuffers' builder starts at 1 KiB and doubles by copying. Reusing a
   `Builder` with `Clear()` would make small messages cheaper, but the
   TypeScript comparison doesn't reuse it either.
+- tafla-gen's codec creates the generated fields and structs from the
+  workloads' dataclasses in each call, which a caller that holds its values
+  in them wouldn't. Creating a frozen dataclass takes about twice as long as
+  creating the workloads' own, which aren't frozen.
+- The peak bytes aren't the bytes that a call allocates in all, which
+  tracemalloc doesn't count: CPython frees most temporary objects as soon as
+  they're unused, so a call that creates many in turn holds few at once.
 
 ## Results
 
@@ -266,20 +328,117 @@ Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
 tables, for example.
 
+The array of 100 structs was added after that run, and timed on the same day
+with the vector of nested tables, in their groups alone: the full run's four
+runs with `--filter 'structs|nested'`. It took 5 minutes, while another session
+ran benchmarks, which kept the 1-minute load average between 2.7 and 3.5, with
+a median of 3.2. pyperf's mean was within 4% of the fastest value for all 16
+benchmarks, and the vector's fastest values were within 6% of the full run's.
+
+| Benchmark                                | tafla |    flatbuffers |     protobuf |       msgpack |
+| ---------------------------------------- | ----: | -------------: | -----------: | ------------: |
+| vector of 100 nested tables: serialize   | 264.8 |  541.7 (2.05×) | 42.5 (0.16×) |  21.5 (0.08×) |
+| vector of 100 nested tables: deserialize |  87.7 |  656.6 (7.49×) | 40.6 (0.46×) |  31.2 (0.36×) |
+| array of 100 structs: serialize          | 9.852 | 114.5 (11.63×) | 29.2 (2.97×) | 9.412 (0.96×) |
+| array of 100 structs: deserialize        |  14.9 | 247.7 (16.66×) | 28.9 (1.94×) |  17.1 (1.15×) |
+
+- tafla writes the 100 structs in 9.9 µs, against 265 µs for the same items as
+  nested tables, packing them with one `Struct` call each, and reads them in
+  15 µs, against 88 µs, 6.5 µs of which creates the 100 dataclasses. msgpack,
+  in C, takes 9.4 µs and 17 µs, and protobuf 29 µs each way.
+- FlatBuffers creates and reads each struct with pure-Python calls, in 115 µs
+  and 248 µs.
+
+tafla-gen's codec was added after those runs, and timed on 2026-11-02 in a
+full run of every codec, with the same Python, followed by
+`tafla_benchmarks.allocation`. It took 26 minutes. Other processes kept the
+1-minute load average between 1.2 and 10.9, with a median of 1.8. pyperf's mean was within 5% of the fastest
+value for 55 of the 82 benchmarks, and at most 28% above it, for tafla-gen's
+write of the large document. The fastest values of tafla and the other
+libraries were within 11% of the runs above, with a median difference of
+1.6%.
+
+Fastest value in µs per call, and tafla-gen's ratio to tafla's:
+
+| Benchmark                                          |  tafla |      tafla-gen |
+| -------------------------------------------------- | -----: | -------------: |
+| record: serialize                                  |  2.669 |  1.418 (0.53×) |
+| record: deserialize                                |  1.296 |  1.437 (1.11×) |
+| document of 100 rows: serialize                    |  7.754 |  3.874 (0.50×) |
+| document of 100 rows: deserialize                  |  2.738 |  3.027 (1.11×) |
+| document of 100 rows: sum a column per element     |  3.638 |  3.833 (1.05×) |
+| document of 100,000 rows: serialize                |   33.2 |   22.9 (0.69×) |
+| document of 100,000 rows: deserialize              |  2.789 |  3.067 (1.10×) |
+| document of 100,000 rows: sum a column per element | 3092.6 | 3075.5 (0.99×) |
+| vector of 100 nested tables: serialize             |  268.8 |  134.6 (0.50×) |
+| vector of 100 nested tables: deserialize           |   85.9 |  106.3 (1.24×) |
+| array of 100 structs: serialize                    |  9.671 |   33.2 (3.44×) |
+| array of 100 structs: deserialize                  |   14.9 |   39.2 (2.64×) |
+| fixed-size record: serialize                       |  0.704 |  0.337 (0.48×) |
+| fixed-size record: deserialize                     |  0.705 |  0.462 (0.65×) |
+| document of 100 rows: serialize lists              |   11.5 |  7.656 (0.66×) |
+| document of 100,000 rows: serialize lists          | 3020.1 | 3037.5 (1.01×) |
+
+Peak bytes per call, as `tafla_benchmarks.allocation` traces them:
+
+| Benchmark                                          |     tafla | tafla-gen | flatbuffers |  protobuf |   msgpack | struct |
+| -------------------------------------------------- | --------: | --------: | ----------: | --------: | --------: | -----: |
+| record: serialize                                  |     1,062 |       537 |       1,490 |       192 |        86 |        |
+| record: deserialize                                |       561 |       601 |         400 |       233 |       121 |        |
+| document of 100 rows: serialize                    |     2,618 |     1,761 |       3,770 |     1,468 |     1,517 |        |
+| document of 100 rows: deserialize                  |     1,113 |     1,201 |       1,905 |       625 |     2,684 |        |
+| document of 100 rows: sum a column per element     |       688 |       736 |         400 |       208 |     2,684 |        |
+| document of 100,000 rows: serialize                | 1,201,418 | 1,200,561 |   3,297,674 | 3,998,040 | 1,200,323 |        |
+| document of 100,000 rows: deserialize              |     1,113 |     1,201 |       1,905 |       625 | 1,201,484 |        |
+| document of 100,000 rows: sum a column per element |       688 |       736 |         400 |       208 | 1,201,484 |        |
+| vector of 100 nested tables: serialize             |    39,593 |    27,135 |       8,186 |     2,221 |     9,471 |        |
+| vector of 100 nested tables: deserialize           |    12,156 |    17,392 |      11,784 |    11,770 |    15,968 |        |
+| array of 100 structs: serialize                    |     3,418 |     9,082 |       3,666 |     1,941 |     3,709 |        |
+| array of 100 structs: deserialize                  |    11,896 |    17,768 |      11,696 |    11,690 |    15,736 |        |
+| fixed-size record: serialize                       |       553 |       101 |       1,455 |       161 |        65 |     45 |
+| fixed-size record: deserialize                     |       408 |       144 |         432 |       200 |        88 |     88 |
+| document of 100 rows: serialize lists              |     4,058 |     2,241 |       3,802 |     1,468 |     2,957 |        |
+| document of 100,000 rows: serialize lists          | 2,401,658 | 1,600,641 |   3,546,058 | 1,187,728 | 2,400,563 |        |
+
+- tafla-gen writes the vector of 100 nested tables in 135 µs, against 269 µs
+  with tafla's builders, holding 27 KB at its peak against 40 KB. It writes
+  the record and the small document twice as fast, in 1.4 and 3.9 µs against
+  2.7 and 7.8 µs, and the large document in 23 µs against 33 µs.
+- The array of structs takes 33 µs against 9.7 µs, and reading it 39 µs
+  against 15 µs, since the generated structs are frozen dataclasses: the codec
+  creates a `Triple` for each item before writing, and the generated reader
+  creates one for each struct before the codec creates the workload's items.
+  In a separate run of each step alone, creating the 100 `Triple`s took
+  24.2 µs and `Triples.serialize()` of them 8.7 µs, and `Triples.items()`
+  took 32.4 µs and creating the `ItemInput`s from them 6.3 µs. For the vector,
+  creating the items' dicts took 11.7 µs and `ItemList.serialize()` of them
+  118.8 µs.
+- The generated readers read the record's and the documents' fields 10% to
+  11% slower than `ByteBuffer`'s getters called in place, and sum the column
+  within 5% of them. They create an object for each table they read, which
+  the vector's peak bytes show, 17 KB against 12 KB, and read it 24% slower,
+  in 106 µs against 86 µs.
+- The fixed-size record is a frozen `Sample`, whose `serialize()` and `read()`
+  pack and unpack it with one `Struct` call each: 0.34 and 0.46 µs against
+  `ByteBuffer`'s 0.70 µs. Creating the `Sample` took 0.24 µs of the 0.34 µs.
+
 `python -m tafla_benchmarks.encoding` printed:
 
 ```
 Encoded size (bytes)
-                        record     doc 100  doc 100000      vector       fixed
-  tafla                     60        1296     1200096        3208          12
-  flatbuffers               72        1328     1200128        2832          32
-  protobuf                  47        1243     1187503        1900          16
-  msgpack                   53        1276     1200082        4710          32
-  struct                                                                    12
+                        record     doc 100  doc 100000      vector     structs       fixed
+  tafla                     60        1296     1200096        3208        1208          12
+  tafla-gen                 60        1296     1200096        3208        1208          12
+  flatbuffers               72        1328     1200128        2832        1224          32
+  protobuf                  47        1243     1187503        1900        1700          16
+  msgpack                   53        1276     1200082        4710        2804          32
+  struct                                                                                12
 
 Truncated document of 100000 rows: deserialize()
   tafla             600048 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
   tafla                 24 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 8 bytes at 24 of
+  tafla-gen         600048 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 400000 bytes at
+  tafla-gen             24 B  raised tafla.errors.DecodeError: Read exceeds the supplied buffer: 8 bytes at 24 of
   flatbuffers       600064 B  raised struct.error: unpack_from requires a buffer of at least 800128 b
   flatbuffers           24 B  raised struct.error: unpack_from requires a buffer of at least 28 bytes
   protobuf          593751 B  raised google.protobuf.message.DecodeError: Error parsing message with type 'tafla.benchmarks.
@@ -290,5 +449,43 @@ Truncated document of 100000 rows: deserialize()
 
 Every library rejects the truncated document. FlatBuffers' Python runtime reads
 through `struct`, whose range checks raise `struct.error`. msgpack packs the
-floats of the vector and the fixed-size record as float64s, so its vector is
-the largest.
+floats of the vector, the array of structs and the fixed-size record as
+float64s, so its vector is the largest, and its array of structs, at 2,804
+bytes, more than twice the size of tafla's 1,208.
+
+### Reading items through views
+
+Four runs of the four groups that read tafla's items, on 2026-11-02 on the
+same machine and Python, alternating their order as above, with
+`--filter item`. Other processes kept the 1-minute load average between 1.7
+and 3.8, with a median of 2.5. pyperf's mean was within 5% of the fastest value
+for 14 of the 16 benchmarks, and at most 11% above it.
+
+Fastest value in µs, and its ratio to `ByteBuffer`'s by hand:
+
+| Benchmark                                       | tafla |     tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | ------------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item | 1.629 |  13.5 (8.28×) |  2.006 (1.23×) |      2.008 (1.23×) |
+| vector of 100 nested tables: sum every item     |  83.5 | 102.5 (1.23×) |  102.1 (1.22×) |      102.8 (1.23×) |
+| array of 100 structs: read the last item        | 0.812 | 33.0 (40.67×) |  1.310 (1.61×) |      1.315 (1.62×) |
+| array of 100 structs: sum every item            | 8.583 |  35.9 (4.18×) |   35.6 (4.15×) |       35.7 (4.16×) |
+
+The most bytes that a call held at once, as tracemalloc traces them:
+
+| Benchmark                                       | tafla | tafla-gen | tafla-gen view | tafla-gen view A/A |
+| ----------------------------------------------- | ----: | --------: | -------------: | -----------------: |
+| vector of 100 nested tables: read the last item |   356 |     6,628 |            424 |                424 |
+| vector of 100 nested tables: sum every item     | 1,453 |     6,628 |          1,741 |              1,741 |
+| array of 100 structs: read the last item        |   504 |    11,936 |            592 |                592 |
+| array of 100 structs: sum every item            |   632 |    11,936 |            696 |                696 |
+
+- The views read the last item 6.7 times faster than the getters for the
+  vector, 2.0 µs against 13.5 µs, and 25 times faster for the array, 1.3 µs
+  against 33.0 µs: the getters create a reader or a `Triple` for each of the
+  100 items first. `ByteBuffer` by hand takes 1.6 µs and 0.8 µs.
+- Iterating over every item takes as long as through the getters, 102.1 µs
+  against 102.5 µs for the vector and 35.6 µs against 35.9 µs for the array,
+  since CPython creates each item's reader or `Triple` either way. The views
+  save the list of them, so a call holds 1.7 KB at most against 6.6 KB for
+  the vector, and 0.7 KB against 11.9 KB for the array. Reading the floats by
+  hand takes 83.5 µs and 8.6 µs.

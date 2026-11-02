@@ -1,10 +1,16 @@
 import { expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer } from 'tafla';
-import { ARRAY_FIELDS, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
+import { ARRAY_FIELDS, fitsItsLayout, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
 import { readScalar, readUnsigned } from './conformance/format.ts';
-import { buildTable, ELEMENT_SIZES, readTable } from './conformance/tables.ts';
+import {
+    buildTable,
+    ELEMENT_SIZES,
+    nestedInPlace,
+    readTable,
+    writeTable
+} from './conformance/tables.ts';
 
 // Runs tafla as if on a big-endian host. This host is little-endian, so the
 // arrays it writes must come out in reverse byte order per element, which is
@@ -58,5 +64,12 @@ it.prop([tables(), SLICES])(
         const bytes = sliceOf(buildTable(table).bytes(), slice);
 
         expect(readTable(bytes, table)).toStrictEqual(table);
+    }
+);
+
+it.prop([tables().map(nestedInPlace).filter(fitsItsLayout)])(
+    'should write the bytes that TableBuilder builds on a big-endian host with TableWriter',
+    table => {
+        expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());
     }
 );

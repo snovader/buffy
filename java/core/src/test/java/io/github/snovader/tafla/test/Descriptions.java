@@ -101,6 +101,11 @@ final class Descriptions {
         );
     }
 
+    /** {@return whether the table fits its offset size, with as much padding as it could need} */
+    static boolean fitsItsLayout(TableDescription table) {
+        return maxLength(table) <= table.layout().offsetSize().maxValue();
+    }
+
     /**
      * {@return the most bytes that the table can take, with as much padding as each field's
      * alignment could need}, to keep descriptions within their offset size without asking the

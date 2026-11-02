@@ -37,6 +37,13 @@ const read = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
 `readUint32()` and `readFloat64()`, write and read records at fixed offsets,
 such as stream frames, without a header or offsets.
 
+`TableSizer` and `TableWriter` write a table whose fields are known before
+it's written, as the code that tafla-gen generates writes its tables. The
+sizer counts the table's length from its fields, and its writer writes the
+same fields, in the same order, into bytes of that length, without recording
+them first as `TableBuilder` does. Both pad arrays and nested tables as
+`TableBuilder` does, so they write the same bytes.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field
@@ -95,6 +102,15 @@ byte; its README describes them. This package writes them, and
   structs of three float32s took about 1 µs to write and 1,208 bytes, against
   13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of
   two of them, since it's one field of bytes rather than 200 builders.
+- **Generated code writes tables directly.** `TableSizer` and `TableWriter`
+  write each field once, where `TableBuilder` records it and every nested
+  builder first. In Node 26, the generated code wrote a vector of 100 nested
+  tables of scalars in 4.1 µs rather than 13.8 µs, 100 tables of a string
+  and an array in 11 µs rather than 33 µs, and a table of two float64s, an
+  int64 and a string in 0.16 µs rather than 0.47 µs. `TableWriter` writes
+  scalars as bytes, since V8 keeps a `Uint8Array` of up to 64 bytes on its
+  heap until a `DataView` or `subarray()` asks for its `ArrayBuffer`, which
+  took 140 ns.
 - **Small tables cost about the allocation of their bytes.** A table of two
   float64s, a string and an int64 took 0.33 µs in Node, of which about 0.2 µs
   was allocating its bytes and their `DataView`. A nested builder allocates
@@ -127,4 +143,9 @@ Using the API wrongly throws other errors, whatever the bytes:
   table too long for its `offsetSize` throws a `RangeError` from its setter
   and isn't added. A version missing from or given for a layout, or a field
   set after `finalize()`, throws a `TypeError`.
+- `TableSizer` throws as `TableBuilder`'s constructor does for its header and
+  version, and its `byteLength()` and `writer()` throw a `RangeError` for a
+  table too long for its `offsetSize`. A `TableWriter` throws a `RangeError`
+  from `bytes()` when its fields didn't fill the bytes that its sizer
+  counted, and from `setString()` for a string longer than the one counted.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.

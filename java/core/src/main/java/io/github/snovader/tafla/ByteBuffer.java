@@ -438,58 +438,43 @@ public final class ByteBuffer {
 
     public void setInt8Array(byte[] values) {
         startArray(values.length, Byte.BYTES);
-        System.arraycopy(values, 0, bytes, position, values.length);
-        position += values.length;
+        Elements.setInt8(bytes, position, values);
+        position += values.length * Byte.BYTES;
     }
 
     public void setUint8Array(short[] values) {
         startArray(values.length, Byte.BYTES);
-
-        var cursor = position;
-        for (var value : values) {
-            bytes[cursor++] = (byte) value;
-        }
-
-        position = cursor;
+        Elements.setUint8(bytes, position, values);
+        position += values.length * Byte.BYTES;
     }
 
     public void setInt16Array(short[] values) {
         startArray(values.length, Short.BYTES);
-        nextElements(values.length * Short.BYTES).asShortBuffer().put(values);
+        Elements.setInt16(bytes, position, values);
         position += values.length * Short.BYTES;
     }
 
     public void setUint16Array(int[] values) {
         startArray(values.length, Short.BYTES);
-
-        var start = position;
-        for (int i = 0; i < values.length; i++) {
-            view.putShort(start + i * Short.BYTES, (short) values[i]);
-        }
-
-        position = start + values.length * Short.BYTES;
+        Elements.setUint16(bytes, position, values);
+        position += values.length * Short.BYTES;
     }
 
     public void setInt32Array(int[] values) {
         startArray(values.length, Integer.BYTES);
-        nextElements(values.length * Integer.BYTES).asIntBuffer().put(values);
+        Elements.setInt32(bytes, position, values);
         position += values.length * Integer.BYTES;
     }
 
     public void setUint32Array(long[] values) {
         startArray(values.length, Integer.BYTES);
-
-        var start = position;
-        for (int i = 0; i < values.length; i++) {
-            view.putInt(start + i * Integer.BYTES, (int) values[i]);
-        }
-
-        position = start + values.length * Integer.BYTES;
+        Elements.setUint32(bytes, position, values);
+        position += values.length * Integer.BYTES;
     }
 
     public void setInt64Array(long[] values) {
         startArray(values.length, Long.BYTES);
-        nextElements(values.length * Long.BYTES).asLongBuffer().put(values);
+        Elements.setInt64(bytes, position, values);
         position += values.length * Long.BYTES;
     }
 
@@ -500,13 +485,13 @@ public final class ByteBuffer {
 
     public void setFloat32Array(float[] values) {
         startArray(values.length, Float.BYTES);
-        nextElements(values.length * Float.BYTES).asFloatBuffer().put(values);
+        Elements.setFloat32(bytes, position, values);
         position += values.length * Float.BYTES;
     }
 
     public void setFloat64Array(double[] values) {
         startArray(values.length, Double.BYTES);
-        nextElements(values.length * Double.BYTES).asDoubleBuffer().put(values);
+        Elements.setFloat64(bytes, position, values);
         position += values.length * Double.BYTES;
     }
 
@@ -517,11 +502,6 @@ public final class ByteBuffer {
     private void startArray(int length, int elementSize) {
         assertWritable(offsetSize + (long) length * elementSize);
         setUnsigned(length);
-    }
-
-    /** {@return a little-endian view of the next {@code byteLength} bytes, which startArray() checked} */
-    private java.nio.ByteBuffer nextElements(int byteLength) {
-        return view.slice(position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
     /**
@@ -556,7 +536,12 @@ public final class ByteBuffer {
         return byteLength / size;
     }
 
-    private static void assertStructSize(int size) {
+    /**
+     * Checks a struct's size, which is positive
+     *
+     * @throws IllegalArgumentException if {@code size} is less than 1
+     */
+    static void assertStructSize(int size) {
         if (size < 1) {
             throw new IllegalArgumentException(String.format("A struct's size must be positive, not %d", size));
         }

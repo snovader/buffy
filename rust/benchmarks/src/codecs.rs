@@ -6,6 +6,7 @@ mod msgpack;
 mod protobuf;
 mod rkyv;
 mod tafla;
+mod tafla_gen;
 
 pub use self::flatbuffers::{Finished, FlatBuffers};
 pub use self::le_bytes::LeBytes;
@@ -13,6 +14,7 @@ pub use self::msgpack::RmpSerde;
 pub use self::protobuf::{Prost, messages};
 pub use self::rkyv::Rkyv;
 pub use self::tafla::Tafla;
+pub use self::tafla_gen::{TaflaGen, TaflaGenView};
 
 /// Expands `$body` once for each codec that encodes every workload.
 ///
@@ -26,6 +28,10 @@ macro_rules! for_each_codec {
     (|$codec:ident| $body:expr) => {{
         {
             let $codec = $crate::codecs::Tafla;
+            $body;
+        }
+        {
+            let $codec = $crate::codecs::TaflaGen;
             $body;
         }
         {

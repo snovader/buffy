@@ -5,6 +5,11 @@
  * arrays. Every read checks that it stays within the bytes it was given. The TypeScript and Python
  * implementations write and read the same bytes.
  *
+ * <p>Code that knows a table's fields before it writes them, such as the code that tafla-gen
+ * generates, can count the table with a {@link io.github.snovader.tafla.TableSizer} and write it
+ * forward with its {@link io.github.snovader.tafla.TableWriter}, which writes the same bytes as
+ * {@code TableBuilder} without recording the fields or a builder per nested table first.</p>
+ *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
  * TableLayout layout = TableLayout.builder().sized(true).versioned(true).build();
@@ -124,6 +129,13 @@
  *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
  *     number of structs. A field that would make the table too long for its offsets throws an
  *     {@code IllegalArgumentException} from its setter and isn't added.</li>
+ *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
+ *     constructor, and one for a negative count, a struct size below 1 and an alignment other
+ *     than 1, 2, 4 or 8. Its {@code byteLength()} and {@code writer()} throw one for a table too
+ *     long for its offsets, before allocating it. {@code TableWriter} never writes outside the
+ *     sized bytes: a field that would end past them throws an
+ *     {@link IndexOutOfBoundsException}, and {@code bytes()} an {@code IllegalStateException}
+ *     for fields that didn't fill them.</li>
  *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
  *     </li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
