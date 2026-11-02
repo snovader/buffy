@@ -140,14 +140,21 @@ public class ShapesTest {
     }
 
     @Property
-    void reading_a_sample_throws_DecodeException_where_its_bytes_end_past_the_bytes(
+    void reading_a_sample_throws_DecodeException_where_its_bytes_end_past_the_bytes_or_the_view(
         @ForAll @Size(max = 32) byte[] bytes,
         @ForAll("offsets") int offset
     ) {
+        // The view ends where `bytes` do, within longer bytes, as a view of a struct array does
+        var view = java.nio.ByteBuffer.wrap(java.util.Arrays.copyOf(bytes, bytes.length + Sample.SIZE))
+            .slice(0, bytes.length)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+
         if (offset >= 0 && (long) offset + Sample.SIZE <= bytes.length) {
             assertDoesNotThrow(() -> Sample.read(bytes, offset));
+            assertDoesNotThrow(() -> Sample.read(view, offset));
         } else {
             assertThrows(DecodeException.class, () -> Sample.read(bytes, offset));
+            assertThrows(DecodeException.class, () -> Sample.read(view, offset));
         }
     }
 

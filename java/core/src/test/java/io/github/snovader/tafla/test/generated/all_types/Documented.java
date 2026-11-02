@@ -5,6 +5,7 @@ import io.github.snovader.tafla.DecodeException;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
@@ -17,6 +18,9 @@ import java.nio.ByteOrder;
 public record Documented(short one, int two, long undocumented) {
     /** The byte length of a {@code Documented} */
     public static final int SIZE = 7;
+
+    /** The alignment of an array of a {@code Documented}: its largest scalar's size */
+    public static final int ALIGNMENT = 4;
 
     // The fields lie at fixed offsets, so they're read and written in place, little-endian
     private static final VarHandle INT16 =
@@ -48,12 +52,51 @@ public record Documented(short one, int two, long undocumented) {
         );
     }
 
-    public byte[] serialize() {
-        var bytes = new byte[SIZE];
-        bytes[0] = (byte) one;
-        INT16.set(bytes, 1, (short) two);
-        INT32.set(bytes, 3, (int) undocumented);
+    /**
+     * Reads a {@code Documented} at {@code offset} in a little-endian view, such as of an array of them
+     *
+     * @throws DecodeException if the view ends before it does
+     */
+    public static Documented read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
+        return new Documented(
+            (short) Byte.toUnsignedInt(view.get(offset)),
+            Short.toUnsignedInt(view.getShort(offset + 1)),
+            Integer.toUnsignedLong(view.getInt(offset + 3))
+        );
+    }
+
+    /** {@return the bytes of {@code Documented}s one after another, as an array of them holds them} */
+    public static byte[] serializeArray(Documented[] items) {
+        var bytes = new byte[items.length * SIZE];
+        for (int i = 0; i < items.length; i++) {
+            items[i].write(bytes, i * SIZE);
+        }
 
         return bytes;
+    }
+
+    public byte[] serialize() {
+        var bytes = new byte[SIZE];
+        write(bytes, 0);
+
+        return bytes;
+    }
+
+    /** Writes the {@code Documented} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        bytes[offset] = (byte) one;
+        INT16.set(bytes, offset + 1, (short) two);
+        INT32.set(bytes, offset + 3, (int) undocumented);
     }
 }

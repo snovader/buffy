@@ -21,7 +21,7 @@ use tables::{
     CASES, Header, arbitrary_bytes, arrays, build, check_truncated, expected, float32s, float64s,
     integers, overwrites, placements, strings, truncations,
 };
-use tafla::{DecodeError, TableLayout};
+use tafla::{Alignment, DecodeError, TableLayout};
 
 // The headers of the messages, from their attributes in the schema
 const POINT: Header = Header::new(TableLayout::DEFAULT);
@@ -311,6 +311,16 @@ proptest! {
 
         let read = Sample::read(&bytes)?;
         prop_assert_eq!(describe_sample(&read), describe_sample(&sample));
+    }
+
+    #[test]
+    fn samples_are_written_one_after_another_as_an_array_aligned_to_4_holds_them(
+        samples in vec(samples(), 0..=8),
+    ) {
+        let bytes: Vec<u8> = samples.iter().flat_map(sample_bytes).collect();
+
+        prop_assert_eq!(Sample::ALIGNMENT, Alignment::Four);
+        prop_assert_eq!(Sample::array_to_bytes(&samples), bytes);
     }
 
     #[test]

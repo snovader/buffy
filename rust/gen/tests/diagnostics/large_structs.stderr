@@ -1,0 +1,5 @@
+error: `S17` is too large for a struct
+  --> large_structs.tafla:26:8
+   |
+26 | struct S17 { left: S16; right: S16; }
+   |        ^^^ structs take at most 65536 bytes

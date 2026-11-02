@@ -5,12 +5,16 @@ import io.github.snovader.tafla.DecodeException;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /** A fixed-size sample, such as a stream sends one per frame */
 public record Sample(long key, float a, float b) {
     /** The byte length of a {@code Sample} */
     public static final int SIZE = 12;
+
+    /** The alignment of an array of a {@code Sample}: its largest scalar's size */
+    public static final int ALIGNMENT = 4;
 
     // The fields lie at fixed offsets, so they're read and written in place, little-endian
     private static final VarHandle INT32 =
@@ -42,12 +46,51 @@ public record Sample(long key, float a, float b) {
         );
     }
 
-    public byte[] serialize() {
-        var bytes = new byte[SIZE];
-        INT32.set(bytes, 0, (int) key);
-        FLOAT32.set(bytes, 4, a);
-        FLOAT32.set(bytes, 8, b);
+    /**
+     * Reads a {@code Sample} at {@code offset} in a little-endian view, such as of an array of them
+     *
+     * @throws DecodeException if the view ends before it does
+     */
+    public static Sample read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
+        return new Sample(
+            Integer.toUnsignedLong(view.getInt(offset)),
+            view.getFloat(offset + 4),
+            view.getFloat(offset + 8)
+        );
+    }
+
+    /** {@return the bytes of {@code Sample}s one after another, as an array of them holds them} */
+    public static byte[] serializeArray(Sample[] items) {
+        var bytes = new byte[items.length * SIZE];
+        for (int i = 0; i < items.length; i++) {
+            items[i].write(bytes, i * SIZE);
+        }
 
         return bytes;
+    }
+
+    public byte[] serialize() {
+        var bytes = new byte[SIZE];
+        write(bytes, 0);
+
+        return bytes;
+    }
+
+    /** Writes the {@code Sample} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        INT32.set(bytes, offset, (int) key);
+        FLOAT32.set(bytes, offset + 4, a);
+        FLOAT32.set(bytes, offset + 8, b);
     }
 }

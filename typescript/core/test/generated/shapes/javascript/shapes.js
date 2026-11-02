@@ -389,6 +389,13 @@ export class Sample {
     /** The byte length of a `Sample` */
     static SIZE = 12;
 
+    /**
+     * The alignment of an array of `Sample`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
     static #writer = new StructWriter(new Uint8Array(Sample.SIZE));
 
     /** @type {number} */
@@ -399,16 +406,17 @@ export class Sample {
     #b;
 
     /**
-     * Reads a `Sample` from the start of `bytes`, eagerly, so that it
+     * Reads a `Sample` at `offset` in `bytes`, eagerly, so that it
      * doesn't keep them alive
      *
      * @param {Uint8Array} bytes
-     * @throws {DecodeError} If `bytes` are shorter than `Sample.SIZE`.
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Sample` does.
      */
-    constructor(bytes) {
-        this.#key = readUint32(bytes, 0);
-        this.#a = readFloat32(bytes, 4);
-        this.#b = readFloat32(bytes, 8);
+    constructor(bytes, offset = 0) {
+        this.#key = readUint32(bytes, offset);
+        this.#a = readFloat32(bytes, offset + 4);
+        this.#b = readFloat32(bytes, offset + 8);
     }
 
     /**
@@ -420,11 +428,38 @@ export class Sample {
     static serialize(fields) {
         const writer = Sample.#writer;
         writer.reset();
+        Sample.write(writer, fields);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes `Sample`s one after another, as an array of them holds them
+     *
+     * @param {readonly SampleFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Sample.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Sample.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Sample` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {SampleFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
         writer.setUint32(fields.key);
         writer.setFloat32(fields.a);
         writer.setFloat32(fields.b);
-
-        return writer.bytes();
     }
 
     /** @returns {number} */

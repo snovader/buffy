@@ -5,6 +5,7 @@ import io.github.snovader.tafla.DecodeException;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /** A struct of every scalar type, at fixed offsets without padding */
@@ -22,6 +23,9 @@ public record Packed(
 ) {
     /** The byte length of a {@code Packed} */
     public static final int SIZE = 42;
+
+    /** The alignment of an array of a {@code Packed}: its largest scalar's size */
+    public static final int ALIGNMENT = 8;
 
     // The fields lie at fixed offsets, so they're read and written in place, little-endian
     private static final VarHandle INT16 =
@@ -66,19 +70,65 @@ public record Packed(
         );
     }
 
-    public byte[] serialize() {
-        var bytes = new byte[SIZE];
-        bytes[0] = int8;
-        bytes[1] = (byte) uint8;
-        INT16.set(bytes, 2, int16);
-        INT16.set(bytes, 4, (short) uint16);
-        INT32.set(bytes, 6, int32);
-        INT32.set(bytes, 10, (int) uint32);
-        INT64.set(bytes, 14, int64);
-        INT64.set(bytes, 22, uint64);
-        FLOAT32.set(bytes, 30, float32);
-        FLOAT64.set(bytes, 34, float64);
+    /**
+     * Reads a {@code Packed} at {@code offset} in a little-endian view, such as of an array of them
+     *
+     * @throws DecodeException if the view ends before it does
+     */
+    public static Packed read(ByteBuffer view, int offset) {
+        if (offset < 0 || offset > view.limit() - SIZE) {
+            throw new DecodeException(
+                String.format(
+                    "Read exceeds the supplied buffer: %d bytes at %d of %d",
+                    SIZE,
+                    offset,
+                    view.limit()
+                )
+            );
+        }
+
+        return new Packed(
+            view.get(offset),
+            (short) Byte.toUnsignedInt(view.get(offset + 1)),
+            view.getShort(offset + 2),
+            Short.toUnsignedInt(view.getShort(offset + 4)),
+            view.getInt(offset + 6),
+            Integer.toUnsignedLong(view.getInt(offset + 10)),
+            view.getLong(offset + 14),
+            view.getLong(offset + 22),
+            view.getFloat(offset + 30),
+            view.getDouble(offset + 34)
+        );
+    }
+
+    /** {@return the bytes of {@code Packed}s one after another, as an array of them holds them} */
+    public static byte[] serializeArray(Packed[] items) {
+        var bytes = new byte[items.length * SIZE];
+        for (int i = 0; i < items.length; i++) {
+            items[i].write(bytes, i * SIZE);
+        }
 
         return bytes;
+    }
+
+    public byte[] serialize() {
+        var bytes = new byte[SIZE];
+        write(bytes, 0);
+
+        return bytes;
+    }
+
+    /** Writes the {@code Packed} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        bytes[offset] = int8;
+        bytes[offset + 1] = (byte) uint8;
+        INT16.set(bytes, offset + 2, int16);
+        INT16.set(bytes, offset + 4, (short) uint16);
+        INT32.set(bytes, offset + 6, int32);
+        INT32.set(bytes, offset + 10, (int) uint32);
+        INT64.set(bytes, offset + 14, int64);
+        INT64.set(bytes, offset + 22, uint64);
+        FLOAT32.set(bytes, offset + 30, float32);
+        FLOAT64.set(bytes, offset + 34, float64);
     }
 }

@@ -3,7 +3,7 @@
 from collections.abc import Buffer, Iterable, Sequence
 from dataclasses import dataclass
 from struct import Struct, error
-from typing import ClassVar, Final, Self, TypedDict, Unpack
+from typing import ClassVar, Final, Literal, Self, TypedDict, Unpack
 
 from tafla import ByteBuffer, DecodeError, TableBuilder, TableLayout
 
@@ -390,12 +390,275 @@ class ReservedFields(TypedDict):
     keywords: KeywordsFields
 
 
+class Structs:
+    """Structs as fields, in place like scalars, and in arrays, which are aligned
+    to their structs' largest scalar
+    """
+
+    __slots__ = ("_buffer",)
+
+    _LAYOUT: Final = TableLayout.DEFAULT
+
+    def __init__(self, data: Buffer) -> None:
+        self._buffer = ByteBuffer(data, self._LAYOUT)
+
+    @classmethod
+    def serialize(cls, **fields: Unpack[StructsFields]) -> memoryview:
+        """Writes a ``Structs`` with every field"""
+        builder = TableBuilder(5, cls._LAYOUT)
+        builder.set_struct(fields["packed"].serialize())
+        builder.set_struct_array(
+            Documented.serialize_array(fields["documented"]),
+            Documented.SIZE,
+            Documented.ALIGNMENT,
+        )
+        builder.set_struct(fields["segment"].serialize())
+        builder.set_struct_array(
+            Segment.serialize_array(fields["segments"]), Segment.SIZE, Segment.ALIGNMENT
+        )
+        builder.set_table(Path.builder(fields["path"]))
+
+        return builder.bytes()
+
+    def packed(self) -> Packed:
+        """A struct of every scalar type"""
+        return Packed.read(
+            self._buffer.get_struct(self._buffer.root_offset(0), Packed.SIZE)
+        )
+
+    def documented(self) -> list[Documented]:
+        """An array of structs of 7 bytes, aligned to 4"""
+        return Documented.read_array(
+            self._buffer.get_struct_array(self._buffer.root_offset(1), Documented.SIZE)
+        )
+
+    def segment(self) -> Segment:
+        """A struct of structs"""
+        return Segment.read(
+            self._buffer.get_struct(self._buffer.root_offset(2), Segment.SIZE)
+        )
+
+    def segments(self) -> list[Segment]:
+        return Segment.read_array(
+            self._buffer.get_struct_array(self._buffer.root_offset(3), Segment.SIZE)
+        )
+
+    def path(self) -> Path:
+        """A table nested in the message, which holds structs too"""
+        return Path(self._buffer, self._buffer.root_offset(4))
+
+
+class StructsFields(TypedDict):
+    """The fields of a ``Structs``, to write"""
+
+    packed: Packed
+    """A struct of every scalar type"""
+    documented: Sequence[Documented]
+    """An array of structs of 7 bytes, aligned to 4"""
+    segment: Segment
+    """A struct of structs"""
+    segments: Sequence[Segment]
+    path: PathFields
+    """A table nested in the message, which holds structs too"""
+
+
+class Path:
+    __slots__ = ("_buffer", "_position")
+
+    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+        """Reads the table at ``position``, as its parent's getter finds it"""
+        self._buffer = buffer
+        self._position = position
+
+    @staticmethod
+    def builder(fields: PathFields) -> TableBuilder:
+        """Returns a builder with every field set, which a parent writes straight
+        into its own bytes
+        """
+        builder = TableBuilder(2)
+        builder.set_struct(fields["start"].serialize())
+        builder.set_struct_array(
+            Point.serialize_array(fields["points"]), Point.SIZE, Point.ALIGNMENT
+        )
+
+        return builder
+
+    def start(self) -> Point:
+        return Point.read(
+            self._buffer.get_struct(
+                self._buffer.field_offset(self._position, 0), Point.SIZE
+            )
+        )
+
+    def points(self) -> list[Point]:
+        return Point.read_array(
+            self._buffer.get_struct_array(
+                self._buffer.field_offset(self._position, 1), Point.SIZE
+            )
+        )
+
+
+class PathFields(TypedDict):
+    """The fields of a ``Path``, to write"""
+
+    start: Point
+    points: Sequence[Point]
+
+
+@dataclass(frozen=True, slots=True)
+class Segment:
+    """Two points, whose scalars lie in the segment's place"""
+
+    SIZE: ClassVar[int] = 16
+    """The byte length of a ``Segment``"""
+    ALIGNMENT: ClassVar[Literal[4]] = 4
+    """The alignment of an array of a ``Segment``: its largest scalar's size"""
+    _STRUCT: ClassVar[Struct] = Struct("<ffff")
+
+    start: Point
+    end: Point
+
+    @classmethod
+    def read(cls, data: Buffer, offset: int = 0) -> Self:
+        """Reads a ``Segment`` at ``offset`` in ``data``.
+
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        """
+        if offset < 0:
+            raise DecodeError(f"Segment doesn't fit at {offset}")
+
+        try:
+            values = cls._STRUCT.unpack_from(data, offset)
+        except error as cause:
+            raise DecodeError(f"Segment doesn't fit at {offset}") from cause
+
+        return cls(Point(values[0], values[1]), Point(values[2], values[3]))
+
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Segment``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        """
+        try:
+            return [
+                cls(Point(values[0], values[1]), Point(values[2], values[3]))
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
+        except error as cause:
+            raise DecodeError(
+                f"Segments don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+
+    def serialize(self) -> bytes:
+        """Returns the bytes of a ``Segment``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(self.start.x, self.start.y, self.end.x, self.end.y)
+        except (error, OverflowError) as cause:
+            raise ValueError("Segment's values don't fit its fields") from cause
+
+    @classmethod
+    def serialize_array(cls, items: Sequence[Self]) -> bytearray:
+        """Returns the bytes of ``Segment``s one after another, as an array of them
+        holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        data = bytearray(len(items) * cls.SIZE)
+        try:
+            for index, item in enumerate(items):
+                cls._STRUCT.pack_into(
+                    data,
+                    index * cls.SIZE,
+                    item.start.x,
+                    item.start.y,
+                    item.end.x,
+                    item.end.y,
+                )
+        except (error, OverflowError) as cause:
+            raise ValueError("Segment's values don't fit its fields") from cause
+
+        return data
+
+
+@dataclass(frozen=True, slots=True)
+class Point:
+    SIZE: ClassVar[int] = 8
+    """The byte length of a ``Point``"""
+    ALIGNMENT: ClassVar[Literal[4]] = 4
+    """The alignment of an array of a ``Point``: its largest scalar's size"""
+    _STRUCT: ClassVar[Struct] = Struct("<ff")
+
+    x: float
+    y: float
+
+    @classmethod
+    def read(cls, data: Buffer, offset: int = 0) -> Self:
+        """Reads a ``Point`` at ``offset`` in ``data``.
+
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        """
+        if offset < 0:
+            raise DecodeError(f"Point doesn't fit at {offset}")
+
+        try:
+            values = cls._STRUCT.unpack_from(data, offset)
+        except error as cause:
+            raise DecodeError(f"Point doesn't fit at {offset}") from cause
+
+        return cls(*values)
+
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Point``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        """
+        try:
+            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+        except error as cause:
+            raise DecodeError(
+                f"Points don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+
+    def serialize(self) -> bytes:
+        """Returns the bytes of a ``Point``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(self.x, self.y)
+        except (error, OverflowError) as cause:
+            raise ValueError("Point's values don't fit its fields") from cause
+
+    @classmethod
+    def serialize_array(cls, items: Sequence[Self]) -> bytearray:
+        """Returns the bytes of ``Point``s one after another, as an array of them
+        holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        data = bytearray(len(items) * cls.SIZE)
+        try:
+            for index, item in enumerate(items):
+                cls._STRUCT.pack_into(data, index * cls.SIZE, item.x, item.y)
+        except (error, OverflowError) as cause:
+            raise ValueError("Point's values don't fit its fields") from cause
+
+        return data
+
+
 @dataclass(frozen=True, slots=True)
 class Packed:
     """A struct of every scalar type, at fixed offsets without padding"""
 
     SIZE: ClassVar[int] = 42
     """The byte length of a ``Packed``"""
+    ALIGNMENT: ClassVar[Literal[8]] = 8
+    """The alignment of an array of a ``Packed``: its largest scalar's size"""
     _STRUCT: ClassVar[Struct] = Struct("<bBhHiIqQfd")
 
     int8: int
@@ -425,6 +688,19 @@ class Packed:
 
         return cls(*values)
 
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Packed``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        """
+        try:
+            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+        except error as cause:
+            raise DecodeError(
+                f"Packeds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+
     def serialize(self) -> bytes:
         """Returns the bytes of a ``Packed``.
 
@@ -446,6 +722,35 @@ class Packed:
         except (error, OverflowError) as cause:
             raise ValueError("Packed's values don't fit its fields") from cause
 
+    @classmethod
+    def serialize_array(cls, items: Sequence[Self]) -> bytearray:
+        """Returns the bytes of ``Packed``s one after another, as an array of them
+        holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        data = bytearray(len(items) * cls.SIZE)
+        try:
+            for index, item in enumerate(items):
+                cls._STRUCT.pack_into(
+                    data,
+                    index * cls.SIZE,
+                    item.int8,
+                    item.uint8,
+                    item.int16,
+                    item.uint16,
+                    item.int32,
+                    item.uint32,
+                    item.int64,
+                    item.uint64,
+                    item.float32,
+                    item.float64,
+                )
+        except (error, OverflowError) as cause:
+            raise ValueError("Packed's values don't fit its fields") from cause
+
+        return data
+
 
 @dataclass(frozen=True, slots=True)
 class Documented:
@@ -458,6 +763,8 @@ class Documented:
 
     SIZE: ClassVar[int] = 7
     """The byte length of a ``Documented``"""
+    ALIGNMENT: ClassVar[Literal[4]] = 4
+    """The alignment of an array of a ``Documented``: its largest scalar's size"""
     _STRUCT: ClassVar[Struct] = Struct("<BHI")
 
     one: int
@@ -484,6 +791,19 @@ class Documented:
 
         return cls(*values)
 
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Documented``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        """
+        try:
+            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+        except error as cause:
+            raise DecodeError(
+                f"Documenteds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+
     def serialize(self) -> bytes:
         """Returns the bytes of a ``Documented``.
 
@@ -493,3 +813,21 @@ class Documented:
             return self._STRUCT.pack(self.one, self.two, self.undocumented)
         except (error, OverflowError) as cause:
             raise ValueError("Documented's values don't fit its fields") from cause
+
+    @classmethod
+    def serialize_array(cls, items: Sequence[Self]) -> bytearray:
+        """Returns the bytes of ``Documented``s one after another, as an array of them
+        holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        data = bytearray(len(items) * cls.SIZE)
+        try:
+            for index, item in enumerate(items):
+                cls._STRUCT.pack_into(
+                    data, index * cls.SIZE, item.one, item.two, item.undocumented
+                )
+        except (error, OverflowError) as cause:
+            raise ValueError("Documented's values don't fit its fields") from cause
+
+        return data

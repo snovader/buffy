@@ -22,8 +22,18 @@ pub enum Kind {
     Message(Layout),
     /// A table nested in a message or another table
     Table,
-    /// Scalars at fixed offsets, without a header or padding
-    Struct,
+    /// Scalars at fixed offsets, without a header or padding, read and
+    /// written on their own, as a field of a table or in an array
+    Struct(StructLayout),
+}
+
+/// The bytes that a struct takes, which the checker measures once
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StructLayout {
+    /// The byte length of the struct: the sizes of its scalars in all
+    pub size: usize,
+    /// The alignment of an array of the struct: its largest scalar's size
+    pub alignment: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +82,10 @@ pub enum FieldType {
     Scalar(Scalar),
     Array(Scalar),
     String,
+    /// A struct, in place, by its index in [`Schema::definitions`]
+    Struct(usize),
+    /// An array of structs, by the structs' index in [`Schema::definitions`]
+    StructArray(usize),
     /// A nested table, by its index in [`Schema::definitions`]
     Table(usize),
     /// A vector of tables, by the tables' index in [`Schema::definitions`]
@@ -140,24 +154,47 @@ impl Schema {
     pub fn definition(&self, index: usize) -> &Definition {
         &self.definitions[index]
     }
+
+    /// The scalars of a struct in order, those of the structs in it in their
+    /// place
+    pub fn struct_scalars(&self, definition: &Definition) -> Vec<Scalar> {
+        let mut scalars = Vec::new();
+        self.push_scalars(definition, &mut scalars);
+        scalars
+    }
+
+    fn push_scalars(&self, definition: &Definition, scalars: &mut Vec<Scalar>) {
+        for field in &definition.fields {
+            match field.field_type {
+                FieldType::Scalar(scalar) => scalars.push(scalar),
+                FieldType::Struct(index) => self.push_scalars(self.definition(index), scalars),
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+    }
 }
 
 impl Definition {
     pub const fn layout(&self) -> Option<Layout> {
         match self.kind {
             Kind::Message(layout) => Some(layout),
-            Kind::Table | Kind::Struct => None,
+            Kind::Table | Kind::Struct(_) => None,
         }
     }
 
-    /// The byte length of a struct
-    pub fn struct_size(&self) -> usize {
-        self.fields
-            .iter()
-            .map(|field| match field.field_type {
-                FieldType::Scalar(scalar) => usize::from(scalar.size()),
-                _ => unreachable!("structs hold scalars only"),
-            })
-            .sum()
+    pub const fn is_struct(&self) -> bool {
+        matches!(self.kind, Kind::Struct(_))
+    }
+
+    /// The size and alignment of a struct
+    ///
+    /// # Panics
+    ///
+    /// If it isn't a struct.
+    pub fn struct_layout(&self) -> StructLayout {
+        match self.kind {
+            Kind::Struct(layout) => layout,
+            Kind::Message(_) | Kind::Table => unreachable!("only structs have a struct layout"),
+        }
     }
 }

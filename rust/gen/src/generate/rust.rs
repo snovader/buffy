@@ -69,9 +69,9 @@ pub fn generate(
         match definition.kind {
             Kind::Message(layout) => generator.message(&mut writer, definition, layout),
             Kind::Table => generator.table(&mut writer, definition),
-            Kind::Struct => generator.structure(&mut writer, definition),
+            Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
-        if definition.kind != Kind::Struct {
+        if !definition.is_struct() {
             writer.blank();
             generator.fields_struct(&mut writer, index);
         }
@@ -98,9 +98,7 @@ impl Generator<'_> {
             return;
         }
 
-        let has_tables = definitions
-            .iter()
-            .any(|definition| definition.kind != Kind::Struct);
+        let has_tables = definitions.iter().any(|definition| !definition.is_struct());
         let has_array_view = definitions
             .iter()
             .flat_map(|definition| &definition.fields)
@@ -112,22 +110,28 @@ impl Generator<'_> {
                 .layout()
                 .is_some_and(|layout| layout.offset_size != OffsetSize::U32)
         });
+        let has_structs = definitions.iter().any(Definition::is_struct);
 
         let mut names = Vec::new();
+        if has_structs {
+            names.push("Alignment");
+        }
         if has_array_view {
             names.push("ArrayView");
         }
         if has_tables {
             names.push("BuildError");
         }
-        names.extend(["ByteBuffer", "DecodeError"]);
+        if has_tables {
+            names.push("ByteBuffer");
+        }
+        names.push("DecodeError");
         if has_offset_size {
             names.push("OffsetSize");
         }
         if has_tables {
-            names.push("TableBuilder");
+            names.extend(["TableBuilder", "TableLayout"]);
         }
-        names.push("TableLayout");
 
         let statement = format!("use {runtime}::{{{}}};", names.join(", "));
         if statement.len() <= USE_LIST_WIDTH {
@@ -233,9 +237,32 @@ impl Generator<'_> {
         writer.close("}");
     }
 
+    #[allow(clippy::too_many_lines)]
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
-        let size = definition.struct_size();
+        let size = definition.struct_layout().size;
+        // Each field, its range of bytes in the struct, and the type that
+        // reads it from them
+        let mut offset = 0;
+        let fields: Vec<(String, usize, usize, String)> = definition
+            .fields
+            .iter()
+            .map(|field| {
+                let (end, read) = match field.field_type {
+                    FieldType::Scalar(scalar) => {
+                        (offset + usize::from(scalar.size()), scalar_type(scalar))
+                    }
+                    FieldType::Struct(index) => {
+                        let inner = self.schema.definition(index);
+                        (offset + inner.struct_layout().size, inner.name.as_str())
+                    }
+                    _ => unreachable!("structs hold scalars and structs only"),
+                };
+                let field = (identifier(&field.name), offset, end, read.to_owned());
+                offset = end;
+                field
+            })
+            .collect();
 
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug, PartialEq)]");
@@ -255,28 +282,52 @@ impl Generator<'_> {
         rust_doc(writer, &[format!("The byte length of {}", article(name))]);
         writer.line(format!("pub const SIZE: usize = {};", integer(&size)));
         writer.blank();
+        rust_doc(
+            writer,
+            &[format!(
+                "The alignment of an array of {}: its largest scalar's size",
+                article(name)
+            )],
+        );
+        writer.line(format!(
+            "pub const ALIGNMENT: Alignment = Alignment::{};",
+            alignment_variant(definition.struct_layout().alignment)
+        ));
+        writer.blank();
 
         let mut docs = vec![format!("Reads {} from the start of `bytes`", article(name))];
         docs.extend(errors_doc("if `bytes` are shorter than [`Self::SIZE`]"));
         rust_doc(writer, &docs);
         writer.open("pub fn read(bytes: &[u8]) -> Result<Self, DecodeError> {");
-        writer.line("let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);");
+        writer.open("match bytes.first_chunk() {");
+        writer.line("Some(bytes) => Ok(Self::from_bytes(bytes)),");
+        writer.open("None => Err(DecodeError::OutOfRange {");
+        writer.line("position: 0,");
+        writer.line(format!("byte_length: {},", integer(&size)));
+        writer.line("available: bytes.len(),");
+        writer.close("}),");
+        writer.close("}");
+        writer.close("}");
         writer.blank();
-        writer.open("Ok(Self {");
-        let mut offset = 0;
-        for field in &definition.fields {
-            let FieldType::Scalar(scalar) = field.field_type else {
-                unreachable!("structs hold scalars only")
-            };
-            writer.line(format!(
-                "{}: buffer.get_{}({})?,",
-                identifier(&field.name),
-                scalar_type(scalar),
-                integer(&offset)
-            ));
-            offset += usize::from(scalar.size());
+
+        rust_doc(
+            writer,
+            &[format!(
+                "Reads {} from its bytes, such as those of an array of them",
+                article(name)
+            )],
+        );
+        writer.line("#[must_use]");
+        // By reference, as an array of structs iterates over them, however
+        // small
+        if size <= 8 {
+            writer.line("#[allow(clippy::trivially_copy_pass_by_ref)]");
         }
-        writer.close("})");
+        writer.open(format!(
+            "pub fn from_bytes(bytes: &[u8; {}]) -> Self {{",
+            integer(&size)
+        ));
+        self.struct_literal(writer, "Self {", definition, 0);
         writer.close("}");
         writer.blank();
 
@@ -286,24 +337,85 @@ impl Generator<'_> {
             integer(&size)
         ));
         writer.line("let mut bytes = [0; Self::SIZE];");
-        let mut offset = 0;
-        for field in &definition.fields {
-            let FieldType::Scalar(scalar) = field.field_type else {
-                unreachable!("structs hold scalars only")
+        for (field, start, end, read) in &fields {
+            let bytes = if read.starts_with(char::is_uppercase) {
+                format!("self.{field}.to_bytes()")
+            } else {
+                format!("self.{field}.to_le_bytes()")
             };
-            let end = offset + usize::from(scalar.size());
             writer.line(format!(
-                "bytes[{}..{}].copy_from_slice(&self.{}.to_le_bytes());",
-                integer(&offset),
-                integer(&end),
-                identifier(&field.name)
+                "bytes[{}..{}].copy_from_slice(&{bytes});",
+                integer(start),
+                integer(end)
             ));
-            offset = end;
         }
         writer.blank();
         writer.line("bytes");
         writer.close("}");
+        writer.blank();
+
+        rust_doc(
+            writer,
+            &[format!(
+                "Writes [`{name}`]s one after another, as an array of them holds them"
+            )],
+        );
+        writer.line("#[must_use]");
+        writer.open("pub fn array_to_bytes(items: &[Self]) -> Vec<u8> {");
+        writer.line("let mut bytes = Vec::with_capacity(items.len() * Self::SIZE);");
+        writer.open("for item in items {");
+        writer.line("bytes.extend_from_slice(&item.to_bytes());");
         writer.close("}");
+        writer.blank();
+        writer.line("bytes");
+        writer.close("}");
+        writer.close("}");
+    }
+
+    /// A struct of the scalars at `offset` in `bytes`, with a struct within it
+    /// as a literal of its own, since an array only defaults up to 32 bytes.
+    /// Each range of a scalar lies within the array, so converting it never
+    /// fails.
+    fn struct_literal(
+        &self,
+        writer: &mut CodeWriter,
+        opening: &str,
+        definition: &Definition,
+        offset: usize,
+    ) {
+        writer.open(opening);
+        let mut start = offset;
+        for field in &definition.fields {
+            let name = identifier(&field.name);
+            match field.field_type {
+                FieldType::Scalar(scalar) => {
+                    let end = start + usize::from(scalar.size());
+                    writer.line(format!(
+                        "{name}: {}::from_le_bytes(bytes[{}..{}].try_into().unwrap_or_default()),",
+                        scalar_type(scalar),
+                        integer(&start),
+                        integer(&end)
+                    ));
+                    start = end;
+                }
+                FieldType::Struct(index) => {
+                    let inner = self.schema.definition(index);
+                    self.struct_literal(
+                        writer,
+                        &format!("{name}: {} {{", inner.name),
+                        inner,
+                        start,
+                    );
+                    start += inner.struct_layout().size;
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+        if opening == "Self {" {
+            writer.close("}");
+        } else {
+            writer.close("},");
+        }
     }
 
     /// The struct of the values that write a definition, with the method that
@@ -367,7 +479,7 @@ impl Generator<'_> {
                 &call(constructor, arguments),
                 "?;",
             );
-            Self::setters(writer, definition);
+            Self::setters(self.schema, writer, definition);
             writer.blank();
             writer.line("builder.to_bytes()");
         } else {
@@ -396,7 +508,7 @@ impl Generator<'_> {
                 &call("TableBuilder::new", arguments),
                 "?;",
             );
-            Self::setters(writer, definition);
+            Self::setters(self.schema, writer, definition);
             writer.blank();
             writer.line("Ok(builder)");
         }
@@ -404,13 +516,34 @@ impl Generator<'_> {
         writer.close("}");
     }
 
-    fn setters(writer: &mut CodeWriter, definition: &Definition) {
+    fn setters(schema: &Schema, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let value = format!("self.{}", identifier(&field.name));
             let (method, argument) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("set_{}", scalar_type(scalar)), value),
                 FieldType::Array(scalar) => (format!("set_{}_array", scalar_type(scalar)), value),
                 FieldType::String => ("set_str".to_owned(), value),
+                FieldType::Struct(_) => (
+                    "set_struct".to_owned(),
+                    format!("{value}.to_bytes().to_vec()"),
+                ),
+                FieldType::StructArray(index) => {
+                    let structure = &schema.definition(index).name;
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call(
+                            "builder.set_struct_array",
+                            vec![
+                                call(format!("{structure}::array_to_bytes"), vec![text(value)]),
+                                text(format!("{structure}::SIZE")),
+                                text(format!("{structure}::ALIGNMENT")),
+                            ],
+                        ),
+                        "?;",
+                    );
+                    continue;
+                }
                 FieldType::Table(_) => ("set_table".to_owned(), format!("{value}.builder()?")),
                 FieldType::Vector(_) => {
                     // Collecting the fallible builders into a `Result` would
@@ -455,11 +588,20 @@ impl Generator<'_> {
 
             writer.blank();
             rust_doc(writer, &docs);
-            writer.open(format!(
-                "pub fn {}(&self) -> Result<{}, DecodeError> {{",
-                identifier(&field.name),
-                self.value_type(field.field_type)
-            ));
+            let name = identifier(&field.name);
+            let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
+            let signature = format!("pub fn {name}(&self) -> {result} {{");
+            // rustfmt puts the parameters of a signature wider than its
+            // `max_width` on lines of their own
+            if STYLE.indent.len() + signature.len() <= STYLE.width {
+                writer.open(signature);
+            } else {
+                writer.line(format!("pub fn {name}("));
+                writer.indent();
+                writer.line("&self,");
+                writer.dedent();
+                writer.open(format!(") -> {result} {{"));
+            }
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
@@ -489,6 +631,32 @@ impl Generator<'_> {
                         writer.line("))");
                     }
                 }
+                FieldType::Struct(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    writer.line(format!(
+                        "let bytes = self.buffer.get_struct(position, {structure}::SIZE)?;"
+                    ));
+                    writer.blank();
+                    writer.line(format!("{structure}::read(bytes)"));
+                }
+                FieldType::StructArray(index) => {
+                    let structure = &self.schema.definition(index).name;
+                    writer.statement(
+                        &STYLE,
+                        "let bytes = ",
+                        &call(
+                            "self.buffer.get_struct_array",
+                            vec![text("position"), text(format!("{structure}::SIZE"))],
+                        ),
+                        "?;",
+                    );
+                    // The bytes are a whole number of structs
+                    writer.line(format!(
+                        "let (structs, _) = bytes.as_chunks::<{{ {structure}::SIZE }}>();"
+                    ));
+                    writer.blank();
+                    writer.line(format!("Ok(structs.iter().map({structure}::from_bytes))"));
+                }
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
                     writer.line("let vector = self.buffer.get_vector(position)?;");
@@ -513,6 +681,11 @@ impl Generator<'_> {
             FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
+            FieldType::Struct(index) => self.schema.definition(index).name.clone(),
+            FieldType::StructArray(index) => format!(
+                "impl ExactSizeIterator<Item = {}> + use<'a>",
+                self.schema.definition(index).name
+            ),
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
             FieldType::Vector(index) => format!("Vec<{}<'a>>", self.schema.definition(index).name),
         }
@@ -529,6 +702,10 @@ impl Generator<'_> {
             FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
+            FieldType::Struct(index) => self.schema.definition(index).name.clone(),
+            FieldType::StructArray(index) => {
+                format!("&'a [{}]", self.schema.definition(index).name)
+            }
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("&'a [{}]", fields(index)),
         }
@@ -565,8 +742,11 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                 .fields
                 .iter()
                 .any(|field| match field.field_type {
-                    FieldType::Scalar(_) => false,
-                    FieldType::Array(_) | FieldType::String | FieldType::Vector(_) => true,
+                    FieldType::Scalar(_) | FieldType::Struct(_) => false,
+                    FieldType::Array(_)
+                    | FieldType::String
+                    | FieldType::StructArray(_)
+                    | FieldType::Vector(_) => true,
                     FieldType::Table(nested) => borrows[nested] == Some(true),
                 });
             borrows[index] = Some(borrowing);
@@ -691,5 +871,15 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
         Scalar::Uint64 => "u64",
         Scalar::Float32 => "f32",
         Scalar::Float64 => "f64",
+    }
+}
+
+/// The variant of the runtime's `Alignment` of `bytes`
+fn alignment_variant(bytes: u8) -> &'static str {
+    match bytes {
+        1 => "One",
+        2 => "Two",
+        4 => "Four",
+        _ => "Eight",
     }
 }

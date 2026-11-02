@@ -9,7 +9,8 @@ import java.util.*;
  * as: unsigned integers widened to the next wider type, a {@code uint64} as a {@code long} of its
  * bits, and arrays of the same types. They're the values of {@link Descriptions}, over each type's
  * whole range and often at its limits, such as -0.0, NaN, the infinities and the smallest and
- * largest integers, with strings of code points of every UTF-8 length and empty arrays and vectors.
+ * largest integers, with strings of code points of every UTF-8 length and empty arrays, arrays of
+ * structs and vectors.
  */
 final class FieldValues {
     private FieldValues() {}
@@ -101,5 +102,10 @@ final class FieldValues {
     /** {@return the fields of the tables of vectors, empty too} */
     static <T> Arbitrary<List<T>> vectorsOf(Arbitrary<T> items) {
         return items.list().ofMaxSize(Descriptions.MAX_ITEMS);
+    }
+
+    /** {@return the records of arrays of structs, empty too} */
+    static <T, A> Arbitrary<A> structArraysOf(Arbitrary<T> structs, Class<A> arrayClass) {
+        return structs.array(arrayClass).ofMaxSize(Descriptions.MAX_STRUCTS);
     }
 }
