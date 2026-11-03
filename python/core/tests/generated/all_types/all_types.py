@@ -631,12 +631,14 @@ class Segment:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Segment doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Segment doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Segment can't read a buffer that isn't C-contiguous"
@@ -723,7 +725,7 @@ class SegmentArray:
         if index < 0:
             index += self._length
         if not 0 <= index < self._length:
-            raise IndexError(f"Struct {index} is outside the array of {self._length}")
+            raise IndexError(f"Struct index is outside the array of {self._length}")
         return Segment.read(self._data, index * Segment.SIZE)
 
     def __iter__(self) -> Iterator[Segment]:
@@ -751,12 +753,14 @@ class Point:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Point doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Point doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Point can't read a buffer that isn't C-contiguous"
@@ -833,7 +837,7 @@ class PointArray:
         if index < 0:
             index += self._length
         if not 0 <= index < self._length:
-            raise IndexError(f"Struct {index} is outside the array of {self._length}")
+            raise IndexError(f"Struct index is outside the array of {self._length}")
         return Point.read(self._data, index * Point.SIZE)
 
     def __iter__(self) -> Iterator[Point]:
@@ -871,12 +875,14 @@ class Packed:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Packed doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Packed doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Packed can't read a buffer that isn't C-contiguous"
@@ -984,12 +990,14 @@ class Documented:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Documented doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Documented doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Documented can't read a buffer that isn't C-contiguous"
@@ -1068,7 +1076,7 @@ class DocumentedArray:
         if index < 0:
             index += self._length
         if not 0 <= index < self._length:
-            raise IndexError(f"Struct {index} is outside the array of {self._length}")
+            raise IndexError(f"Struct index is outside the array of {self._length}")
         return Documented.read(self._data, index * Documented.SIZE)
 
     def __iter__(self) -> Iterator[Documented]:

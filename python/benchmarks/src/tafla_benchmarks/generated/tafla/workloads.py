@@ -380,12 +380,14 @@ class Triple:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Triple doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Triple doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Triple can't read a buffer that isn't C-contiguous"
@@ -464,7 +466,7 @@ class TripleArray:
         if index < 0:
             index += self._length
         if not 0 <= index < self._length:
-            raise IndexError(f"Struct {index} is outside the array of {self._length}")
+            raise IndexError(f"Struct index is outside the array of {self._length}")
         return Triple.read(self._data, index * Triple.SIZE)
 
     def __iter__(self) -> Iterator[Triple]:
@@ -495,12 +497,14 @@ class Sample:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Sample doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Sample doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Sample can't read a buffer that isn't C-contiguous"

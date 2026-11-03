@@ -190,6 +190,14 @@ class TestByteBuffer(unittest.TestCase):
                 "must be a positive integer, not 0",
                 lambda: buffer.get_struct_array(0, 0),
             ),
+            (
+                "must be a positive integer, not <negative 15001-bit integer>",
+                lambda: buffer.get_struct_array(0, -(2**15000)),
+            ),
+            (
+                "5 bytes aren't a whole number of <15001-bit integer>-byte structs",
+                lambda: buffer.set_struct_array(bytes(5), 2**15000),
+            ),
         ]
 
         for message, call in cases:
@@ -239,11 +247,18 @@ class TestByteBuffer(unittest.TestCase):
         builder.set_vector([b"\x01", b"\x02\x03"])
         buffer = builder.finalize()
 
-        for index in [-1, 2]:
+        # An index of more digits than Python converts to a string is given by
+        # its bit length
+        for index, described in [
+            (-1, "-1"),
+            (2, "2"),
+            (2**15000, "<15001-bit integer>"),
+            (-(2**15000), "<negative 15001-bit integer>"),
+        ]:
             with (
-                self.subTest(index=index),
+                self.subTest(index=described),
                 self.assertRaisesRegex(
-                    IndexError, f"Item {index} is outside the vector of 2 at 4"
+                    IndexError, f"Item {described} is outside the vector of 2 at 4"
                 ),
             ):
                 buffer.get_vector_offset(buffer.root_offset(0), index)

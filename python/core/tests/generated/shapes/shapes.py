@@ -345,12 +345,14 @@ class Sample:
         and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Sample doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
         except (error, OverflowError) as cause:
-            raise DecodeError(f"Sample doesn't fit at {offset}") from cause
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
         except BufferError as cause:
             raise TypeError(
                 "Sample can't read a buffer that isn't C-contiguous"

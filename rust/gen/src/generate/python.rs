@@ -376,9 +376,14 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     } else {
         construction(schema, definition, "cls", &mut 0)
     };
+    // The runtime builds the error, which formats an offset of any size
     let does_not_fit = call(
-        "DecodeError",
-        vec![text(format!("f\"{name} doesn't fit at {{offset}}\""))],
+        "DecodeError.out_of_range",
+        vec![
+            text("offset"),
+            text("cls.SIZE"),
+            text("memoryview(data).nbytes"),
+        ],
     );
     let values_do_not_fit = call(
         "ValueError",
@@ -668,6 +673,8 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
     writer.open("if index < 0:");
     writer.line("index += self._length");
     writer.dedent();
+    // The message leaves out the caller's index, as a list's does, since
+    // converting one of more digits than Python's limit to a string fails
     writer.open("if not 0 <= index < self._length:");
     writer.statement(
         &STYLE,
@@ -675,7 +682,7 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
         &call(
             "IndexError",
             vec![text(
-                "f\"Struct {index} is outside the array of {self._length}\"",
+                "f\"Struct index is outside the array of {self._length}\"",
             )],
         ),
         "",

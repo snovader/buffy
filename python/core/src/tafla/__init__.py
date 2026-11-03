@@ -116,7 +116,12 @@ Validation is always on:
   returning values from outside it.
 - ``DecodeError`` is a ``ValueError``. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
-  ``UnicodeDecodeError`` as its cause.
+  ``UnicodeDecodeError`` as its cause. Positions, lengths and indices of more
+  than 64 bits are given by their bit length, such as ``<15001-bit integer>``,
+  since Python converts at most ``sys.get_int_max_str_digits()`` digits to a
+  string. So no error fails to build, whatever that limit is.
+  ``DecodeError.out_of_range()`` builds the error of a read outside the bytes,
+  as the structs that tafla-gen generates raise it.
 - Checks can't tell a value that was corrupted within range from a real one,
   such as an offset that points at another field. A format that needs that
   guarantee can add a checksum.

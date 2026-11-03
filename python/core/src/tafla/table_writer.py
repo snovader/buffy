@@ -5,6 +5,7 @@ from typing import Literal, overload
 from .byte_buffer import struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
+from .errors import describe_int
 from .layout import MAX_LENGTHS, TableLayout, header_length
 from .structs import (
     float32,
@@ -408,7 +409,9 @@ class TableWriter:
         if value > self.__max_length:
             return self.__too_long()
 
-        return ValueError(f"Can't write {value} in a slot outside the table: {error}")
+        return ValueError(
+            f"Can't write {describe_int(value)} in a slot outside the table: {error}"
+        )
 
     def __too_long(self) -> ValueError:
         """The error of an offset, count or item end that doesn't fit in the

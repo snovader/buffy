@@ -237,9 +237,9 @@ class TestIndices(unittest.TestCase):
             ("set_item_end", lambda writer, vector: writer.set_item_end(vector, 0)),
         ]
 
-        for index in [16, 2**63, 2**100]:
+        for index in [16, 2**63, 2**100, 2**15000]:
             for name, write in writes:
-                with self.subTest(write=name, index=index):
+                with self.subTest(write=name, bits=index.bit_length()):
                     writer = TableWriter(1)
                     if name == "set_item_end":
                         writer.set_vector(0, 1)

@@ -4,7 +4,7 @@ with tafla."""
 import unittest
 
 from hypothesis import given
-from hypothesis.strategies import binary, integers
+from hypothesis.strategies import binary, integers, one_of
 
 from tafla import DecodeError
 from tests.generated import SETTINGS
@@ -49,6 +49,9 @@ from tests.tables import build_table
 _OTHER_VERSIONS = integers(0, 0xFFFF_FFFF).filter(
     lambda version: version != DOCUMENT_VERSION
 )
+
+# Integers of more digits than Python converts to a string by default, 4,300
+_BEYOND_THE_DIGIT_LIMIT = integers(2**15000, 2**15000 + 16)
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -207,9 +210,11 @@ class TestSample(unittest.TestCase):
             Sample.read(data, offset)
 
     # Struct.unpack_from() would read a negative offset from the end of the
-    # data, so Sample.read(data, -12) once read the last sample
+    # data, so Sample.read(data, -12) once read the last sample. Formatting
+    # one of more digits than Python converts to a string once raised
+    # ValueError.
     @SETTINGS
-    @given(samples, integers(1, 64))
+    @given(samples, one_of(integers(1, 64), _BEYOND_THE_DIGIT_LIMIT))
     def test_raises_decode_error_at_a_negative_offset(
         self, sample: Sample, distance: int
     ) -> None:
@@ -221,7 +226,10 @@ class TestSample(unittest.TestCase):
     # Struct.unpack_from() takes the offset as a C ssize_t, and raises
     # OverflowError for a larger one
     @SETTINGS
-    @given(samples, integers(min_value=2**63 - Sample.SIZE))
+    @given(
+        samples,
+        one_of(integers(min_value=2**63 - Sample.SIZE), _BEYOND_THE_DIGIT_LIMIT),
+    )
     def test_raises_decode_error_at_an_offset_however_large(
         self, sample: Sample, offset: int
     ) -> None:

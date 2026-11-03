@@ -312,11 +312,14 @@ _GETTERS: dict[str, _Getter] = {
 }
 
 # Positions and indices that a caller gives: around the bytes, around the
-# limits of the C ssize_t that struct takes positions as, and any
+# limits of the C ssize_t that struct takes positions as, of more digits than
+# Python converts to a string by default, and any
 _POSITIONS = one_of(
     integers(-8, 72),
     integers(2**63 - 16, 2**63 + 16),
     integers(-(2**63) - 16, -(2**63) + 16),
+    integers(2**15000 - 16, 2**15000 + 16),
+    integers(-(2**15000) - 16, -(2**15000) + 16),
     integers(),
 )
 
