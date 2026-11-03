@@ -291,6 +291,13 @@ export class TableSizer {
  * their own: another writes the offset or end into another slot of the
  * bytes.
  *
+ * Every write stays within the bytes, even when they're part of a larger
+ * buffer. A field that doesn't fit in them, as when it's longer than the one
+ * that the sizer counted, throws a `RangeError` and leaves the writer where
+ * it was, without writing any of the field: its offset, its count or length,
+ * or its values. Only a string, whose UTF-8 length is known once it's
+ * written, has then written what fits of it after the position.
+ *
  * Typed arrays of a field's element type are copied as bytes; any other
  * array-like, such as a `number[]` or a typed array of another type, is
  * converted as the typed array's constructor would. Values that don't fit
@@ -405,79 +412,83 @@ export class TableWriter {
         this.#slots = parent === 0 ? this.#headerSize : parent;
     }
 
+    // A scalar is converted and copied into the bytes before its offset is
+    // written, so that one that doesn't fit, or a number for an int64,
+    // writes nothing
+
     setInt8(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setInt8(0, value);
         copy1(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_8;
     }
 
     setUint8(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setUint8(0, value);
         copy1(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_8;
     }
 
     setInt16(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setInt16(0, value, true);
         copy2(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_16;
     }
 
     setUint16(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setUint16(0, value, true);
         copy2(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_16;
     }
 
     setInt32(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setInt32(0, value, true);
         copy4(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setUint32(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setUint32(0, value, true);
         copy4(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setInt64(index: number, value: bigint): void {
-        this.#setOffset(index);
         SCRATCH.setBigInt64(0, value, true);
         copy8(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
 
     setUint64(index: number, value: bigint): void {
-        this.#setOffset(index);
         SCRATCH.setBigUint64(0, value, true);
         copy8(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
 
     setFloat32(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setFloat32(0, value, true);
         copy4(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setFloat64(index: number, value: number): void {
-        this.#setOffset(index);
         SCRATCH.setFloat64(0, value, true);
         copy8(this.#bytes, this.#position);
+        this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
 
     setInt8Array(index: number, values: ArrayLike<number> | Int8Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_8);
+        this.#startArray(index, count, SIZEOF_8, SIZEOF_8);
 
         setInt8Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_8;
@@ -485,7 +496,7 @@ export class TableWriter {
 
     setUint8Array(index: number, values: ArrayLike<number> | Uint8Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_8);
+        this.#startArray(index, count, SIZEOF_8, SIZEOF_8);
 
         setUint8Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_8;
@@ -493,7 +504,7 @@ export class TableWriter {
 
     setInt16Array(index: number, values: ArrayLike<number> | Int16Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_16);
+        this.#startArray(index, count, SIZEOF_16, SIZEOF_16);
 
         setInt16Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_16;
@@ -504,7 +515,7 @@ export class TableWriter {
         values: ArrayLike<number> | Uint16Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_16);
+        this.#startArray(index, count, SIZEOF_16, SIZEOF_16);
 
         setUint16Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_16;
@@ -512,7 +523,7 @@ export class TableWriter {
 
     setInt32Array(index: number, values: ArrayLike<number> | Int32Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32);
+        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
 
         setInt32Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_32;
@@ -523,7 +534,7 @@ export class TableWriter {
         values: ArrayLike<number> | Uint32Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32);
+        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
 
         setUint32Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_32;
@@ -534,7 +545,7 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigInt64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64);
+        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
 
         setInt64Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_64;
@@ -545,7 +556,7 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigUint64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64);
+        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
 
         setUint64Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_64;
@@ -556,7 +567,7 @@ export class TableWriter {
         values: ArrayLike<number> | Float32Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32);
+        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
 
         setFloat32Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_32;
@@ -567,7 +578,7 @@ export class TableWriter {
         values: ArrayLike<number> | Float64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64);
+        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
 
         setFloat64Elements(this.#bytes, this.#position, values);
         this.#position += count * SIZEOF_64;
@@ -575,10 +586,12 @@ export class TableWriter {
 
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
     setString(index: number, string: string): void {
-        this.#setOffset(index);
-
+        // Its UTF-8 length is known once it's written, so a string that
+        // doesn't fit throws before its offset and length are written
         const start = this.#position + this.#size;
+        assertFits(this.#bytes, start);
         const length = encodeInto(string, this.#bytes, start);
+        this.#setOffset(index);
         this.#setLength(this.#position, length);
         this.#position = start + length;
     }
@@ -588,6 +601,7 @@ export class TableWriter {
      * after another, without padding
      */
     setStruct(index: number, bytes: Uint8Array): void {
+        assertFits(this.#bytes, this.#position + bytes.length);
         this.#setOffset(index);
 
         this.#bytes.set(bytes, this.#position);
@@ -608,7 +622,8 @@ export class TableWriter {
         size: number,
         alignment: ElementSize
     ): void {
-        this.#startArray(index, structCount(bytes.length, size), alignment);
+        const count = structCount(bytes.length, size);
+        this.#startArray(index, count, size, alignment);
 
         this.#bytes.set(bytes, this.#position);
         this.#position += bytes.length;
@@ -634,6 +649,7 @@ export class TableWriter {
      */
     setVector(index: number, count: number): number {
         assertCount(count);
+        assertFits(this.#bytes, this.#position + (count + 1) * this.#size);
         this.#setOffset(index);
 
         const vector = this.#position;
@@ -651,12 +667,21 @@ export class TableWriter {
         );
     }
 
-    /** Pads the array so that its elements, after the count, are aligned */
-    #startArray(index: number, count: number, alignment: ElementSize): void {
-        this.#position += padding(
-            this.#position + this.#size - this.#table,
-            alignment
-        );
+    /**
+     * Pads the array so that its elements, after the count, are aligned, and
+     * writes its offset and count, once they and its elements fit
+     */
+    #startArray(
+        index: number,
+        count: number,
+        elementSize: number,
+        alignment: ElementSize
+    ): void {
+        const start = this.#position + this.#size;
+        const before = padding(start - this.#table, alignment);
+        assertFits(this.#bytes, start + before + count * elementSize);
+
+        this.#position += before;
         this.#setOffset(index);
         this.#setLength(this.#position, count);
         this.#position += this.#size;
@@ -691,21 +716,34 @@ export class TableWriter {
 }
 
 // A scalar is set little-endian in the scratch, whatever the host's byte
-// order, and its bytes copied into the table. A function per width keeps
-// each small enough for V8 to inline into the setters.
+// order, and its bytes copied into the table once they fit. A function per
+// width keeps each small enough for V8 to inline into the setters, and
+// each checks inline and builds its error out of line to stay so.
 const SCRATCH = new DataView(new ArrayBuffer(SIZEOF_64));
 const SCRATCH_BYTES = new Uint8Array(SCRATCH.buffer);
 
 function copy1(bytes: Uint8Array, position: number): void {
+    if (!(position + SIZEOF_8 <= bytes.length)) {
+        throw tooLong(bytes, position + SIZEOF_8);
+    }
+
     bytes[position] = SCRATCH_BYTES[0];
 }
 
 function copy2(bytes: Uint8Array, position: number): void {
+    if (!(position + SIZEOF_16 <= bytes.length)) {
+        throw tooLong(bytes, position + SIZEOF_16);
+    }
+
     bytes[position] = SCRATCH_BYTES[0];
     bytes[position + 1] = SCRATCH_BYTES[1];
 }
 
 function copy4(bytes: Uint8Array, position: number): void {
+    if (!(position + SIZEOF_32 <= bytes.length)) {
+        throw tooLong(bytes, position + SIZEOF_32);
+    }
+
     bytes[position] = SCRATCH_BYTES[0];
     bytes[position + 1] = SCRATCH_BYTES[1];
     bytes[position + 2] = SCRATCH_BYTES[2];
@@ -713,6 +751,10 @@ function copy4(bytes: Uint8Array, position: number): void {
 }
 
 function copy8(bytes: Uint8Array, position: number): void {
+    if (!(position + SIZEOF_64 <= bytes.length)) {
+        throw tooLong(bytes, position + SIZEOF_64);
+    }
+
     bytes[position] = SCRATCH_BYTES[0];
     bytes[position + 1] = SCRATCH_BYTES[1];
     bytes[position + 2] = SCRATCH_BYTES[2];
@@ -721,6 +763,25 @@ function copy8(bytes: Uint8Array, position: number): void {
     bytes[position + 5] = SCRATCH_BYTES[5];
     bytes[position + 6] = SCRATCH_BYTES[6];
     bytes[position + 7] = SCRATCH_BYTES[7];
+}
+
+/**
+ * Checks that the table's bytes reach `end`, before a field writes up to it.
+ * An array's elements are written through a view of the bytes' buffer, which
+ * would write past bytes that are only part of it.
+ *
+ * @throws {RangeError} If they don't.
+ */
+function assertFits(bytes: Uint8Array, end: number): void {
+    if (!(end <= bytes.length)) {
+        throw tooLong(bytes, end);
+    }
+}
+
+function tooLong(bytes: Uint8Array, end: number): RangeError {
+    return new RangeError(
+        `The fields need ${end} bytes, more than the table's ${bytes.length}`
+    );
 }
 
 /** The bytes that bring `offset` to a multiple of `alignment` */

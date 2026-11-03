@@ -10,7 +10,10 @@ import type { TypedArray } from './types.ts';
 
 // Writes the elements of an array, little-endian, at `position` in `bytes`,
 // which must hold them: ByteBuffer and TableWriter write every array with
-// these, after its count. A typed array of the element type is copied as
+// these, after its count, which they write once they've checked that the
+// elements fit. The view that an aligned array is written through starts at
+// `position` in the bytes' buffer, and reaches past `bytes` when they're only
+// part of it and too short. A typed array of the element type is copied as
 // bytes, and any other array-like converted as the typed array's constructor
 // would.
 //
