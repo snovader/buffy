@@ -23,6 +23,7 @@ from tests.generated.expectations import (
 from tests.generated.shapes.shapes import (
     Document,
     DocumentFields,
+    ItemFields,
     ItemList,
     ItemListFields,
     Point,
@@ -39,6 +40,7 @@ from tests.generated.shapes_tables import (
     item_list_fields,
     point_fields,
     read_document,
+    read_item,
     read_item_list,
     read_point,
     sample_bytes,
@@ -176,6 +178,23 @@ class TestDecodeErrors(unittest.TestCase):
         for message in [Point, Document, ItemList]:
             with self.subTest(message=message.__name__), self.assertRaises(TypeError):
                 message(strided)
+
+
+class TestReadingInPlace(unittest.TestCase):
+    def test_reads_an_item_in_place_past_its_end_within_the_bytes_of_its_item_list(
+        self,
+    ) -> None:
+        item: ItemFields = {"value": 1.5, "pair": {"first": 2.5, "second": 3.5}}
+        data = bytearray(ItemList.serialize(items=[item]))
+        # The vector at 4 holds its count and the item's end, 36, and then the
+        # item at 12: its two offsets, its value at 20 and its Pair at 24. An
+        # end of 16 leaves the item only its offsets, which point past it.
+        self.assertEqual(data[8:12], (36).to_bytes(4, "little"))
+        data[8:12] = (16).to_bytes(4, "little")
+        item_list = ItemList(data)
+
+        self.assertEqual(read_item_list(item_list), {"items": [item]})
+        self.assertEqual(read_item(item_list.items_view()[0]), item)
 
 
 class TestSample(unittest.TestCase):

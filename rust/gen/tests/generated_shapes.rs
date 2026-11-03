@@ -14,8 +14,8 @@ use shapes::generated::{
     Point, PointFields, Sample,
 };
 use shapes::{
-    describe_document, describe_item_list, describe_point, describe_sample, read_document,
-    read_item_list, read_point,
+    describe_document, describe_item, describe_item_list, describe_point, describe_sample,
+    read_document, read_item, read_item_list, read_point,
 };
 use tables::{
     CASES, Header, arbitrary_bytes, arrays, build, check_truncated, expected, float32s, float64s,
@@ -330,4 +330,33 @@ proptest! {
         let read = Sample::read(&bytes);
         prop_assert!(matches!(read, Err(DecodeError::OutOfRange { .. })), "{:?}", read);
     }
+}
+
+// Reading in place
+
+#[test]
+fn an_item_is_read_in_place_past_its_end_within_the_bytes_of_its_item_list()
+-> Result<(), Box<dyn std::error::Error>> {
+    let pair = PairFields {
+        first: 2.5,
+        second: 3.5,
+    };
+    let items = [ItemFields { value: 1.5, pair }];
+    let fields = ItemListFields { items: &items };
+    let mut bytes = fields.serialize()?;
+    // The vector at 4 holds its count and the item's end, 36, and then the
+    // item at 12: its two offsets, its value at 20 and its Pair at 24. An end
+    // of 16 leaves the item only its offsets, which point past it.
+    assert_eq!(bytes[8..12], 36_u32.to_le_bytes());
+    bytes[8..12].copy_from_slice(&16_u32.to_le_bytes());
+    let item_list = ItemList::new(&bytes);
+
+    assert_eq!(
+        read_item_list(&item_list),
+        expected(describe_item_list(&fields))
+    );
+    let item = item_list.items_view()?.get(0).ok_or("no item")??;
+    assert_eq!(read_item(&item), expected(describe_item(&items[0])));
+
+    Ok(())
 }

@@ -76,7 +76,11 @@ and then the fields in the order they were set:
   when given its builder, and to 4 bytes by default when given bytes.
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector::get()` finds any
-  item from two ends without reading the others.
+  item from two ends without reading the others. An item without a header
+  and with its parent's offset size is read in place, from the bytes that
+  `Vector::get_in_place()` returns, which run on to the end of its parent's,
+  since its offsets may lead past its end. Any other item is read from its
+  own bytes, which `Vector::get()` returns.
 
 The crate writes the same bytes as the TypeScript runtime, `tafla` on
 npm, for the same fields, and reads its tables; `tests/compatibility.rs` checks

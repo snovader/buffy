@@ -54,7 +54,7 @@ pub fn read_item_list(item_list: &ItemList) -> Fields {
     ]
 }
 
-fn read_item(item: &Item) -> Fields {
+pub fn read_item(item: &Item) -> Fields {
     vec![
         item.value().map(Value::f32),
         item.pair().and_then(|pair| table(read_pair(&pair))),
@@ -100,7 +100,7 @@ pub fn describe_item_list(fields: &ItemListFields) -> Vec<Value> {
     )]
 }
 
-fn describe_item(fields: &ItemFields) -> Vec<Value> {
+pub fn describe_item(fields: &ItemFields) -> Vec<Value> {
     vec![
         Value::f32(fields.value),
         Value::Table(describe_pair(&fields.pair)),

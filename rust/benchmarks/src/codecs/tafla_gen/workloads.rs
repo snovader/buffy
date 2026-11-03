@@ -298,7 +298,7 @@ impl<'a> ItemList<'a> {
         let position = buffer.root_offset(0)?;
         let vector = buffer.get_vector(position)?;
         let mut items = Vec::with_capacity(vector.len());
-        for item in vector {
+        for item in vector.iter_in_place() {
             items.push(Item::new(item?, 0));
         }
 
@@ -434,15 +434,15 @@ impl<'a> ItemVector<'a> {
     ///
     /// Returns `Some` of a [`DecodeError`] if the item lies outside the bytes.
     pub fn get(&self, index: usize) -> Option<Result<Item<'a>, DecodeError>> {
-        self.vector.get(index).map(Self::item)
+        self.vector.get_in_place(index).map(Self::item)
     }
 
     /// Iterates over the items, reading each item's end once
     pub fn iter(&self) -> impl ExactSizeIterator<Item = Result<Item<'a>, DecodeError>> + use<'a> {
-        self.vector.iter().map(Self::item)
+        self.vector.iter_in_place().map(Self::item)
     }
 
-    /// Reads an item from its bytes, which are a table of their own
+    /// Reads an item in place, from its bytes and those after it in the message
     fn item(bytes: Result<&'a [u8], DecodeError>) -> Result<Item<'a>, DecodeError> {
         Ok(Item::new(bytes?, 0))
     }

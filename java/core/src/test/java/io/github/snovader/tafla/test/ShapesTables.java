@@ -40,7 +40,7 @@ final class ShapesTables {
         return new ItemList.Fields(itemList.items().stream().map(ShapesTables::readItem).toList());
     }
 
-    private static Item.Fields readItem(Item item) {
+    static Item.Fields readItem(Item item) {
         return new Item.Fields(item.value(), readPair(item.pair()));
     }
 

@@ -120,11 +120,12 @@ Each field has a `type`:
 Reading a field starts from its offset, from `rootOffset(index)` for a field of
 the root and `fieldOffset(position, index)` for a field of a nested table read
 in place. A nested table that has no header and offsets as wide as its
-parent's can be read in place. Any other must be read as a table of its own,
-with a buffer of its own layout: a vector item from its bytes, from
-`getVector()`, and a table field from its position to the end of its parent,
-since its length isn't written. The suite only nests tables without a header
-with `setTable()`.
+parent's is read in place, within its parent's bytes, as `SPEC.md` describes:
+a vector item from its position, from `getVectorOffsets()`. Any other is read
+as a table of its own, with a buffer of its own layout: a vector item from its
+bytes, from `getVector()`, and a table field from its position to the end of
+its parent, since its length isn't written. The suite only nests tables
+without a header with `setTable()`.
 
 A table read from its own bytes, the root or a vector item, has its header
 checked too: its version must equal `version`, and when it's sized, its size
@@ -205,12 +206,14 @@ The tests follow each implementation's API where it differs:
 - Java's `TableBuilder.setVector()` takes builders or bytes, but not both, so
   the Java test sets a vector that mixes them from every item's bytes. A
   builder writes the same bytes into a vector as on its own.
-- Rust's `Vector` returns its items' bytes rather than their positions, so
-  the Rust test reads every vector item as a table of its own. An item without
-  a header has the same offsets either way.
+- Rust's `Vector` returns its items' bytes rather than their positions. The
+  Rust test reads an item in place from the bytes that `iter_in_place()`
+  returns, which start where the item does and end where its parent's do,
+  with a buffer of its parent's offset size, and any other item from the
+  bytes that iterating returns.
 - Each test also finds every vector item from its ends alone, with
-  `getVectorOffset()` or Rust's `Vector::get()`, and compares it with the
-  item that reading the whole vector finds.
+  `getVectorOffset()` or Rust's `Vector::get()` and `Vector::get_in_place()`,
+  and compares it with the item that reading the whole vector finds.
 - JSON parsers can round a float's last digit: the Rust test enables
   `serde_json`'s `float_roundtrip`, and Java's `JsonNumber.doubleValue()`
   converts from a `BigDecimal`, which is exact.

@@ -83,7 +83,7 @@ export function readItemList(itemList: ItemList): ItemListFields {
     return { items: itemList.items().map(readItem) };
 }
 
-function readItem(item: Item): ItemFields {
+export function readItem(item: Item): ItemFields {
     return { value: item.value(), pair: readPair(item.pair()) };
 }
 

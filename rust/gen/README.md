@@ -153,7 +153,10 @@ when the bytes are in another version.
 
 A table's getter of a vector or an array of structs reads every item at once.
 Vectors return an array of tables in TypeScript and JavaScript, a `List` in
-Java, a `list` in Python and a `Vec` in Rust. Arrays of structs return an
+Java, a `list` in Python and a `Vec` in Rust. Every target reads a vector's
+tables in place, within the message's bytes, as `SPEC.md` describes, so that
+it reads the same fields from the same bytes as the others, even where a
+corrupted item's offsets lead past its end. Arrays of structs return an
 array of structs in TypeScript, JavaScript and Java, as Java's getters of
 arrays of scalars return Java arrays, a `list` in Python, and an iterator
 that reads each from the bytes in Rust. Each struct writes an array of them
@@ -167,12 +170,12 @@ an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
 which the generated code declares for each table that a vector holds and
 each struct that an array holds. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
-runtime's `getVectorOffset()`, or `Vector::get()` in Rust, and an array's at
-`i` times its struct's size. When it's made, it checks that the bytes hold
-the vector's count and an end for each item, or the array's structs, so that
-its length is never more than the bytes can hold. It reads each item when
-it's asked for, which fails with the decode error if the item's bytes are
-corrupt.
+runtime's `getVectorOffset()`, or `Vector::get_in_place()` in Rust, and an
+array's at `i` times its struct's size. When it's made, it checks that the
+bytes hold the vector's count and an end for each item, or the array's
+structs, so that its length is never more than the bytes can hold. It reads
+each item when it's asked for, which fails with the decode error if the
+item's bytes are corrupt.
 
 | Target                 | Length                | Item `i`                                                                                    | Every item                                             |
 | ---------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
