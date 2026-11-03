@@ -2,18 +2,65 @@ import sys
 import unittest
 from array import array
 from collections.abc import Callable
-from struct import iter_unpack, pack, unpack
+from struct import calcsize, iter_unpack, pack, unpack
 from unittest.mock import patch
 
 from hypothesis import given
-from hypothesis.strategies import integers
+from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
 from tafla import SIZEOF_8, SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla.types import IntTypeCode
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
 
+@composite
+def strided_views(draw: DrawFn) -> memoryview:
+    """Views with a step of bytes, or of wider elements, which are C-contiguous
+    only when they hold at most one element"""
+    codes: list[IntTypeCode] = ["B", "h", "i", "q"]
+    type_code = draw(sampled_from(codes))
+    count = draw(integers(0, 8))
+    size = count * calcsize(type_code)
+    data = draw(binary(min_size=size, max_size=size))
+    step = draw(sampled_from([-3, -2, -1, 2, 3]))
+
+    return memoryview(data).cast(type_code)[::step]
+
+
 class TestByteBuffer(unittest.TestCase):
+    @given(strided_views())
+    def test_takes_bytes_only_when_theyre_c_contiguous(self, view: memoryview) -> None:
+        """Reads return views of the bytes, which a copy of them wouldn't be"""
+        if view.c_contiguous:
+            self.assertEqual(bytes(ByteBuffer(view).bytes()), view.tobytes())
+        else:
+            with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
+                ByteBuffer(view)
+
+    def test_rejects_bytes_to_write_that_arent_c_contiguous_and_writes_nothing(
+        self,
+    ) -> None:
+        backing = bytearray(b"\xaa" * 32)
+        buffer = ByteBuffer(backing)
+        strided = memoryview(bytes(range(8)))[::2]
+
+        writes = [
+            lambda: buffer.set_bytes(strided),
+            lambda: buffer.set_string(strided),
+            lambda: buffer.set_struct_array(strided, 2),
+            lambda: buffer.set_vector([b"\x01", strided]),
+        ]
+
+        for write in writes:
+            with (
+                self.subTest(),
+                self.assertRaisesRegex(TypeError, "isn't C-contiguous"),
+            ):
+                write()
+
+        self.assertEqual(backing, b"\xaa" * 32)
+
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     @given(ARRAY_FIELDS, integers(1, 7))
     def test_reads_arrays_at_any_alignment_as_views_of_the_bytes(

@@ -16,6 +16,7 @@ class Scalars:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -89,6 +90,7 @@ class Arrays:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -162,6 +164,7 @@ class Nested:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -445,6 +448,7 @@ class Reserved:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -476,6 +480,7 @@ class Structs:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -622,15 +627,20 @@ class Segment:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Segment`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
             raise DecodeError(f"Segment doesn't fit at {offset}")
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
+        except (error, OverflowError) as cause:
             raise DecodeError(f"Segment doesn't fit at {offset}") from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Segment can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(Point(values[0], values[1]), Point(values[2], values[3]))
 
@@ -638,7 +648,8 @@ class Segment:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Segment``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [
@@ -648,6 +659,10 @@ class Segment:
         except error as cause:
             raise DecodeError(
                 f"Segments don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Segment can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:
@@ -732,15 +747,20 @@ class Point:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Point`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
             raise DecodeError(f"Point doesn't fit at {offset}")
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
+        except (error, OverflowError) as cause:
             raise DecodeError(f"Point doesn't fit at {offset}") from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Point can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -748,13 +768,18 @@ class Point:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Point``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Points don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Point can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:
@@ -842,15 +867,20 @@ class Packed:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Packed`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
             raise DecodeError(f"Packed doesn't fit at {offset}")
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
+        except (error, OverflowError) as cause:
             raise DecodeError(f"Packed doesn't fit at {offset}") from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Packed can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -858,13 +888,18 @@ class Packed:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Packed``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Packeds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Packed can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:
@@ -945,15 +980,20 @@ class Documented:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Documented`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
             raise DecodeError(f"Documented doesn't fit at {offset}")
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
+        except (error, OverflowError) as cause:
             raise DecodeError(f"Documented doesn't fit at {offset}") from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Documented can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -961,13 +1001,18 @@ class Documented:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Documented``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Documenteds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Documented can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:

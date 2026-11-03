@@ -1,7 +1,7 @@
 from collections.abc import Buffer, Callable, Iterable, Sequence
 from typing import Any, Literal, overload
 
-from .byte_buffer import ByteBuffer, struct_count
+from .byte_buffer import ByteBuffer, byte_view, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
 from .layout import MAX_LENGTHS, TableLayout, header_length
@@ -26,7 +26,10 @@ class TableBuilder:
     written in the same pass, straight into this one. A setter raises
     ``ValueError``, and leaves the builder as it was, when its field would make
     the table longer than the layout's ``offset_size`` addresses: 255 bytes, 64
-    KiB or 4 GiB.
+    KiB or 4 GiB. Structs, and tables and vector items given as bytes, must be
+    C-contiguous buffers: a setter given one that isn't, such as a slice with
+    a step, raises ``TypeError`` and leaves the builder as it was too. Arrays
+    are converted instead.
     """
 
     __slots__ = [
@@ -232,7 +235,7 @@ class TableBuilder:
         """Sets a struct field from its bytes: its scalars, little-endian, one
         after another, which are written as they are, without padding. A
         ``struct.Struct`` with a ``<`` format packs them."""
-        byte_length = memoryview(data).nbytes
+        byte_length = byte_view(data).nbytes
         self.__add_field(_write_bytes, (data, byte_length), byte_length, 0)
 
     def set_struct_array(self, data: Buffer, size: int, alignment: ElementSize) -> None:
@@ -244,7 +247,7 @@ class TableBuilder:
         Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
         whole number of structs.
         """
-        byte_length = memoryview(data).nbytes
+        byte_length = byte_view(data).nbytes
         struct_count(byte_length, size)
         padding = _padding(self.__offset + self.__size, alignment)
 
@@ -283,7 +286,7 @@ class TableBuilder:
             write, value = TableBuilder.__write_table, (table, self.__size)
             default_alignment = table.__alignment
         else:
-            byte_length = memoryview(table).nbytes
+            byte_length = byte_view(table).nbytes
             write, value = _write_bytes, (table, byte_length)
             default_alignment = SIZEOF_32
 
@@ -384,7 +387,7 @@ class TableBuilder:
         its fields are set. Raises ``ValueError`` if it has fields left to set.
         """
         if not isinstance(table, TableBuilder):
-            return memoryview(table).nbytes
+            return byte_view(table).nbytes
 
         table.__assert_complete()
         return table.__offset

@@ -166,6 +166,14 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_document(Document(data)))
         assert_values_or_decode_error(lambda: read_item_list(ItemList(data)))
 
+    def test_rejects_data_that_isnt_c_contiguous_with_type_error(self) -> None:
+        """The readers read views of the data, which a copy of it wouldn't be"""
+        strided = memoryview(bytes(64))[::2]
+
+        for message in [Point, Document, ItemList]:
+            with self.subTest(message=message.__name__), self.assertRaises(TypeError):
+                message(strided)
+
 
 class TestSample(unittest.TestCase):
     @SETTINGS
@@ -209,6 +217,26 @@ class TestSample(unittest.TestCase):
 
         with self.assertRaises(DecodeError):
             Sample.read(data, -distance)
+
+    # Struct.unpack_from() takes the offset as a C ssize_t, and raises
+    # OverflowError for a larger one
+    @SETTINGS
+    @given(samples, integers(min_value=2**63 - Sample.SIZE))
+    def test_raises_decode_error_at_an_offset_however_large(
+        self, sample: Sample, offset: int
+    ) -> None:
+        data = sample.serialize() * 4
+
+        with self.assertRaises(DecodeError):
+            Sample.read(data, offset)
+
+    def test_raises_type_error_for_data_that_isnt_c_contiguous(self) -> None:
+        strided = memoryview(Sample(1, 0.5, -0.5).serialize() * 2)[::2]
+
+        with self.assertRaises(TypeError):
+            Sample.read(strided)
+        with self.assertRaises(TypeError):
+            Sample.read_array(strided)
 
     def test_raises_value_error_for_a_value_that_doesnt_fit_its_field(self) -> None:
         for sample in [

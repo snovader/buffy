@@ -16,6 +16,7 @@ class Point:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -66,7 +67,9 @@ class Document:
     _LAYOUT: Final = TableLayout(sized=True, versioned=True)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -174,6 +177,7 @@ class ItemList:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -337,15 +341,20 @@ class Sample:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Sample`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
             raise DecodeError(f"Sample doesn't fit at {offset}")
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
+        except (error, OverflowError) as cause:
             raise DecodeError(f"Sample doesn't fit at {offset}") from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -353,13 +362,18 @@ class Sample:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Sample``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Samples don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:

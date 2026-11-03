@@ -30,6 +30,32 @@ class TestDecodeError(unittest.TestCase):
             ):
                 get()
 
+    def test_raises_at_positions_beyond_a_c_ssize_t(self) -> None:
+        """struct takes positions as a C ssize_t, and once raised OverflowError
+        for a larger one"""
+        buffer = ByteBuffer(bytes(8))
+
+        reads: list[tuple[str, Callable[[int], object]]] = [
+            ("get_uint32", buffer.get_uint32),
+            ("get_float64", buffer.get_float64),
+            ("get_string", buffer.get_string),
+            ("get_int16_array", buffer.get_int16_array),
+            ("get_vector_offsets", buffer.get_vector_offsets),
+            ("root_offset", buffer.root_offset),
+            ("field_offset", lambda position: buffer.field_offset(position, 0)),
+            ("field_offset", lambda index: buffer.field_offset(0, index)),
+        ]
+
+        for position in [2**63, 2**100, -(2**100)]:
+            for name, get in reads:
+                with (
+                    self.subTest(read=name, position=position),
+                    self.assertRaisesRegex(
+                        DecodeError, "Read exceeds the supplied buffer"
+                    ),
+                ):
+                    get(position)
+
     def test_raises_for_a_string_that_isnt_utf_8(self) -> None:
         cases = [
             ("a lone continuation byte", b"\x80"),

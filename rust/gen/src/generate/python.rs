@@ -234,7 +234,15 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     if layout.version.is_some() {
         docstring(
             writer,
-            &["Raises `DecodeError` if `data` is in another format version.".to_owned()],
+            &[
+                "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` if".to_owned(),
+                "it's in another format version.".to_owned(),
+            ],
+        );
+    } else {
+        docstring(
+            writer,
+            &["Raises `TypeError` if `data` isn't C-contiguous.".to_owned()],
         );
     }
     writer.line("self._buffer = ByteBuffer(data, self._LAYOUT)");
@@ -376,6 +384,12 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         "ValueError",
         vec![text(format!("\"{name}'s values don't fit its fields\""))],
     );
+    let not_contiguous = call(
+        "TypeError",
+        vec![text(format!(
+            "\"{name} can't read a buffer that isn't C-contiguous\""
+        ))],
+    );
 
     writer.line("@dataclass(frozen=True, slots=True)");
     writer.open(format!("class {name}:"));
@@ -416,10 +430,13 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         &[
             format!("Reads {} at `offset` in `data`.", article(name)),
             String::new(),
-            "Raises `DecodeError` if `offset` is negative or `data` ends before it.".to_owned(),
+            "Raises `DecodeError` if `offset` is negative or `data` ends before it,".to_owned(),
+            "and `TypeError` if `data` isn't C-contiguous.".to_owned(),
         ],
     );
-    // unpack_from() counts a negative offset from the end of the data
+    // unpack_from() counts a negative offset from the end of the data, raises
+    // OverflowError for one beyond a C ssize_t, and BufferError for data that
+    // isn't C-contiguous
     writer.open("if offset < 0:");
     writer.statement(&STYLE, "raise ", &does_not_fit, "");
     writer.dedent();
@@ -427,8 +444,11 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.open("try:");
     writer.line("values = cls._STRUCT.unpack_from(data, offset)");
     writer.dedent();
-    writer.open("except error as cause:");
+    writer.open("except (error, OverflowError) as cause:");
     writer.statement(&STYLE, "raise ", &does_not_fit, " from cause");
+    writer.dedent();
+    writer.open("except BufferError as cause:");
+    writer.statement(&STYLE, "raise ", &not_contiguous, " from cause");
     writer.dedent();
     writer.blank();
     writer.statement(&STYLE, "return ", &construction, "");
@@ -442,7 +462,8 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         &[
             format!("Reads the `{name}`s one after another in `data`."),
             String::new(),
-            "Raises `DecodeError` if `data` isn't a whole number of them.".to_owned(),
+            "Raises `DecodeError` if `data` isn't a whole number of them, and".to_owned(),
+            "`TypeError` if it isn't C-contiguous.".to_owned(),
         ],
     );
     writer.open("try:");
@@ -471,6 +492,9 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         ),
         " from cause",
     );
+    writer.dedent();
+    writer.open("except BufferError as cause:");
+    writer.statement(&STYLE, "raise ", &not_contiguous, " from cause");
     writer.dedent();
     writer.dedent();
     writer.blank();
