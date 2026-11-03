@@ -1,0 +1,91 @@
+// Java declares a record of each definition's fields, whose constructor takes
+// at most 254 slots of parameters: two for each `uint32`, `int64`, `uint64`
+// and `float64`, which Java holds as a `long` or a `double`, and one for every
+// other field. `AtTheLimit` takes 254 slots, `OneOver` 255 and `Counts` 256.
+
+struct AtTheLimit {
+    f0: float64; f1: float64; f2: float64; f3: float64; f4: float64;
+    f5: float64; f6: float64; f7: float64; f8: float64; f9: float64;
+    f10: float64; f11: float64; f12: float64; f13: float64; f14: float64;
+    f15: float64; f16: float64; f17: float64; f18: float64; f19: float64;
+    f20: float64; f21: float64; f22: float64; f23: float64; f24: float64;
+    f25: float64; f26: float64; f27: float64; f28: float64; f29: float64;
+    f30: float64; f31: float64; f32: float64; f33: float64; f34: float64;
+    f35: float64; f36: float64; f37: float64; f38: float64; f39: float64;
+    f40: float64; f41: float64; f42: float64; f43: float64; f44: float64;
+    f45: float64; f46: float64; f47: float64; f48: float64; f49: float64;
+    f50: float64; f51: float64; f52: float64; f53: float64; f54: float64;
+    f55: float64; f56: float64; f57: float64; f58: float64; f59: float64;
+    f60: float64; f61: float64; f62: float64; f63: float64; f64: float64;
+    f65: float64; f66: float64; f67: float64; f68: float64; f69: float64;
+    f70: float64; f71: float64; f72: float64; f73: float64; f74: float64;
+    f75: float64; f76: float64; f77: float64; f78: float64; f79: float64;
+    f80: float64; f81: float64; f82: float64; f83: float64; f84: float64;
+    f85: float64; f86: float64; f87: float64; f88: float64; f89: float64;
+    f90: float64; f91: float64; f92: float64; f93: float64; f94: float64;
+    f95: float64; f96: float64; f97: float64; f98: float64; f99: float64;
+    f100: float64; f101: float64; f102: float64; f103: float64; f104: float64;
+    f105: float64; f106: float64; f107: float64; f108: float64; f109: float64;
+    f110: float64; f111: float64; f112: float64; f113: float64; f114: float64;
+    f115: float64; f116: float64; f117: float64; f118: float64; f119: float64;
+    f120: float64; f121: float64; f122: float64; f123: float64; f124: float64;
+    f125: float64; f126: float64;
+}
+
+struct OneOver {
+    f0: float64; f1: float64; f2: float64; f3: float64; f4: float64;
+    f5: float64; f6: float64; f7: float64; f8: float64; f9: float64;
+    f10: float64; f11: float64; f12: float64; f13: float64; f14: float64;
+    f15: float64; f16: float64; f17: float64; f18: float64; f19: float64;
+    f20: float64; f21: float64; f22: float64; f23: float64; f24: float64;
+    f25: float64; f26: float64; f27: float64; f28: float64; f29: float64;
+    f30: float64; f31: float64; f32: float64; f33: float64; f34: float64;
+    f35: float64; f36: float64; f37: float64; f38: float64; f39: float64;
+    f40: float64; f41: float64; f42: float64; f43: float64; f44: float64;
+    f45: float64; f46: float64; f47: float64; f48: float64; f49: float64;
+    f50: float64; f51: float64; f52: float64; f53: float64; f54: float64;
+    f55: float64; f56: float64; f57: float64; f58: float64; f59: float64;
+    f60: float64; f61: float64; f62: float64; f63: float64; f64: float64;
+    f65: float64; f66: float64; f67: float64; f68: float64; f69: float64;
+    f70: float64; f71: float64; f72: float64; f73: float64; f74: float64;
+    f75: float64; f76: float64; f77: float64; f78: float64; f79: float64;
+    f80: float64; f81: float64; f82: float64; f83: float64; f84: float64;
+    f85: float64; f86: float64; f87: float64; f88: float64; f89: float64;
+    f90: float64; f91: float64; f92: float64; f93: float64; f94: float64;
+    f95: float64; f96: float64; f97: float64; f98: float64; f99: float64;
+    f100: float64; f101: float64; f102: float64; f103: float64; f104: float64;
+    f105: float64; f106: float64; f107: float64; f108: float64; f109: float64;
+    f110: float64; f111: float64; f112: float64; f113: float64; f114: float64;
+    f115: float64; f116: float64; f117: float64; f118: float64; f119: float64;
+    f120: float64; f121: float64; f122: float64; f123: float64; f124: float64;
+    f125: float64; f126: float64; flag: uint8;
+}
+
+message Counts {
+    c0: uint32; c1: uint32; c2: uint32; c3: uint32; c4: uint32;
+    c5: uint32; c6: uint32; c7: uint32; c8: uint32; c9: uint32;
+    c10: uint32; c11: uint32; c12: uint32; c13: uint32; c14: uint32;
+    c15: uint32; c16: uint32; c17: uint32; c18: uint32; c19: uint32;
+    c20: uint32; c21: uint32; c22: uint32; c23: uint32; c24: uint32;
+    c25: uint32; c26: uint32; c27: uint32; c28: uint32; c29: uint32;
+    c30: uint32; c31: uint32; c32: uint32; c33: uint32; c34: uint32;
+    c35: uint32; c36: uint32; c37: uint32; c38: uint32; c39: uint32;
+    c40: uint32; c41: uint32; c42: uint32; c43: uint32; c44: uint32;
+    c45: uint32; c46: uint32; c47: uint32; c48: uint32; c49: uint32;
+    c50: uint32; c51: uint32; c52: uint32; c53: uint32; c54: uint32;
+    c55: uint32; c56: uint32; c57: uint32; c58: uint32; c59: uint32;
+    c60: uint32; c61: uint32; c62: uint32; c63: uint32; c64: uint32;
+    c65: uint32; c66: uint32; c67: uint32; c68: uint32; c69: uint32;
+    c70: uint32; c71: uint32; c72: uint32; c73: uint32; c74: uint32;
+    c75: uint32; c76: uint32; c77: uint32; c78: uint32; c79: uint32;
+    c80: uint32; c81: uint32; c82: uint32; c83: uint32; c84: uint32;
+    c85: uint32; c86: uint32; c87: uint32; c88: uint32; c89: uint32;
+    c90: uint32; c91: uint32; c92: uint32; c93: uint32; c94: uint32;
+    c95: uint32; c96: uint32; c97: uint32; c98: uint32; c99: uint32;
+    c100: uint32; c101: uint32; c102: uint32; c103: uint32; c104: uint32;
+    c105: uint32; c106: uint32; c107: uint32; c108: uint32; c109: uint32;
+    c110: uint32; c111: uint32; c112: uint32; c113: uint32; c114: uint32;
+    c115: uint32; c116: uint32; c117: uint32; c118: uint32; c119: uint32;
+    c120: uint32; c121: uint32; c122: uint32; c123: uint32; c124: uint32;
+    c125: uint32; c126: uint32; c127: uint32;
+}
