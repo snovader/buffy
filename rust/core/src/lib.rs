@@ -16,4 +16,4 @@ pub use errors::{BuildError, DecodeError};
 pub use layout::{Alignment, OffsetSize, TableLayout};
 pub use table_builder::{NestedTable, TableBuilder};
 pub use table_writer::{SizerParent, TableSizer, TableWriter, VectorPosition, WriterParent};
-pub use vector::{Items, Vector};
+pub use vector::{Items, ItemsInPlace, Vector};

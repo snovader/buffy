@@ -810,8 +810,9 @@ impl Generator<'_> {
                     // Collecting into a `Result` would grow the items from
                     // nothing, since its size hint starts at zero
                     writer.line("let mut items = Vec::with_capacity(vector.len());");
-                    writer.open("for item in vector {");
-                    // Each item is a table of its own bytes
+                    writer.open("for item in vector.iter_in_place() {");
+                    // Each item is read in place, from its bytes and those
+                    // after it in the message
                     writer.line(format!("items.push({table}::new(item?, 0));"));
                     writer.close("}");
                     writer.blank();
@@ -1057,7 +1058,7 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
         &["&self", "index: usize"],
         &format!("Option<{item}>"),
     );
-    writer.line("self.vector.get(index).map(Self::item)");
+    writer.line("self.vector.get_in_place(index).map(Self::item)");
     writer.close("}");
     writer.blank();
 
@@ -1071,13 +1072,13 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
         &["&self"],
         &format!("impl ExactSizeIterator<Item = {item}> + use<'a>"),
     );
-    writer.line("self.vector.iter().map(Self::item)");
+    writer.line("self.vector.iter_in_place().map(Self::item)");
     writer.close("}");
     writer.blank();
 
     rust_doc(
         writer,
-        &["Reads an item from its bytes, which are a table of their own".to_owned()],
+        &["Reads an item in place, from its bytes and those after it in the message".to_owned()],
     );
     open_method(
         writer,

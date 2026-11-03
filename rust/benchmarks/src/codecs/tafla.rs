@@ -134,7 +134,7 @@ impl Workload<ListShape> for Tafla {
         let vector = buffer.get_vector(buffer.root_offset(0)?)?;
 
         let mut items = Vec::with_capacity(vector.len());
-        for item in &vector {
+        for item in vector.iter_in_place() {
             items.push(read_item(item?)?);
         }
 
@@ -202,7 +202,7 @@ impl ItemAccess for Tafla {
         let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
         let vector = buffer.get_vector(buffer.root_offset(0)?)?;
         let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
-        let item = vector.get(last).ok_or_else(no_items)??;
+        let item = vector.get_in_place(last).ok_or_else(no_items)??;
 
         Ok(sum_table(item)?)
     }
@@ -212,7 +212,7 @@ impl ItemAccess for Tafla {
         let vector = buffer.get_vector(buffer.root_offset(0)?)?;
 
         let mut sum = 0.0;
-        for item in &vector {
+        for item in vector.iter_in_place() {
             sum += sum_table(item?)?;
         }
 
@@ -265,8 +265,8 @@ fn item_builder(item: &Item) -> Result<TableBuilder<'static>, BuildError> {
     Ok(builder)
 }
 
-/// Reads an item of the vector, a table without a header, whose fields
-/// `root_offset()` finds from its start
+/// Reads an item of the vector in place, a table without a header, whose
+/// fields `root_offset()` finds from its start
 fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
     let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
     let pair = item.root_offset(1)?;

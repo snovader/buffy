@@ -6,7 +6,9 @@ import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.LinkedList;
+import java.util.List;
 
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
 import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
@@ -143,6 +145,23 @@ public class ShapesTest {
         assertValuesOrDecodeException(() -> readPoint(new Point(bytes)));
         assertValuesOrDecodeException(() -> readDocument(new Document(bytes)));
         assertValuesOrDecodeException(() -> readItemList(new ItemList(bytes)));
+    }
+
+    // Reading in place
+
+    @Example
+    void an_item_is_read_in_place_past_its_end_within_the_bytes_of_its_item_list() {
+        var item = new Item.Fields(1.5f, new Pair.Fields(2.5f, 3.5f));
+        var bytes = ItemList.serialize(new ItemList.Fields(List.of(item)));
+        // The vector at 4 holds its count and the item's end, 36, and then the item at 12: its two
+        // offsets, its value at 20 and its Pair at 24. An end of 16 leaves the item only its
+        // offsets, which point past it.
+        assertArrayEquals(new byte[] {36, 0, 0, 0}, Arrays.copyOfRange(bytes, 8, 12));
+        bytes[8] = 16;
+        var itemList = new ItemList(bytes);
+
+        assertEquals(new ItemList.Fields(List.of(item)), readItemList(itemList));
+        assertEquals(item, readItem(itemList.itemsView().get(0)));
     }
 
     // The struct

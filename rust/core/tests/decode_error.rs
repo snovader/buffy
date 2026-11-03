@@ -264,6 +264,8 @@ fn test_reject_array_string_struct_and_vector_item_outside_slice() {
 
     // The vector's end lies within the slice, and its item doesn't
     let vector = buffer.get_vector(0).unwrap();
+    assert_eq!(vector.get_in_place(0), Some(Err(outside(8, 5))));
+    assert_eq!(vector.iter_in_place().next(), Some(Err(outside(8, 5))));
     assert_eq!(vector.get(0), Some(Err(outside(8, 5))));
     assert_eq!(vector.iter().next(), Some(Err(outside(8, 5))));
 }
@@ -287,6 +289,8 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
         .unwrap();
 
     let error = DecodeError::ItemEndsBeforeStart { start: 12, end: 11 };
+    assert_eq!(vector.get_in_place(0), Some(Err(error.clone())));
+    assert_eq!(vector.iter_in_place().next(), Some(Err(error.clone())));
     assert_eq!(vector.get(0), Some(Err(error.clone())));
     assert_eq!(vector.iter().next(), Some(Err(error.clone())));
     assert_eq!(
@@ -294,6 +298,7 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
         "The vector item at 12 ends before it starts, at 11"
     );
     assert!(error.source().is_none());
+    assert_eq!(vector.get_in_place(2), None);
     assert_eq!(vector.get(2), None);
 }
 

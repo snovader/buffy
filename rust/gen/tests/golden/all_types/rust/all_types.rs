@@ -361,7 +361,7 @@ impl<'a> Nested<'a> {
         let position = buffer.root_offset(2)?;
         let vector = buffer.get_vector(position)?;
         let mut items = Vec::with_capacity(vector.len());
-        for item in vector {
+        for item in vector.iter_in_place() {
             items.push(Tree::new(item?, 0));
         }
 
@@ -578,7 +578,7 @@ impl<'a> Tree<'a> {
         let position = buffer.field_offset(self.position, 1)?;
         let vector = buffer.get_vector(position)?;
         let mut items = Vec::with_capacity(vector.len());
-        for item in vector {
+        for item in vector.iter_in_place() {
             items.push(Tree::new(item?, 0));
         }
 
@@ -657,15 +657,15 @@ impl<'a> TreeVector<'a> {
     ///
     /// Returns `Some` of a [`DecodeError`] if the item lies outside the bytes.
     pub fn get(&self, index: usize) -> Option<Result<Tree<'a>, DecodeError>> {
-        self.vector.get(index).map(Self::item)
+        self.vector.get_in_place(index).map(Self::item)
     }
 
     /// Iterates over the items, reading each item's end once
     pub fn iter(&self) -> impl ExactSizeIterator<Item = Result<Tree<'a>, DecodeError>> + use<'a> {
-        self.vector.iter().map(Self::item)
+        self.vector.iter_in_place().map(Self::item)
     }
 
-    /// Reads an item from its bytes, which are a table of their own
+    /// Reads an item in place, from its bytes and those after it in the message
     fn item(bytes: Result<&'a [u8], DecodeError>) -> Result<Tree<'a>, DecodeError> {
         Ok(Tree::new(bytes?, 0))
     }

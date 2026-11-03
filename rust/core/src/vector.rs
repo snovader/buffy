@@ -2,14 +2,22 @@ use std::{iter::FusedIterator, mem};
 
 use crate::{DecodeError, OffsetSize, byte_buffer::read_slot};
 
-/// A vector read from a table: the bytes of its items, which are tables.
+/// A vector read from a table: its items, which are tables.
 ///
 /// The vector holds its count, the end of each item, counted from the
 /// vector's position, and then the items. `ByteBuffer::get_vector()` checks
 /// that the ends lie within the bytes, and each item is checked when it's
-/// read, so reading one can fail. [`Vector::get()`] finds any item from its
-/// end and the one before it, without reading the others. Items are read
-/// with their own `ByteBuffer`.
+/// read, so reading one can fail. [`Vector::get()`] and
+/// [`Vector::get_in_place()`] find any item from its end and the one before
+/// it, without reading the others.
+///
+/// An item that has no header and offsets as wide as its parent's is read in
+/// place: from the bytes that [`Vector::get_in_place()`] returns, which start
+/// where it does and end where its parent's do, with a `ByteBuffer` of its
+/// parent's offset size, at position 0. Its reads may reach past its end, as
+/// those of any table read in place may. Any other item is read as a table
+/// of its own, from the bytes that [`Vector::get()`] returns, with a
+/// `ByteBuffer` of its own layout.
 #[derive(Clone, Copy, Debug)]
 pub struct Vector<'a> {
     /// The bytes from the vector's position, which is its count's, to the
@@ -48,8 +56,9 @@ impl<'a> Vector<'a> {
         self.len == 0
     }
 
-    /// Returns the bytes of item `index`, or `None` past the end. Only the
-    /// ends of the item and the one before it are read.
+    /// Returns the bytes of item `index`, from its start to its end, to read
+    /// it as a table of its own, or `None` past the end. Only the ends of the
+    /// item and the one before it are read.
     ///
     /// # Errors
     ///
@@ -57,6 +66,43 @@ impl<'a> Vector<'a> {
     /// ends before the item before it, or [`DecodeError::OutOfRange`] if it
     /// ends past the bytes.
     pub fn get(&self, index: usize) -> Option<Result<&'a [u8], DecodeError>> {
+        let bounds = self.bounds(index)?;
+
+        Some(bounds.and_then(|(start, end)| self.item(start, end)))
+    }
+
+    /// Returns the bytes of item `index` to read it in place, from its start
+    /// to the end of the buffer, or `None` past the end. Only the ends of the
+    /// item and the one before it are read.
+    ///
+    /// # Errors
+    ///
+    /// `Some(Err(_))` as [`Vector::get()`] returns.
+    pub fn get_in_place(&self, index: usize) -> Option<Result<&'a [u8], DecodeError>> {
+        let bounds = self.bounds(index)?;
+
+        Some(bounds.and_then(|(start, end)| self.item_in_place(start, end)))
+    }
+
+    /// Iterates over the items' bytes, as [`Vector::get()`] returns them,
+    /// reading each item's end once
+    pub const fn iter(&self) -> Items<'a> {
+        Items { ends: self.ends() }
+    }
+
+    /// Iterates over the items' bytes, as [`Vector::get_in_place()`] returns
+    /// them, reading each item's end once
+    pub const fn iter_in_place(&self) -> ItemsInPlace<'a> {
+        ItemsInPlace { ends: self.ends() }
+    }
+
+    /// Where item `index` starts and ends, from the vector's position, or
+    /// `None` past the end
+    // Inlined, as are the reads of an item's end and its checks: with two
+    // callers rather than one, LLVM called it out of line, and a generated
+    // view took half as long again to read the last item
+    #[inline]
+    fn bounds(&self, index: usize) -> Option<Result<(usize, usize), DecodeError>> {
         if index >= self.len {
             return None;
         }
@@ -66,12 +112,11 @@ impl<'a> Vector<'a> {
             _ => self.end(index - 1),
         };
 
-        Some(start.and_then(|start| self.item(start, self.end(index)?)))
+        Some(start.and_then(|start| Ok((start, self.end(index)?))))
     }
 
-    /// Iterates over the items' bytes, reading each item's end once
-    pub const fn iter(&self) -> Items<'a> {
-        Items {
+    const fn ends(&self) -> Ends<'a> {
+        Ends {
             vector: *self,
             index: 0,
             start: self.items_start(),
@@ -87,6 +132,7 @@ impl<'a> Vector<'a> {
     }
 
     /// Reads the end of item `index`, from the vector's position
+    #[inline]
     fn end(&self, index: usize) -> Result<usize, DecodeError> {
         let width = self.offset_size.bytes();
         let slot = (index + 1) * width;
@@ -102,18 +148,44 @@ impl<'a> Vector<'a> {
 
     /// Returns the bytes of the item from `start` to `end`, from the
     /// vector's position
+    #[inline]
     fn item(&self, start: usize, end: usize) -> Result<&'a [u8], DecodeError> {
         if start > end {
-            return Err(DecodeError::ItemEndsBeforeStart {
-                start: self.position_of(start),
-                end: self.position_of(end),
-            });
+            return Err(self.ends_before_start(start, end));
         }
 
-        self.bytes.get(start..end).ok_or_else(|| {
-            let byte_length = (end - start) as u64;
-            DecodeError::out_of_range(self.position_of(start), byte_length, self.available())
-        })
+        self.bytes
+            .get(start..end)
+            .ok_or_else(|| self.outside(start, end))
+    }
+
+    /// Returns the bytes from the start of the item from `start` to `end`,
+    /// from the vector's position, to the end of the buffer
+    #[inline]
+    fn item_in_place(&self, start: usize, end: usize) -> Result<&'a [u8], DecodeError> {
+        if start > end {
+            return Err(self.ends_before_start(start, end));
+        }
+
+        if end > self.bytes.len() {
+            return Err(self.outside(start, end));
+        }
+
+        // It starts no later than it ends, within the bytes
+        Ok(&self.bytes[start..])
+    }
+
+    const fn ends_before_start(&self, start: usize, end: usize) -> DecodeError {
+        DecodeError::ItemEndsBeforeStart {
+            start: self.position_of(start),
+            end: self.position_of(end),
+        }
+    }
+
+    /// The error for an item from `start` to `end` that ends past the bytes
+    const fn outside(&self, start: usize, end: usize) -> DecodeError {
+        let byte_length = (end - start) as u64;
+        DecodeError::out_of_range(self.position_of(start), byte_length, self.available())
     }
 
     /// The position in the buffer of `offset` from the vector's position,
@@ -152,6 +224,59 @@ impl<'a> IntoIterator for &Vector<'a> {
 /// others from being read
 #[derive(Clone, Debug)]
 pub struct Items<'a> {
+    ends: Ends<'a>,
+}
+
+impl<'a> Iterator for Items<'a> {
+    type Item = Result<&'a [u8], DecodeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let vector = self.ends.vector;
+        let bounds = self.ends.next()?;
+
+        Some(bounds.and_then(|(start, end)| vector.item(start, end)))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ends.size_hint()
+    }
+}
+
+impl ExactSizeIterator for Items<'_> {}
+
+impl FusedIterator for Items<'_> {}
+
+/// An iterator over the bytes of a [`Vector`]'s items to read them in place,
+/// which returns each item as [`Vector::get_in_place()`] does: an item that
+/// fails doesn't keep the others from being read
+#[derive(Clone, Debug)]
+pub struct ItemsInPlace<'a> {
+    ends: Ends<'a>,
+}
+
+impl<'a> Iterator for ItemsInPlace<'a> {
+    type Item = Result<&'a [u8], DecodeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let vector = self.ends.vector;
+        let bounds = self.ends.next()?;
+
+        Some(bounds.and_then(|(start, end)| vector.item_in_place(start, end)))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ends.size_hint()
+    }
+}
+
+impl ExactSizeIterator for ItemsInPlace<'_> {}
+
+impl FusedIterator for ItemsInPlace<'_> {}
+
+/// An iterator over where a [`Vector`]'s items start and end, from the
+/// vector's position, which reads each item's end once
+#[derive(Clone, Debug)]
+struct Ends<'a> {
     vector: Vector<'a>,
     index: usize,
     /// Where the next item starts, from the vector's position, which is
@@ -159,21 +284,21 @@ pub struct Items<'a> {
     start: usize,
 }
 
-impl<'a> Iterator for Items<'a> {
-    type Item = Result<&'a [u8], DecodeError>;
+impl Iterator for Ends<'_> {
+    type Item = Result<(usize, usize), DecodeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == self.vector.len {
             return None;
         }
 
-        let item = self.vector.end(self.index).and_then(|end| {
-            let start = mem::replace(&mut self.start, end);
-            self.vector.item(start, end)
-        });
+        let bounds = self
+            .vector
+            .end(self.index)
+            .map(|end| (mem::replace(&mut self.start, end), end));
         self.index += 1;
 
-        Some(item)
+        Some(bounds)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -181,7 +306,3 @@ impl<'a> Iterator for Items<'a> {
         (remaining, Some(remaining))
     }
 }
-
-impl ExactSizeIterator for Items<'_> {}
-
-impl FusedIterator for Items<'_> {}

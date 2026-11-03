@@ -90,11 +90,19 @@ Counts, lengths and item ends are `offsetSize` bytes wide, as offsets are.
 
 ### Reading nested tables
 
-A nested table can be read in place, with offsets counted from its own start,
-when it has no header and offsets as wide as its parent's. Any other nested
-table is read as a table of its own, with its own layout: a vector item from
-its bytes, and a table field from its offset to the end of its parent, since
-its length isn't written.
+A nested table that has no header and offsets as wide as its parent's, a
+table field or a vector item, is read in place: its offsets count from its own
+start, and it reads within the bytes that its parent reads within. A vector
+item read in place isn't bounded by its end, so an offset of its own can lead
+past it. Any other nested table is read as a table of its own, with its own
+layout and within its own bytes: a vector item from its start to its end, and
+a table field from its offset to the end of its parent, since its length isn't
+written.
+
+Every implementation reads nested tables this way, so that all of them read
+the same values from the same bytes, or fail alike. A vector item whose end
+leaves it only its offsets, for example, reads its fields from the bytes after
+it, which its parent reads within.
 
 ## Validation
 
@@ -110,7 +118,8 @@ Readers decode untrusted bytes. An implementation:
   panic or hang on any input.
 
 Checks can't tell a value corrupted within range from a real one, such as an
-offset that points at another field.
+offset that points at another field, or one of a vector item's offsets that
+points past the item's end, at bytes that the item reads in place.
 
 ## Writers
 

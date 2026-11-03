@@ -3,13 +3,14 @@
 //! that they equal the descriptions when the bytes hold the described
 //! values.
 //!
-//! A table nested with `set_table()` is read in place when it has no header
-//! and offsets as wide as its parent's, and otherwise as a table of its own,
-//! from its position to the end of its parent, since its length isn't
-//! written. Vector items are read as tables of their own, from the bytes
-//! that `Vector` returns; an item without a header has the same offsets
-//! either way. The scalars of structs are read at their offsets in the bytes
-//! that `get_struct()` and `get_struct_array()` return.
+//! A nested table, from `set_table()` or in a vector, is read in place when
+//! it has no header and offsets as wide as its parent's: a field from its
+//! position in its parent's bytes, and a vector item from the bytes that
+//! `Vector::iter_in_place()` returns, which end where its parent's do. Any
+//! other is read as a table of its own: a field from its position to the end
+//! of its parent, since its length isn't written, and a vector item from the
+//! bytes that `Vector` iterates over. The scalars of structs are read at their
+//! offsets in the bytes that `get_struct()` and `get_struct_array()` return.
 
 use tafla::{ByteBuffer, DecodeError, TableLayout};
 
@@ -29,7 +30,8 @@ pub enum ReadError {
         iterated: usize,
         described: usize,
     },
-    /// `Vector::get()` found item `index` other than iterating did
+    /// `Vector::get()` or `Vector::get_in_place()` found item `index` other
+    /// than iterating did
     Get { index: usize },
 }
 
@@ -184,18 +186,76 @@ impl<const V: bool> Reader<'_, V> {
 
     /// Reads a table nested with `set_table()`
     fn read_nested(&self, position: usize, table: &Table) -> Result<Table, ReadError> {
-        let layout = &table.layout;
-        let in_place = !layout.sized
-            && !layout.versioned
-            && layout.offset_size == self.0.layout().offset_size();
-
-        if !in_place {
-            // A position past the end leaves no bytes, which the first read
-            // fails for
-            let bytes = self.0.bytes();
-            return read_table(&bytes[position.min(bytes.len())..], table);
+        if self.reads_in_place(table) {
+            return self.read_in_place(position, table);
         }
 
+        // A position past the end leaves no bytes, which the first read fails
+        // for
+        let bytes = self.0.bytes();
+        read_table(&bytes[position.min(bytes.len())..], table)
+    }
+
+    /// Reads a vector's items, after checking that finding each from its
+    /// ends alone, and none past the last, finds what iterating finds
+    fn read_vector(&self, position: usize, items: &[Nested]) -> Result<Vec<Nested>, ReadError> {
+        let vector = self.0.get_vector(position)?;
+        let iterated: Vec<_> = vector.iter().collect();
+        let in_place: Vec<_> = vector.iter_in_place().collect();
+
+        for index in 0..=iterated.len() {
+            if vector.get(index) != iterated.get(index).cloned()
+                || vector.get_in_place(index) != in_place.get(index).cloned()
+            {
+                return Err(ReadError::Get { index });
+            }
+        }
+
+        let bytes = iterated.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let in_place = in_place.into_iter().collect::<Result<Vec<_>, _>>()?;
+        if vector.len() != items.len() || bytes.len() != items.len() {
+            return Err(ReadError::Items {
+                count: vector.len(),
+                iterated: bytes.len(),
+                described: items.len(),
+            });
+        }
+
+        let read_item = |((bytes, in_place), item): ((&[u8], &[u8]), &Nested)| {
+            let table = if self.reads_in_place(&item.table) {
+                // At its start, in a buffer of its offset size, which is its
+                // parent's
+                let buffer = ByteBuffer::new(in_place, item.table.layout.unversioned());
+                Reader(buffer).read_in_place(0, &item.table)?
+            } else {
+                read_table(bytes, &item.table)?
+            };
+
+            Ok(Nested {
+                from: item.from,
+                table,
+            })
+        };
+
+        bytes
+            .into_iter()
+            .zip(in_place)
+            .zip(items)
+            .map(read_item)
+            .collect()
+    }
+
+    /// Whether a nested table is read in place: it has no header, and its
+    /// offsets are as wide as its parent's
+    fn reads_in_place(&self, table: &Table) -> bool {
+        let layout = &table.layout;
+
+        !layout.sized && !layout.versioned && layout.offset_size == self.0.layout().offset_size()
+    }
+
+    /// Reads the fields of a table nested at `position`, from offsets counted
+    /// from its start, within its parent's bytes
+    fn read_in_place(&self, position: usize, table: &Table) -> Result<Table, ReadError> {
         let fields = table.fields.iter().enumerate();
         let fields = fields
             .map(|(index, field)| self.read_field(self.0.field_offset(position, index)?, field))
@@ -206,37 +266,6 @@ impl<const V: bool> Reader<'_, V> {
             version: None,
             fields,
         })
-    }
-
-    /// Reads a vector's items, after checking that finding each from its
-    /// ends alone, and none past the last, finds what iterating finds
-    fn read_vector(&self, position: usize, items: &[Nested]) -> Result<Vec<Nested>, ReadError> {
-        let vector = self.0.get_vector(position)?;
-        let iterated: Vec<_> = vector.iter().collect();
-
-        for index in 0..=iterated.len() {
-            if vector.get(index) != iterated.get(index).cloned() {
-                return Err(ReadError::Get { index });
-            }
-        }
-
-        let bytes = iterated.into_iter().collect::<Result<Vec<_>, _>>()?;
-        if vector.len() != items.len() || bytes.len() != items.len() {
-            return Err(ReadError::Items {
-                count: vector.len(),
-                iterated: bytes.len(),
-                described: items.len(),
-            });
-        }
-
-        let read_item = |(bytes, item): (&[u8], &Nested)| {
-            Ok(Nested {
-                from: item.from,
-                table: read_table(bytes, &item.table)?,
-            })
-        };
-
-        bytes.into_iter().zip(items).map(read_item).collect()
     }
 }
 

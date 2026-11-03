@@ -32,9 +32,9 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as `f64`s, rather than
 collecting items of its own, and `item_access.rs` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: `Vector::get()` of the
-  last item or the `Vector`'s iterator, and `get_struct_array()`'s bytes with
-  `as_chunks()`.
+- **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
+  from `Vector::get_in_place()` of the last item or `Vector::iter_in_place()`,
+  and `get_struct_array()`'s bytes with `as_chunks()`.
 - **tafla-gen** reads with the generated getters, `items()`, which collect
   the vector's items into a `Vec` first, and iterate over the array's
   structs, whose `last()` the compiler finds without reading the others.

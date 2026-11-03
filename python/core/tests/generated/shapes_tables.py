@@ -61,10 +61,10 @@ def _read_columns(columns: Columns) -> ColumnsFields:
 
 
 def read_item_list(item_list: ItemList) -> ItemListFields:
-    return {"items": [_read_item(item) for item in item_list.items()]}
+    return {"items": [read_item(item) for item in item_list.items()]}
 
 
-def _read_item(item: Item) -> ItemFields:
+def read_item(item: Item) -> ItemFields:
     return {"value": item.value(), "pair": _read_pair(item.pair())}
 
 

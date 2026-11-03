@@ -14,6 +14,7 @@ import {
     ITEM_LIST_FIELDS,
     POINT_FIELDS,
     readDocument,
+    readItem,
     readItemList,
     readPoint,
     readSample,
@@ -136,6 +137,23 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 expectValuesOrDecodeError(() => readItemList(new shapes.ItemList(bytes)));
             }
         );
+    });
+
+    describe('reading in place', () => {
+        it('should read an Item in place, past its end, within the bytes of its ItemList', () => {
+            const item = { value: 1.5, pair: { first: 2.5, second: 3.5 } };
+            const bytes = shapes.ItemList.serialize({ items: [item] });
+            // The vector at 4 holds its count and the item's end, 36, and then
+            // the item at 12: its two offsets, its value at 20 and its Pair at
+            // 24. An end of 16 leaves the item only its offsets, which point
+            // past it.
+            expect(bytes.subarray(8, 12)).toStrictEqual(new Uint8Array([36, 0, 0, 0]));
+            bytes.set([16, 0, 0, 0], 8);
+            const itemList = new shapes.ItemList(bytes);
+
+            expect(readItemList(itemList)).toEqual({ items: [item] });
+            expect(readItem(itemList.itemsView().get(0))).toEqual(item);
+        });
     });
 
     describe('struct', () => {
