@@ -110,18 +110,28 @@ Validation and errors
 Validation is always on:
 
 - Every read checks its range against the bytes the ``ByteBuffer`` was given
-  and raises ``DecodeError`` if it would leave them. Strings must be valid
-  UTF-8, and vector items must start no later than they end. A truncated or corrupted buffer therefore raises rather than returning
-  values from outside it.
+  and raises ``DecodeError`` if it would leave them, at any position, however
+  large. Strings must be valid UTF-8, and vector items must start no later
+  than they end. A truncated or corrupted buffer therefore raises rather than
+  returning values from outside it.
 - ``DecodeError`` is a ``ValueError``. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
-  ``UnicodeDecodeError`` as its cause.
+  ``UnicodeDecodeError`` as its cause. Positions, lengths and indices of more
+  than 64 bits are given by their bit length, such as ``<15001-bit integer>``,
+  since Python converts at most ``sys.get_int_max_str_digits()`` digits to a
+  string. So no error fails to build, whatever that limit is.
+  ``DecodeError.out_of_range()`` builds the error of a read outside the bytes,
+  as the structs that tafla-gen generates raise it.
 - Checks can't tell a value that was corrupted within range from a real one,
   such as an offset that points at another field. A format that needs that
   guarantee can add a checksum.
 
 Using the API wrongly raises other errors, whatever the bytes:
 
+- A buffer that isn't C-contiguous, such as a slice with a step, raises
+  ``TypeError`` where it's taken as bytes: by ``ByteBuffer()``, whose reads
+  return views of the bytes rather than of a copy, and as a struct, or a table
+  or vector item, by a builder's setter. Array setters convert it instead.
 - Writes past the end of a ``ByteBuffer``, and arrays, strings and vectors
   too long for its ``offset_size``, raise ``ValueError`` and write nothing. A
   scalar that doesn't fit its type raises ``ValueError`` and leaves the
@@ -139,7 +149,9 @@ Using the API wrongly raises other errors, whatever the bytes:
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_size`` from the setter whose offset or count doesn't
-  fit, or from ``bytes()``.
+  fit, or from ``bytes()``. It doesn't check that each field's index is its
+  own: another writes the offset into another slot, or raises ``ValueError``
+  where the bytes have no such slot.
 - A struct size less than 1 raises ``ValueError`` from
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.

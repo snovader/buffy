@@ -16,6 +16,7 @@ class Record:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -66,7 +67,9 @@ class Document:
     _LAYOUT: Final = TableLayout(sized=True, versioned=True)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -172,6 +175,7 @@ class ItemList:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -325,6 +329,7 @@ class Triples:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -371,15 +376,22 @@ class Triple:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Triple`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Triple doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
-            raise DecodeError(f"Triple doesn't fit at {offset}") from cause
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Triple can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -387,13 +399,18 @@ class Triple:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Triple``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Triples don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Triple can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:
@@ -449,7 +466,7 @@ class TripleArray:
         if index < 0:
             index += self._length
         if not 0 <= index < self._length:
-            raise IndexError(f"Struct {index} is outside the array of {self._length}")
+            raise IndexError(f"Struct index is outside the array of {self._length}")
         return Triple.read(self._data, index * Triple.SIZE)
 
     def __iter__(self) -> Iterator[Triple]:
@@ -476,15 +493,22 @@ class Sample:
     def read(cls, data: Buffer, offset: int = 0) -> Self:
         """Reads a ``Sample`` at ``offset`` in ``data``.
 
-        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it.
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
         """
         if offset < 0:
-            raise DecodeError(f"Sample doesn't fit at {offset}")
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
 
         try:
             values = cls._STRUCT.unpack_from(data, offset)
-        except error as cause:
-            raise DecodeError(f"Sample doesn't fit at {offset}") from cause
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
+            ) from cause
 
         return cls(*values)
 
@@ -492,13 +516,18 @@ class Sample:
     def read_array(cls, data: Buffer) -> list[Self]:
         """Reads the ``Sample``s one after another in ``data``.
 
-        Raises ``DecodeError`` if ``data`` isn't a whole number of them.
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
         """
         try:
             return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
         except error as cause:
             raise DecodeError(
                 f"Samples don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
             ) from cause
 
     def serialize(self) -> bytes:

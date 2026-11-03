@@ -199,6 +199,54 @@ class TestValues(unittest.TestCase):
                 with self.assertRaises(error):
                     getattr(writer, setter)(0, value)
 
+    def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
+        self,
+    ) -> None:
+        strided = memoryview(bytes(range(8)))[::2]
+        cases: list[tuple[str, tuple[object, ...]]] = [
+            ("set_struct", (strided,)),
+            ("set_struct_array", (strided, 2, 2)),
+        ]
+
+        for setter, arguments in cases:
+            with self.subTest(setter=setter):
+                with self.assertRaises(TypeError):
+                    getattr(TableBuilder(1), setter)(*arguments)
+                with self.assertRaises(TypeError):
+                    getattr(TableWriter(1), setter)(0, *arguments)
+
+
+class TestIndices(unittest.TestCase):
+    def test_raises_value_error_for_an_index_or_item_that_has_no_slot_in_the_bytes(
+        self,
+    ) -> None:
+        """Indices past the bytes, and past the C ssize_t that struct takes
+        positions as, which once raised OverflowError"""
+        writes: list[tuple[str, Callable[[TableWriter, int], object]]] = [
+            ("set_uint8", lambda writer, index: writer.set_uint8(index, 1)),
+            ("set_float64", lambda writer, index: writer.set_float64(index, 0.5)),
+            ("set_string", lambda writer, index: writer.set_string(index, "a")),
+            ("set_struct", lambda writer, index: writer.set_struct(index, b"\x01")),
+            (
+                "set_int32_array",
+                lambda writer, index: writer.set_int32_array(index, [1]),
+            ),
+            ("set_table", lambda writer, index: writer.set_table(index, 4)),
+            ("set_vector", lambda writer, index: writer.set_vector(index, 0)),
+            ("set_item_end", lambda writer, item: writer.set_item_end(4, item)),
+            ("set_item_end", lambda writer, vector: writer.set_item_end(vector, 0)),
+        ]
+
+        for index in [16, 2**63, 2**100, 2**15000]:
+            for name, write in writes:
+                with self.subTest(write=name, bits=index.bit_length()):
+                    writer = TableWriter(1)
+                    if name == "set_item_end":
+                        writer.set_vector(0, 1)
+
+                    with self.assertRaises(ValueError):
+                        write(writer, index)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,7 @@ class Offset8:
     _LAYOUT: Final = TableLayout(offset_size=1)
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -52,6 +53,7 @@ class Offset8Sized:
     _LAYOUT: Final = TableLayout(sized=True, offset_size=1)
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -95,7 +97,9 @@ class Offset8Versioned:
     _LAYOUT: Final = TableLayout(versioned=True, offset_size=1)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -145,7 +149,9 @@ class Offset8SizedVersioned:
     _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_size=1)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -190,6 +196,7 @@ class Offset16:
     _LAYOUT: Final = TableLayout(offset_size=2)
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -228,6 +235,7 @@ class Offset16Sized:
     _LAYOUT: Final = TableLayout(sized=True, offset_size=2)
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -271,7 +279,9 @@ class Offset16Versioned:
     _LAYOUT: Final = TableLayout(versioned=True, offset_size=2)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -321,7 +331,9 @@ class Offset16SizedVersioned:
     _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_size=2)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -366,6 +378,7 @@ class Offset32:
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -404,6 +417,7 @@ class Offset32Sized:
     _LAYOUT: Final = TableLayout(sized=True)
 
     def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
@@ -447,7 +461,9 @@ class Offset32Versioned:
     _LAYOUT: Final = TableLayout(versioned=True)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()
@@ -497,7 +513,9 @@ class Offset32SizedVersioned:
     _LAYOUT: Final = TableLayout(sized=True, versioned=True)
 
     def __init__(self, data: Buffer) -> None:
-        """Raises ``DecodeError`` if ``data`` is in another format version."""
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        it's in another format version.
+        """
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
         version = self._buffer.get_version()

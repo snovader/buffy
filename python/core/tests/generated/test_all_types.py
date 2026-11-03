@@ -4,7 +4,7 @@ writes and reads tables with tafla."""
 import unittest
 
 from hypothesis import example, given
-from hypothesis.strategies import binary, integers, lists
+from hypothesis.strategies import binary, integers, lists, one_of
 
 from tafla import DecodeError
 from tests.generated import SETTINGS
@@ -324,8 +324,14 @@ class TestViews(unittest.TestCase):
                 lambda items=items: read_structs_views(Structs(data), items)
             )
 
+    # Formatting an index of more digits than Python converts to a string,
+    # 4,300 by default, once raised ValueError
     @SETTINGS
-    @given(nested_fields, structs_fields, integers(min_value=0))
+    @given(
+        nested_fields,
+        structs_fields,
+        one_of(integers(min_value=0), integers(2**15000, 2**15000 + 16)),
+    )
     def test_raises_index_error_for_an_item_outside_a_view(
         self, nested_fields: NestedFields, structs_fields: StructsFields, past: int
     ) -> None:
