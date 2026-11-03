@@ -166,6 +166,27 @@ describe.each(SHAPES)('%s', (_, shapes) => {
             }
         );
 
+        it.prop([SAMPLE_FIELDS, fc.nat({ max: 16 }), fc.nat({ max: 8 }), fc.nat({ max: 0xff })])(
+            'should write a Sample at any offset in longer bytes, and leave the others as they were',
+            (fields, offset, after, fill) => {
+                const bytes = new Uint8Array(offset + 12 + after).fill(fill);
+                shapes.Sample.writeAt(bytes, offset, fields);
+
+                const expected = new Uint8Array(bytes.length).fill(fill);
+                expected.set(sampleBytes(fields), offset);
+                expect(bytes).toStrictEqual(expected);
+            }
+        );
+
+        it.prop([SAMPLE_FIELDS, fc.nat({ max: 11 }), fc.nat({ max: 16 })])(
+            'should throw RangeError writing a Sample past the end of the bytes',
+            (fields, short, offset) => {
+                const bytes = new Uint8Array(offset + short);
+
+                expect(() => shapes.Sample.writeAt(bytes, offset, fields)).toThrow(RangeError);
+            }
+        );
+
         it.prop([SAMPLE_FIELDS, SAMPLE_FIELDS])(
             'should return bytes of its own from each serialize()',
             (first, second) => {
@@ -189,6 +210,66 @@ describe.each(SHAPES)('%s', (_, shapes) => {
 
                 expect(() => shapes.Sample.serialize(unreadable)).toThrow('An unreadable field');
                 expect(shapes.Sample.serialize(second)).toStrictEqual(sampleBytes(second));
+            }
+        );
+
+        it.prop([SAMPLE_FIELDS, SAMPLE_FIELDS])(
+            'should write a Sample whose field getter serializes another Sample',
+            (outer, inner) => {
+                let innerBytes: Uint8Array | undefined;
+                // Reads `b` once `key` and `a` are written
+                const reentrant = {
+                    ...outer,
+                    get b(): number {
+                        innerBytes = shapes.Sample.serialize(inner);
+                        return outer.b;
+                    }
+                };
+
+                expect(shapes.Sample.serialize(reentrant)).toStrictEqual(sampleBytes(outer));
+                expect(innerBytes).toStrictEqual(sampleBytes(inner));
+            }
+        );
+
+        it.prop([SAMPLE_FIELDS, SAMPLE_FIELDS])(
+            "should write a Sample whose field's valueOf() serializes another Sample",
+            (outer, inner) => {
+                let innerBytes: Uint8Array | undefined;
+                // The setter converts `a` once `key` is written
+                const a = {
+                    valueOf(): number {
+                        innerBytes = shapes.Sample.serialize(inner);
+                        return outer.a;
+                    }
+                };
+                const reentrant = { ...outer, a: a as unknown as number };
+
+                expect(shapes.Sample.serialize(reentrant)).toStrictEqual(sampleBytes(outer));
+                expect(innerBytes).toStrictEqual(sampleBytes(inner));
+            }
+        );
+
+        it.prop([SAMPLE_FIELDS, SAMPLE_FIELDS])(
+            'should write a Sample whose field getter catches a serialize() of another that threw',
+            (outer, inner) => {
+                const unreadable = {
+                    ...inner,
+                    get b(): number {
+                        throw new Error('An unreadable field');
+                    }
+                };
+                const reentrant = {
+                    ...outer,
+                    get b(): number {
+                        expect(() => shapes.Sample.serialize(unreadable)).toThrow(
+                            'An unreadable field'
+                        );
+                        return outer.b;
+                    }
+                };
+
+                expect(shapes.Sample.serialize(reentrant)).toStrictEqual(sampleBytes(outer));
+                expect(shapes.Sample.serialize(inner)).toStrictEqual(sampleBytes(inner));
             }
         );
     });

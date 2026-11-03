@@ -1,6 +1,7 @@
 import { expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer } from 'tafla';
+import { growing } from './arrayLikes.ts';
 import { ARRAY_FIELDS, fitsItsLayout, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
 import { readScalar, readUnsigned } from './conformance/format.ts';
@@ -35,6 +36,20 @@ it.prop([fc.array(fc.double()), fc.boolean()])(
 
         expect(new DataView(bytes.buffer).getUint32(0, true)).toBe(values.length);
         expect(bytes.subarray(4)).toStrictEqual(swapped);
+    }
+);
+
+it.prop([fc.array(fc.double(), { minLength: 1, maxLength: 8 }), fc.nat(), SLICES])(
+    'should throw a RangeError for an array that grows after it is counted on a big-endian host, writing nothing',
+    (values, cut, slice) => {
+        const counted = cut % values.length;
+        const bytes = sliceOf(new Uint8Array(4 + values.length * 8), slice);
+        const before = new Uint8Array(bytes.buffer.slice(0));
+
+        expect(() => new ByteBuffer(bytes).setFloat64Array(growing(values, counted))).toThrow(
+            RangeError
+        );
+        expect(new Uint8Array(bytes.buffer)).toStrictEqual(before);
     }
 );
 

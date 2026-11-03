@@ -13,7 +13,7 @@ import {
     TableBuilder,
     TableLayout,
     TableSizer,
-    type TableWriter
+    TableWriter
 } from 'tafla';
 import {
     type Alignment,
@@ -211,12 +211,18 @@ export function writeTable(table: TableDescription): Uint8Array {
         addField(sizer, field);
     }
 
-    const writer = sizer.writer();
-    for (const [index, field] of table.fields.entries()) {
-        writeField(writer, index, field);
-    }
+    return writeFields(sizer.writer(), table);
+}
 
-    return writer.bytes();
+/**
+ * Writes a table with a `TableWriter`, as {@link writeTable} does, into
+ * `bytes` rather than the sizer's
+ */
+export function writeTableInto(
+    table: TableDescription,
+    bytes: Uint8Array
+): Uint8Array {
+    return writeFields(createWriter(table, bytes), table);
 }
 
 /**
@@ -277,6 +283,37 @@ function createSizer({
         fields.length,
         TableLayout.create({ sized, offsetSize })
     );
+}
+
+function createWriter(
+    { layout, version, fields }: TableDescription,
+    bytes: Uint8Array
+): TableWriter {
+    const { sized, offsetSize } = layout;
+
+    if (layout.versioned) {
+        return new TableWriter(
+            bytes,
+            fields.length,
+            TableLayout.create({ sized, versioned: true, offsetSize }),
+            version as number
+        );
+    }
+
+    return new TableWriter(
+        bytes,
+        fields.length,
+        TableLayout.create({ sized, offsetSize })
+    );
+}
+
+/** Writes the table's fields, and returns its bytes */
+function writeFields(writer: TableWriter, table: TableDescription): Uint8Array {
+    for (const [index, field] of table.fields.entries()) {
+        writeField(writer, index, field);
+    }
+
+    return writer.bytes();
 }
 
 /** Adds a field to the sizer as its description sets it out */

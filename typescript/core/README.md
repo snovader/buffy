@@ -33,9 +33,11 @@ const table = buffer.rootOffset(2);
 const read = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
 ```
 
-`StructWriter` and the read functions, one per scalar type, such as
-`readUint32()` and `readFloat64()`, write and read records at fixed offsets,
-such as stream frames, without a header or offsets.
+`StructWriter`, and the read and write functions, one of each per scalar
+type, such as `readUint32()` and `writeFloat64()`, read and write records at
+fixed offsets, such as stream frames, without a header or offsets. The write
+functions write into a `Uint8Array` at an offset, and throw a `RangeError` for
+a value that doesn't lie within it, without writing any of it.
 
 `TableSizer` and `TableWriter` write a table whose fields are known before
 it's written, as the code that tafla-gen generates writes its tables. The

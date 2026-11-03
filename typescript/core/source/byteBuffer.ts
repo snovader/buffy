@@ -523,10 +523,10 @@ export class ByteBuffer {
      */
     setInt8Array(values: ArrayLike<number> | Int8Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_8);
+        const elements = this.#arrayElements(length, SIZEOF_8);
 
-        setInt8Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_8;
+        setInt8Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_8);
     }
 
     /**
@@ -536,10 +536,10 @@ export class ByteBuffer {
      */
     setUint8Array(values: ArrayLike<number> | Uint8Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_8);
+        const elements = this.#arrayElements(length, SIZEOF_8);
 
-        setUint8Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_8;
+        setUint8Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_8);
     }
 
     /**
@@ -549,10 +549,10 @@ export class ByteBuffer {
      */
     setInt16Array(values: ArrayLike<number> | Int16Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_16);
+        const elements = this.#arrayElements(length, SIZEOF_16);
 
-        setInt16Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_16;
+        setInt16Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_16);
     }
 
     /**
@@ -562,10 +562,10 @@ export class ByteBuffer {
      */
     setUint16Array(values: ArrayLike<number> | Uint16Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_16);
+        const elements = this.#arrayElements(length, SIZEOF_16);
 
-        setUint16Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_16;
+        setUint16Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_16);
     }
 
     /**
@@ -575,10 +575,10 @@ export class ByteBuffer {
      */
     setInt32Array(values: ArrayLike<number> | Int32Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_32);
+        const elements = this.#arrayElements(length, SIZEOF_32);
 
-        setInt32Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_32;
+        setInt32Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_32);
     }
 
     /**
@@ -588,10 +588,10 @@ export class ByteBuffer {
      */
     setUint32Array(values: ArrayLike<number> | Uint32Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_32);
+        const elements = this.#arrayElements(length, SIZEOF_32);
 
-        setUint32Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_32;
+        setUint32Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_32);
     }
 
     /**
@@ -601,10 +601,10 @@ export class ByteBuffer {
      */
     setInt64Array(values: ArrayLike<bigint> | BigInt64Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_64);
+        const elements = this.#arrayElements(length, SIZEOF_64);
 
-        setInt64Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_64;
+        setInt64Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_64);
     }
 
     /**
@@ -614,10 +614,10 @@ export class ByteBuffer {
      */
     setUint64Array(values: ArrayLike<bigint> | BigUint64Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_64);
+        const elements = this.#arrayElements(length, SIZEOF_64);
 
-        setUint64Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_64;
+        setUint64Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_64);
     }
 
     /**
@@ -627,10 +627,10 @@ export class ByteBuffer {
      */
     setFloat32Array(values: ArrayLike<number> | Float32Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_32);
+        const elements = this.#arrayElements(length, SIZEOF_32);
 
-        setFloat32Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_32;
+        setFloat32Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_32);
     }
 
     /**
@@ -640,10 +640,10 @@ export class ByteBuffer {
      */
     setFloat64Array(values: ArrayLike<number> | Float64Array): void {
         const length = values.length;
-        this.#startArray(length, SIZEOF_64);
+        const elements = this.#arrayElements(length, SIZEOF_64);
 
-        setFloat64Elements(this.#bytes, this.#position, values);
-        this.#position += length * SIZEOF_64;
+        setFloat64Elements(this.#bytes, elements, values, length);
+        this.#endArray(length, length * SIZEOF_64);
     }
 
     /**
@@ -675,12 +675,22 @@ export class ByteBuffer {
     }
 
     /**
-     * Checks that `length` elements of `elementSize` bytes fit after their
-     * length prefix, and writes the prefix
+     * Where `length` elements of `elementSize` bytes go, after their length
+     * prefix, once they fit. It writes nothing, so that elements that throw
+     * leave the buffer as it was.
      */
-    #startArray(length: number, elementSize: ElementSize): void {
+    #arrayElements(length: number, elementSize: ElementSize): number {
         this.#assertWritable(this.#size + length * elementSize);
+        return this.#position + this.#size;
+    }
+
+    /**
+     * Writes the length prefix of elements written after it, and moves past
+     * them
+     */
+    #endArray(length: number, byteLength: number): void {
         this.#setSize(length);
+        this.#position += byteLength;
     }
 
     /** @throws {DecodeError} If the string isn't valid UTF-8. */

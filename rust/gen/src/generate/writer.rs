@@ -46,7 +46,6 @@ impl CodeWriter {
         }
     }
 
-    #[cfg(any(feature = "python", feature = "java", feature = "rust"))]
     pub const fn indent(&mut self) {
         self.depth += 1;
     }

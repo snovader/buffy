@@ -12,7 +12,17 @@ import {
     readUint16,
     readUint32,
     readUint64,
-    StructWriter
+    StructWriter,
+    writeFloat32,
+    writeFloat64,
+    writeInt8,
+    writeInt16,
+    writeInt32,
+    writeInt64,
+    writeUint8,
+    writeUint16,
+    writeUint32,
+    writeUint64
 } from 'tafla';
 import { SLICES, sliceOf } from './conformance/arbitraries.ts';
 
@@ -192,3 +202,78 @@ it.prop([fc.uint8Array({ maxLength: 12 }), fc.integer({ min: -2, max: 14 }), SLI
         }
     }
 );
+
+type Write = (bytes: Uint8Array, offset: number, value: never) => void;
+
+/** Each write function, and the scalar that it writes */
+const WRITES: ReadonlyArray<[write: Write, scalar: Scalar]> = [
+    [writeInt8, SCALARS.setInt8],
+    [writeUint8, SCALARS.setUint8],
+    [writeInt16, SCALARS.setInt16],
+    [writeUint16, SCALARS.setUint16],
+    [writeInt32, SCALARS.setInt32],
+    [writeUint32, SCALARS.setUint32],
+    [writeInt64, SCALARS.setInt64],
+    [writeUint64, SCALARS.setUint64],
+    [writeFloat32, SCALARS.setFloat32],
+    [writeFloat64, SCALARS.setFloat64]
+];
+
+/** A write function, and a value of the scalar that it writes */
+const WRITES_OF_VALUES = fc.oneof(
+    ...WRITES.map(([write, scalar]) => scalar.values.map(value => ({ write, scalar, value })))
+);
+
+it.prop([WRITES_OF_VALUES, fc.nat({ max: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(
+    'should write little-endian values within the bytes, and throw RangeError past them, writing nothing',
+    ({ write, scalar, value }, length, offset, slice) => {
+        const bytes = sliceOf(new Uint8Array(length), slice);
+        // The whole buffer, so that a write around the slice shows
+        const expected = new Uint8Array(bytes.buffer.slice(0));
+
+        if (offset >= 0 && offset + scalar.size <= length) {
+            const view = new DataView(expected.buffer, bytes.byteOffset, length);
+            scalar.write(view, offset, value as never);
+
+            write(bytes, offset, value as never);
+        } else {
+            expect(() => write(bytes, offset, value as never)).toThrow(
+                new RangeError(
+                    `Write exceeds the supplied buffer: ${scalar.size} bytes at ${offset} of ${length}`
+                )
+            );
+        }
+
+        expect(new Uint8Array(bytes.buffer)).toStrictEqual(expected);
+    }
+);
+
+it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
+    'should throw RangeError for an offset of %s, writing nothing',
+    offset => {
+        const bytes = new Uint8Array(8);
+
+        expect(() => writeUint8(bytes, offset, 1)).toThrow(RangeError);
+        expect(() => writeFloat32(bytes, offset, 1)).toThrow(RangeError);
+        expect(() => writeUint64(bytes, offset, 1n)).toThrow(RangeError);
+        expect(bytes).toStrictEqual(new Uint8Array(8));
+    }
+);
+
+it('should convert a value once, as DataView does, and throw its TypeError for a number as an int64', () => {
+    const bytes = new Uint8Array(8);
+    let conversions = 0;
+    const value = {
+        valueOf(): number {
+            conversions++;
+            return 0x1234_5678;
+        }
+    };
+
+    writeUint32(bytes, 0, value as unknown as number);
+    expect(conversions).toBe(1);
+    expect(readUint32(bytes, 0)).toBe(0x1234_5678);
+
+    expect(() => writeInt64(bytes, 0, 1 as unknown as bigint)).toThrow(TypeError);
+    expect(readUint32(bytes, 0)).toBe(0x1234_5678);
+});

@@ -5,7 +5,9 @@ import { ByteBuffer } from './byteBuffer.ts';
  * offsets, length prefixes or padding, so a struct is read back at fixed
  * offsets. `bytes()` rewinds and returns a copy, so one writer can be reused for
  * every struct with the same layout. A struct whose write threw never reaches
- * `bytes()`, so a shared writer calls `reset()` before each struct.
+ * `bytes()`, so a shared writer calls `reset()` before each struct. A struct
+ * written while another is, such as from a getter of one of its values,
+ * mustn't share its writer, whose `reset()` would write over the other.
  */
 export class StructWriter {
     readonly #buffer: ByteBuffer;

@@ -46,7 +46,7 @@ fn assert_declares(target: &str, declarations: &[&str]) {
 }
 
 #[test]
-fn typescript_renames_object_members_then_and_the_writer_of_structs() {
+fn typescript_renames_object_members_and_then() {
     assert_declares(
         "typescript",
         &[
@@ -54,7 +54,7 @@ fn typescript_renames_object_members_then_and_the_writer_of_structs() {
             "    toString_(): number {",
             "    then_(): number {",
             "    constructor_: number;",
-            "    readonly #writer_: number;",
+            "    readonly #writer: number;",
             "    serialize(): number {",
             "    new(): number {",
         ],
@@ -62,7 +62,7 @@ fn typescript_renames_object_members_then_and_the_writer_of_structs() {
 }
 
 #[test]
-fn javascript_renames_object_members_then_and_the_writer_of_structs() {
+fn javascript_renames_object_members_and_then() {
     assert_declares(
         "javascript",
         &[
@@ -70,7 +70,7 @@ fn javascript_renames_object_members_then_and_the_writer_of_structs() {
             "    toString_() {",
             "    then_() {",
             " * @property {number} constructor_",
-            "    #writer_;",
+            "    #writer;",
             "    serialize() {",
         ],
     );

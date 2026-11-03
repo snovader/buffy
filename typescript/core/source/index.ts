@@ -15,5 +15,15 @@ export {
     readUint8,
     readUint16,
     readUint32,
-    readUint64
+    readUint64,
+    writeFloat32,
+    writeFloat64,
+    writeInt8,
+    writeInt16,
+    writeInt32,
+    writeInt64,
+    writeUint8,
+    writeUint16,
+    writeUint32,
+    writeUint64
 } from './utils.ts';
