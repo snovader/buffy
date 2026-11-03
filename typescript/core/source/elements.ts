@@ -8,14 +8,18 @@ import { toUint8Array } from './converters.ts';
 import { byteOrderSwap } from './endianness.ts';
 import type { TypedArray } from './types.ts';
 
-// Writes the elements of an array, little-endian, at `position` in `bytes`,
-// which must hold them: ByteBuffer and TableWriter write every array with
-// these, after its count, which they write once they've checked that the
-// elements fit. The view that an aligned array is written through starts at
-// `position` in the bytes' buffer, and reaches past `bytes` when they're only
-// part of it and too short. A typed array of the element type is copied as
-// bytes, and any other array-like converted as the typed array's constructor
-// would.
+// Writes `count` elements of an array, little-endian, at `position` in
+// `bytes`: ByteBuffer and TableWriter write every array with these, once
+// they've checked that `count` elements fit, and then write its count. A
+// typed array of the element type is copied as bytes, and any other
+// array-like converted as the typed array's constructor would.
+//
+// The count is the length that the caller checked, rather than read again:
+// the view that an aligned array is written through starts at `position` in
+// the bytes' buffer, so a length that grew in between would reach past bytes
+// that are part of a larger buffer. A longer array-like throws a RangeError
+// before any element is written, as a typed array's set() throws for a longer
+// source.
 //
 // Each is written out for one element type, so that each conversion and
 // typed array construction sees one type and stays monomorphic, whatever
@@ -28,34 +32,38 @@ import type { TypedArray } from './types.ts';
 export function setInt8Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Int8Array
+    values: ArrayLike<number> | Int8Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
-    new Int8Array(bytes.buffer, byteOffset, values.length).set(values);
+    new Int8Array(bytes.buffer, byteOffset, count).set(values);
 }
 
 export function setUint8Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Uint8Array
+    values: ArrayLike<number> | Uint8Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
-    new Uint8Array(bytes.buffer, byteOffset, values.length).set(values);
+    new Uint8Array(bytes.buffer, byteOffset, count).set(values);
 }
 
 export function setInt16Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Int16Array
+    values: ArrayLike<number> | Int16Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
-        new Int16Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Int16Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Int16Array ? values : new Int16Array(values)
         );
     }
@@ -64,16 +72,18 @@ export function setInt16Elements(
 export function setUint16Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Uint16Array
+    values: ArrayLike<number> | Uint16Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
-        new Uint16Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Uint16Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Uint16Array ? values : new Uint16Array(values)
         );
     }
@@ -82,16 +92,18 @@ export function setUint16Elements(
 export function setInt32Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Int32Array
+    values: ArrayLike<number> | Int32Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-        new Int32Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Int32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Int32Array ? values : new Int32Array(values)
         );
     }
@@ -100,16 +112,18 @@ export function setInt32Elements(
 export function setUint32Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Uint32Array
+    values: ArrayLike<number> | Uint32Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-        new Uint32Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Uint32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Uint32Array ? values : new Uint32Array(values)
         );
     }
@@ -118,16 +132,18 @@ export function setUint32Elements(
 export function setInt64Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<bigint> | BigInt64Array
+    values: ArrayLike<bigint> | BigInt64Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-        new BigInt64Array(bytes.buffer, byteOffset, values.length).set(values);
+        new BigInt64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof BigInt64Array ? values : new BigInt64Array(values)
         );
     }
@@ -136,16 +152,18 @@ export function setInt64Elements(
 export function setUint64Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<bigint> | BigUint64Array
+    values: ArrayLike<bigint> | BigUint64Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-        new BigUint64Array(bytes.buffer, byteOffset, values.length).set(values);
+        new BigUint64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof BigUint64Array
                 ? values
                 : new BigUint64Array(values)
@@ -156,16 +174,18 @@ export function setUint64Elements(
 export function setFloat32Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Float32Array
+    values: ArrayLike<number> | Float32Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
-        new Float32Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Float32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Float32Array ? values : new Float32Array(values)
         );
     }
@@ -174,16 +194,18 @@ export function setFloat32Elements(
 export function setFloat64Elements(
     bytes: Uint8Array,
     position: number,
-    values: ArrayLike<number> | Float64Array
+    values: ArrayLike<number> | Float64Array,
+    count: number
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
     if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
-        new Float64Array(bytes.buffer, byteOffset, values.length).set(values);
+        new Float64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
             bytes,
             position,
+            count,
             values instanceof Float64Array ? values : new Float64Array(values)
         );
     }
@@ -196,8 +218,15 @@ export function setFloat64Elements(
 function copyElements(
     bytes: Uint8Array,
     position: number,
+    count: number,
     values: TypedArray
 ): void {
+    if (values.length > count) {
+        throw new RangeError(
+            `An array of ${count} elements held ${values.length} when it was written`
+        );
+    }
+
     const destination = bytes.subarray(position, position + values.byteLength);
 
     if (IS_LITTLE_ENDIAN) {

@@ -1,7 +1,8 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, SIZEOF_8, SIZEOF_16, SIZEOF_32, TableBuilder, TableLayout } from 'tafla';
-import { LAYOUTS, MAX_VALUES } from './conformance/arbitraries.ts';
+import { growing } from './arrayLikes.ts';
+import { LAYOUTS, MAX_VALUES, SLICES, sliceOf } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
 import { layoutOf } from './conformance/tables.ts';
 
@@ -194,6 +195,56 @@ describe('writes past the end of the bytes', () => {
         }
     )('should throw a RangeError and write nothing', expectWritesWithin);
 });
+
+/** An array setter, and more values than the array it counts */
+const GROWN_ARRAYS = fc.oneof(
+    ...NUMBER_ARRAYS.map(([setter]) =>
+        fc.record({
+            setter: fc.constant(setter),
+            values: fc.array(fc.double(), { minLength: 1, maxLength: 8 })
+        })
+    ),
+    ...BIGINT_ARRAYS.map(([setter]) =>
+        fc.record({
+            setter: fc.constant(setter),
+            values: fc.array(fc.bigInt({ min: 0n, max: 2n ** 63n - 1n }), {
+                minLength: 1,
+                maxLength: 8
+            })
+        })
+    )
+);
+
+describe('arrays that grow after they are counted', () => {
+    // Room after the counted array often holds the grown one, so that the
+    // count, rather than the bytes, must bound the write. The slice's offset
+    // in its buffer covers aligned and unaligned arrays.
+    it.prop([GROWN_ARRAYS, fc.nat(), fc.nat({ max: 64 }), SLICES])(
+        'should throw a RangeError and write nothing in or past the bytes',
+        ({ setter, values }, cut, room, slice) => {
+            const counted = values.slice(0, cut % values.length);
+            const length = 4 + counted.length * ELEMENT_SIZES[setter] + room;
+            const bytes = sliceOf(new Uint8Array(length), slice);
+            const buffer = new ByteBuffer(bytes);
+            const before = new Uint8Array(bytes.buffer.slice(0));
+
+            expect(() =>
+                setArray(buffer, setter, growing<number | bigint>(values, counted.length))
+            ).toThrow(RangeError);
+            expect(new Uint8Array(bytes.buffer)).toStrictEqual(before);
+
+            // The buffer is where it was, and writes the array as it was counted
+            const expected = new Uint8Array(length);
+            setArray(new ByteBuffer(expected), setter, counted);
+            setArray(buffer, setter, counted);
+            expect(bytes).toStrictEqual(expected);
+        }
+    );
+});
+
+function setArray(buffer: ByteBuffer, setter: Write['setter'], values: ArrayLike<unknown>): void {
+    (buffer[setter] as (values: ArrayLike<unknown>) => void).call(buffer, values);
+}
 
 /**
  * Applies writes to a ByteBuffer of `length` bytes, at the start of a larger

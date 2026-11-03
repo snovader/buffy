@@ -1,7 +1,9 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { SIZEOF_8, SIZEOF_16, TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
+import { growing } from './arrayLikes.ts';
 import {
+    ARRAY_FIELDS,
     FIELDS,
     fitsItsLayout,
     MAX_VALUES,
@@ -10,7 +12,9 @@ import {
     tables
 } from './conformance/arbitraries.ts';
 import {
+    type ArrayField,
     elementTypeOf,
+    fromJsonNumber,
     type FieldDescription,
     isArrayField,
     type OffsetSize,
@@ -294,6 +298,43 @@ describe('bytes that are part of a larger buffer', () => {
     });
 });
 
+describe('arrays that grow after they are counted', () => {
+    // Bytes whose offset in their buffer covers aligned and unaligned arrays
+    it.prop([ARRAY_FIELDS, fc.nat(), fc.constantFrom(...([1, 2, 4] as const)), SLICES])(
+        'should throw RangeError and write nothing in or past the bytes, leaving the writer where it was',
+        (field, cut, offsetSize, slice) => {
+            fc.pre(field.value.length > 0);
+            const counted = { ...field, value: field.value.slice(0, cut % field.value.length) };
+            const table: TableDescription = {
+                layout: { sized: false, versioned: false, offsetSize },
+                fields: [counted]
+            };
+            fc.pre(fitsItsLayout(table));
+
+            const expected = writeTable(table);
+            const bytes = sliceOf(new Uint8Array(expected.length), slice);
+            const writer = new TableWriter(bytes, 1, TableLayout.create({ offsetSize }));
+            const before = new Uint8Array(bytes.buffer.slice(0));
+
+            const grown = growing(valuesOf(field), counted.value.length);
+            expect(() => setArray(writer, field, grown)).toThrow(RangeError);
+            expect(new Uint8Array(bytes.buffer)).toStrictEqual(before);
+
+            setArray(writer, counted, valuesOf(counted));
+            expect(writer.bytes()).toStrictEqual(expected);
+        }
+    );
+
+    it('should throw RangeError for an array-like whose length grows past the bytes', () => {
+        const buffer = new Uint8Array(24).fill(99);
+        const writer = new TableWriter(buffer.subarray(0, 9), 1);
+        const values = growing([42, 43, 44, 45], 1);
+
+        expect(() => writer.setUint8Array(0, values)).toThrow(RangeError);
+        expect(buffer.subarray(4)).toStrictEqual(new Uint8Array(20).fill(99));
+    });
+});
+
 describe('fields that differ from those sized', () => {
     it('should throw RangeError for an array longer than the one sized, and write none of it', () => {
         const sizer = new TableSizer(2);
@@ -338,6 +379,29 @@ const LAYOUT_8 = { sized: false, versioned: false, offsetSize: 1 } as const;
 /** A uint8[] of `length` bytes */
 function bytesField(length: number): FieldDescription {
     return { type: 'uint8[]', value: new Array<number>(length).fill(0) };
+}
+
+/** The values of an array field, as its setter takes them */
+function valuesOf({ type, value }: ArrayField): Array<number | bigint> {
+    return type === 'int64[]' || type === 'uint64[]'
+        ? value.map(element => BigInt(element))
+        : value.map(fromJsonNumber);
+}
+
+/** Writes an array field, field 0, with its type's setter */
+function setArray(
+    writer: TableWriter,
+    { type }: ArrayField,
+    values: ArrayLike<number | bigint>
+): void {
+    const element = elementTypeOf(type);
+    const setter = `set${element[0].toUpperCase()}${element.slice(1)}Array`;
+
+    (writer[setter as keyof TableWriter] as (index: number, values: unknown) => void).call(
+        writer,
+        0,
+        values
+    );
 }
 
 /** The bytes of the buffer before and after `bytes` */

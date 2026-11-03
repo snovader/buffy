@@ -296,7 +296,9 @@ export class TableSizer {
  * that the sizer counted, throws a `RangeError` and leaves the writer where
  * it was, without writing any of the field: its offset, its count or length,
  * or its values. Only a string, whose UTF-8 length is known once it's
- * written, has then written what fits of it after the position.
+ * written, has then written what fits of it after the position. An array is
+ * written as long as its `length` was when the setter read it, and one that
+ * has grown by the time its elements are written throws the same way.
  *
  * Typed arrays of a field's element type are copied as bytes; any other
  * array-like, such as a `number[]` or a typed array of another type, is
@@ -488,26 +490,26 @@ export class TableWriter {
 
     setInt8Array(index: number, values: ArrayLike<number> | Int8Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_8, SIZEOF_8);
+        const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
 
-        setInt8Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_8;
+        setInt8Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_8);
     }
 
     setUint8Array(index: number, values: ArrayLike<number> | Uint8Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_8, SIZEOF_8);
+        const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
 
-        setUint8Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_8;
+        setUint8Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_8);
     }
 
     setInt16Array(index: number, values: ArrayLike<number> | Int16Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_16, SIZEOF_16);
+        const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
 
-        setInt16Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_16;
+        setInt16Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_16);
     }
 
     setUint16Array(
@@ -515,18 +517,18 @@ export class TableWriter {
         values: ArrayLike<number> | Uint16Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_16, SIZEOF_16);
+        const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
 
-        setUint16Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_16;
+        setUint16Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_16);
     }
 
     setInt32Array(index: number, values: ArrayLike<number> | Int32Array): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setInt32Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_32;
+        setInt32Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
     setUint32Array(
@@ -534,10 +536,10 @@ export class TableWriter {
         values: ArrayLike<number> | Uint32Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setUint32Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_32;
+        setUint32Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
     setInt64Array(
@@ -545,10 +547,10 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigInt64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setInt64Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_64;
+        setInt64Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
     setUint64Array(
@@ -556,10 +558,10 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigUint64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setUint64Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_64;
+        setUint64Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
     setFloat32Array(
@@ -567,10 +569,10 @@ export class TableWriter {
         values: ArrayLike<number> | Float32Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setFloat32Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_32;
+        setFloat32Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
     setFloat64Array(
@@ -578,10 +580,10 @@ export class TableWriter {
         values: ArrayLike<number> | Float64Array
     ): void {
         const count = values.length;
-        this.#startArray(index, count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setFloat64Elements(this.#bytes, this.#position, values);
-        this.#position += count * SIZEOF_64;
+        setFloat64Elements(this.#bytes, elements, values, count);
+        this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
@@ -623,10 +625,10 @@ export class TableWriter {
         alignment: ElementSize
     ): void {
         const count = structCount(bytes.length, size);
-        this.#startArray(index, count, size, alignment);
+        const elements = this.#arrayElements(count, size, alignment);
 
-        this.#bytes.set(bytes, this.#position);
-        this.#position += bytes.length;
+        this.#bytes.set(bytes, elements);
+        this.#endArray(index, count, elements, bytes.length);
     }
 
     /**
@@ -668,23 +670,36 @@ export class TableWriter {
     }
 
     /**
-     * Pads the array so that its elements, after the count, are aligned, and
-     * writes its offset and count, once they and its elements fit
+     * Where an array's elements go, after the padding that aligns them and
+     * its count, once its count and its elements fit. It writes nothing, so
+     * that elements that throw leave the writer where it was.
      */
-    #startArray(
-        index: number,
+    #arrayElements(
         count: number,
         elementSize: number,
         alignment: ElementSize
-    ): void {
+    ): number {
         const start = this.#position + this.#size;
-        const before = padding(start - this.#table, alignment);
-        assertFits(this.#bytes, start + before + count * elementSize);
+        const elements = start + padding(start - this.#table, alignment);
+        assertFits(this.#bytes, elements + count * elementSize);
 
-        this.#position += before;
+        return elements;
+    }
+
+    /**
+     * Writes the offset and count of an array whose elements were written
+     * at `elements`, and moves past them
+     */
+    #endArray(
+        index: number,
+        count: number,
+        elements: number,
+        byteLength: number
+    ): void {
+        this.#position = elements - this.#size;
         this.#setOffset(index);
         this.#setLength(this.#position, count);
-        this.#position += this.#size;
+        this.#position = elements + byteLength;
     }
 
     #setOffset(index: number): void {
