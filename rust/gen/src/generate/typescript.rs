@@ -20,9 +20,8 @@ const STYLE: Style = Style {
 
 /// Members that classes define or inherit, which names take a `_` after: the
 /// constructor and the other methods of `Object.prototype`, which a getter
-/// would replace, and the writer that structs keep among the private names of
-/// their fields
-const MEMBERS: [&str; 8] = [
+/// would replace
+const MEMBERS: [&str; 7] = [
     "constructor",
     "hasOwnProperty",
     "isPrototypeOf",
@@ -30,7 +29,6 @@ const MEMBERS: [&str; 8] = [
     "toLocaleString",
     "toString",
     "valueOf",
-    "writer",
 ];
 
 pub fn generate(
@@ -103,7 +101,8 @@ impl Generator<'_> {
             )
         });
 
-        let readers = self.struct_readers();
+        let readers = self.struct_scalar_functions("read");
+        let writers = self.struct_scalar_functions("write");
 
         // (name, whether it's only a type here)
         let mut names = Vec::new();
@@ -127,6 +126,7 @@ impl Generator<'_> {
         if has_nested {
             names.push(("TableWriter", true));
         }
+        names.extend(writers.iter().map(|writer| (writer.as_str(), false)));
 
         let mut values = Vec::new();
         let mut types = Vec::new();
@@ -165,9 +165,10 @@ impl Generator<'_> {
         }
     }
 
-    /// The functions that read the scalars of structs, such as `readUint32`,
-    /// in the order that the runtime exports them
-    fn struct_readers(&self) -> Vec<String> {
+    /// The functions that read or write the scalars of structs, such as
+    /// `readUint32` or `writeUint32`, in the order that the runtime exports
+    /// them
+    fn struct_scalar_functions(&self, verb: &str) -> Vec<String> {
         let mut scalars: Vec<Scalar> = Scalar::ALL
             .into_iter()
             .filter(|&scalar| {
@@ -190,7 +191,7 @@ impl Generator<'_> {
 
         scalars
             .into_iter()
-            .map(|scalar| format!("read{}", scalar_method(scalar)))
+            .map(|scalar| format!("{verb}{}", scalar_method(scalar)))
             .collect()
     }
 
@@ -443,16 +444,6 @@ impl Generator<'_> {
             self.static_readonly()
         ));
         writer.blank();
-        writer.statement(
-            &STYLE,
-            &format!("{}#writer = ", self.static_readonly()),
-            &call(
-                "new StructWriter",
-                vec![text(format!("new Uint8Array({name}.SIZE)"))],
-            ),
-            ";",
-        );
-        writer.blank();
         for field in &definition.fields {
             self.private_field(
                 writer,
@@ -482,11 +473,7 @@ impl Generator<'_> {
         // ByteBuffer and its DataView, which took five times as long
         let mut offset = 0;
         for field in &definition.fields {
-            let position = if offset == 0 {
-                text("offset")
-            } else {
-                text(format!("offset + {offset}"))
-            };
+            let position = struct_position(offset);
             let (read, size) = match field.field_type {
                 FieldType::Scalar(scalar) => (
                     call(
@@ -523,18 +510,22 @@ impl Generator<'_> {
                 "@returns {Uint8Array}".to_owned(),
             ],
         );
-        writer.open(format!(
-            "static serialize(fields{}){} {{",
-            self.annotation(&format!("{name}Fields")),
-            self.annotation("Uint8Array")
-        ));
-        writer.line(format!("const writer = {name}.#writer;"));
-        // The writer is shared, and a previous call whose value threw, such
-        // as a number for an int64, left it within that struct
-        writer.line("writer.reset();");
-        writer.line(format!("{name}.write(writer, fields);"));
+        // Each call writes into new bytes with the runtime's write functions,
+        // which it returns, rather than with a StructWriter that every call
+        // shares, whose bytes it would copy. A call from within another, from
+        // a getter of its fields or a valueOf() that a write converts, then
+        // writes bytes of its own. In Node 26, writing the comparison suites'
+        // Sample took 31 ns so, and 41 ns with the shared writer.
+        self.signature(
+            writer,
+            "static serialize",
+            &[("fields", format!("{name}Fields"))],
+            "Uint8Array",
+        );
+        writer.line(format!("const bytes = new Uint8Array({name}.SIZE);"));
+        writer.line(format!("{name}.writeAt(bytes, 0, fields);"));
         writer.blank();
-        writer.line("return writer.bytes();");
+        writer.line("return bytes;");
         writer.close("}");
         writer.blank();
 
@@ -548,11 +539,16 @@ impl Generator<'_> {
                 "@returns {Uint8Array}".to_owned(),
             ],
         );
-        writer.open(format!(
-            "static serializeArray(items{}){} {{",
-            self.annotation(&format!("readonly {name}Fields[]")),
-            self.annotation("Uint8Array")
-        ));
+        // A StructWriter's DataView writes each scalar into the bytes of an
+        // array, which lie outside V8's heap, faster than the write functions,
+        // which check each scalar's bounds themselves: in Node 26, 100 Triples
+        // took 780 ns so, and 1.3 µs with the write functions
+        self.signature(
+            writer,
+            "static serializeArray",
+            &[("items", format!("readonly {name}Fields[]"))],
+            "Uint8Array",
+        );
         writer.line(format!(
             "const bytes = new Uint8Array(items.length * {name}.SIZE);"
         ));
@@ -574,12 +570,15 @@ impl Generator<'_> {
                 "@returns {void}".to_owned(),
             ],
         );
-        writer.open(format!(
-            "static write(writer{}, fields{}){} {{",
-            self.annotation("StructWriter"),
-            self.annotation(&format!("{name}Fields")),
-            self.annotation("void")
-        ));
+        self.signature(
+            writer,
+            "static write",
+            &[
+                ("writer", "StructWriter".to_owned()),
+                ("fields", format!("{name}Fields")),
+            ],
+            "void",
+        );
         for field in &definition.fields {
             let value = format!("fields.{}", identifier(&field.name));
             match field.field_type {
@@ -592,6 +591,57 @@ impl Generator<'_> {
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             }
+        }
+        writer.close("}");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &[format!("Writes a `{name}` at `offset` in `bytes`")],
+            &[
+                "@param {Uint8Array} bytes".to_owned(),
+                "@param {number} offset".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+                format!("@throws {{RangeError}} If `bytes` end before the `{name}` does."),
+            ],
+        );
+        self.signature(
+            writer,
+            "static writeAt",
+            &[
+                ("bytes", "Uint8Array".to_owned()),
+                ("offset", "number".to_owned()),
+                ("fields", format!("{name}Fields")),
+            ],
+            "void",
+        );
+        let mut offset = 0;
+        for field in &definition.fields {
+            let position = struct_position(offset);
+            let value = text(format!("fields.{}", identifier(&field.name)));
+            let (write, size) = match field.field_type {
+                FieldType::Scalar(scalar) => (
+                    call(
+                        format!("write{}", scalar_method(scalar)),
+                        vec![text("bytes"), position, value],
+                    ),
+                    usize::from(scalar.size()),
+                ),
+                FieldType::Struct(index) => {
+                    let inner = self.schema.definition(index);
+                    (
+                        call(
+                            format!("{}.writeAt", inner.name),
+                            vec![text("bytes"), position, value],
+                        ),
+                        inner.struct_layout().size,
+                    )
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            };
+            writer.statement(&STYLE, "", &write, ";");
+            offset += size;
         }
         writer.close("}");
 
@@ -1177,6 +1227,30 @@ impl Generator<'_> {
         }
     }
 
+    /// Opens a method of `parameters`, each a name and its type, broken over
+    /// lines when it's too long, as Biome breaks it
+    fn signature(
+        &self,
+        writer: &mut CodeWriter,
+        method: &str,
+        parameters: &[(&str, String)],
+        return_type: &str,
+    ) {
+        let parameters = parameters
+            .iter()
+            .map(|(name, parameter_type)| {
+                text(format!("{name}{}", self.annotation(parameter_type)))
+            })
+            .collect();
+        writer.statement(
+            &STYLE,
+            "",
+            &call(method, parameters),
+            &format!("{} {{", self.annotation(return_type)),
+        );
+        writer.indent();
+    }
+
     fn annotation(&self, type_name: &str) -> String {
         if self.typed {
             format!(": {type_name}")
@@ -1229,6 +1303,15 @@ fn layout_expression(layout: Layout) -> Expr {
         text("TableLayout.DEFAULT")
     } else {
         call("TableLayout.create", vec![Expr::Object(entries)])
+    }
+}
+
+/// Where a struct's field lies, `offset` bytes into the struct
+fn struct_position(offset: usize) -> Expr {
+    if offset == 0 {
+        text("offset")
+    } else {
+        text(format!("offset + {offset}"))
     }
 }
 

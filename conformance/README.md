@@ -195,7 +195,8 @@ It doesn't cover:
 - Strings with lone surrogates, which TypeScript and Java write as U+FFFD,
   Python rejects and Rust strings can't hold, and NaNs other than the quiet
   NaN.
-- `StructWriter`, which writes records without a table.
+- `StructWriter` and the write functions, which write records without a
+  table.
 
 ## Implementation notes
 

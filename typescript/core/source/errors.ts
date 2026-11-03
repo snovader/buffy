@@ -28,3 +28,14 @@ export function outOfRange(
         `Read exceeds the supplied buffer: ${byteLength} bytes at ${position} of ${available}`
     );
 }
+
+/** Builds the error for a write outside the supplied bytes */
+export function writeOutOfRange(
+    position: number,
+    byteLength: number,
+    available: number
+): RangeError {
+    return new RangeError(
+        `Write exceeds the supplied buffer: ${byteLength} bytes at ${position} of ${available}`
+    );
+}

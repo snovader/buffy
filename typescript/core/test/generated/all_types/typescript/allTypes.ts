@@ -15,7 +15,17 @@ import {
     StructWriter,
     TableLayout,
     TableSizer,
-    type TableWriter
+    type TableWriter,
+    writeFloat32,
+    writeFloat64,
+    writeInt8,
+    writeInt16,
+    writeInt32,
+    writeInt64,
+    writeUint8,
+    writeUint16,
+    writeUint32,
+    writeUint64
 } from 'tafla';
 
 /** A field of every scalar type */
@@ -859,8 +869,6 @@ export class Segment {
     /** The alignment of an array of `Segment`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    static readonly #writer = new StructWriter(new Uint8Array(Segment.SIZE));
-
     readonly #start: Point;
     readonly #end: Point;
 
@@ -877,11 +885,10 @@ export class Segment {
 
     /** Writes a `Segment` */
     static serialize(fields: SegmentFields): Uint8Array {
-        const writer = Segment.#writer;
-        writer.reset();
-        Segment.write(writer, fields);
+        const bytes = new Uint8Array(Segment.SIZE);
+        Segment.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /** Writes `Segment`s one after another, as an array of them holds them */
@@ -899,6 +906,20 @@ export class Segment {
     static write(writer: StructWriter, fields: SegmentFields): void {
         Point.write(writer, fields.start);
         Point.write(writer, fields.end);
+    }
+
+    /**
+     * Writes a `Segment` at `offset` in `bytes`
+     *
+     * @throws {RangeError} If `bytes` end before the `Segment` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: SegmentFields
+    ): void {
+        Point.writeAt(bytes, offset, fields.start);
+        Point.writeAt(bytes, offset + 8, fields.end);
     }
 
     start(): Point {
@@ -959,8 +980,6 @@ export class Point {
     /** The alignment of an array of `Point`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    static readonly #writer = new StructWriter(new Uint8Array(Point.SIZE));
-
     readonly #x: number;
     readonly #y: number;
 
@@ -977,11 +996,10 @@ export class Point {
 
     /** Writes a `Point` */
     static serialize(fields: PointFields): Uint8Array {
-        const writer = Point.#writer;
-        writer.reset();
-        Point.write(writer, fields);
+        const bytes = new Uint8Array(Point.SIZE);
+        Point.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /** Writes `Point`s one after another, as an array of them holds them */
@@ -999,6 +1017,20 @@ export class Point {
     static write(writer: StructWriter, fields: PointFields): void {
         writer.setFloat32(fields.x);
         writer.setFloat32(fields.y);
+    }
+
+    /**
+     * Writes a `Point` at `offset` in `bytes`
+     *
+     * @throws {RangeError} If `bytes` end before the `Point` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: PointFields
+    ): void {
+        writeFloat32(bytes, offset, fields.x);
+        writeFloat32(bytes, offset + 4, fields.y);
     }
 
     x(): number {
@@ -1060,8 +1092,6 @@ export class Packed {
     /** The alignment of an array of `Packed`: its largest scalar's size */
     static readonly ALIGNMENT = 8;
 
-    static readonly #writer = new StructWriter(new Uint8Array(Packed.SIZE));
-
     readonly #int8: number;
     readonly #uint8: number;
     readonly #int16: number;
@@ -1094,11 +1124,10 @@ export class Packed {
 
     /** Writes a `Packed` */
     static serialize(fields: PackedFields): Uint8Array {
-        const writer = Packed.#writer;
-        writer.reset();
-        Packed.write(writer, fields);
+        const bytes = new Uint8Array(Packed.SIZE);
+        Packed.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /** Writes `Packed`s one after another, as an array of them holds them */
@@ -1124,6 +1153,28 @@ export class Packed {
         writer.setUint64(fields.uint64);
         writer.setFloat32(fields.float32);
         writer.setFloat64(fields.float64);
+    }
+
+    /**
+     * Writes a `Packed` at `offset` in `bytes`
+     *
+     * @throws {RangeError} If `bytes` end before the `Packed` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: PackedFields
+    ): void {
+        writeInt8(bytes, offset, fields.int8);
+        writeUint8(bytes, offset + 1, fields.uint8);
+        writeInt16(bytes, offset + 2, fields.int16);
+        writeUint16(bytes, offset + 4, fields.uint16);
+        writeInt32(bytes, offset + 6, fields.int32);
+        writeUint32(bytes, offset + 10, fields.uint32);
+        writeInt64(bytes, offset + 14, fields.int64);
+        writeUint64(bytes, offset + 22, fields.uint64);
+        writeFloat32(bytes, offset + 30, fields.float32);
+        writeFloat64(bytes, offset + 34, fields.float64);
     }
 
     int8(): number {
@@ -1195,8 +1246,6 @@ export class Documented {
     /** The alignment of an array of `Documented`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    static readonly #writer = new StructWriter(new Uint8Array(Documented.SIZE));
-
     readonly #one: number;
     readonly #two: number;
     readonly #undocumented: number;
@@ -1215,11 +1264,10 @@ export class Documented {
 
     /** Writes a `Documented` */
     static serialize(fields: DocumentedFields): Uint8Array {
-        const writer = Documented.#writer;
-        writer.reset();
-        Documented.write(writer, fields);
+        const bytes = new Uint8Array(Documented.SIZE);
+        Documented.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /** Writes `Documented`s one after another, as an array of them holds them */
@@ -1238,6 +1286,21 @@ export class Documented {
         writer.setUint8(fields.one);
         writer.setUint16(fields.two);
         writer.setUint32(fields.undocumented);
+    }
+
+    /**
+     * Writes a `Documented` at `offset` in `bytes`
+     *
+     * @throws {RangeError} If `bytes` end before the `Documented` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: DocumentedFields
+    ): void {
+        writeUint8(bytes, offset, fields.one);
+        writeUint16(bytes, offset + 1, fields.two);
+        writeUint32(bytes, offset + 3, fields.undocumented);
     }
 
     /** A field's documentation, of one line */

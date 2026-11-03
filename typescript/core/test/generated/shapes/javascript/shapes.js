@@ -8,7 +8,9 @@ import {
     readUint32,
     StructWriter,
     TableLayout,
-    TableSizer
+    TableSizer,
+    writeFloat32,
+    writeUint32
 } from 'tafla';
 
 /** A small table of two coordinates, an identifier and a name */
@@ -547,8 +549,6 @@ export class Sample {
      */
     static ALIGNMENT = 4;
 
-    static #writer = new StructWriter(new Uint8Array(Sample.SIZE));
-
     /** @type {number} */
     #key;
     /** @type {number} */
@@ -577,11 +577,10 @@ export class Sample {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const writer = Sample.#writer;
-        writer.reset();
-        Sample.write(writer, fields);
+        const bytes = new Uint8Array(Sample.SIZE);
+        Sample.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /**
@@ -611,6 +610,21 @@ export class Sample {
         writer.setUint32(fields.key);
         writer.setFloat32(fields.a);
         writer.setFloat32(fields.b);
+    }
+
+    /**
+     * Writes a `Sample` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {SampleFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Sample` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeUint32(bytes, offset, fields.key);
+        writeFloat32(bytes, offset + 4, fields.a);
+        writeFloat32(bytes, offset + 8, fields.b);
     }
 
     /** @returns {number} */

@@ -19,7 +19,8 @@ tables and typed numeric columns, on generic table shapes:
   structs of their three float32s, 12 bytes each, written with `StructWriter`
   and `setStructArray()` and read with `getStructArray()` and `readFloat32()`.
 - **fixed-size record**: a uint32 and two float32s at fixed offsets, written
-  with `StructWriter` and read with `readUint32()`/`readFloat32()`.
+  with `StructWriter`, or into new bytes with `writeUint32()`/`writeFloat32()`
+  by tafla-gen's code, and read with `readUint32()`/`readFloat32()`.
 
 Each shape is serialized and deserialized, with columns read back as typed
 arrays. Documents are also serialized from `number[]` columns, and a column is
@@ -139,8 +140,10 @@ seconds. Other processes kept the 1-minute load average at 3.6 on the 10
 cores. A run 12 minutes earlier, with the same timings but another count of
 heap bytes, gave fastest times within 6% of these for tafla and tafla-gen, and
 within 10% for every codec, with a median difference of 1.6%. tafla and
-tafla-gen write the fixed-size record with the same code, an A/A pair: 0.038
-and 0.039 µs.
+tafla-gen then wrote the fixed-size record with the same code, an A/A pair:
+0.038 and 0.039 µs. tafla-gen's code has since written a struct into new bytes
+with the write functions, which took 0.030 µs against 0.040 µs on 2026-11-03,
+with the same Node, in a comparison of the generated code before and after.
 
 Fastest call in µs, and its ratio to tafla's:
 

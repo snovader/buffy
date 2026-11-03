@@ -8,7 +8,9 @@ import {
     StructWriter,
     TableLayout,
     TableSizer,
-    type TableWriter
+    type TableWriter,
+    writeFloat32,
+    writeUint32
 } from 'tafla';
 
 /** A small table of two coordinates, an identifier and a name */
@@ -434,8 +436,6 @@ export class Sample {
     /** The alignment of an array of `Sample`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    static readonly #writer = new StructWriter(new Uint8Array(Sample.SIZE));
-
     readonly #key: number;
     readonly #a: number;
     readonly #b: number;
@@ -454,11 +454,10 @@ export class Sample {
 
     /** Writes a `Sample` */
     static serialize(fields: SampleFields): Uint8Array {
-        const writer = Sample.#writer;
-        writer.reset();
-        Sample.write(writer, fields);
+        const bytes = new Uint8Array(Sample.SIZE);
+        Sample.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /** Writes `Sample`s one after another, as an array of them holds them */
@@ -477,6 +476,21 @@ export class Sample {
         writer.setUint32(fields.key);
         writer.setFloat32(fields.a);
         writer.setFloat32(fields.b);
+    }
+
+    /**
+     * Writes a `Sample` at `offset` in `bytes`
+     *
+     * @throws {RangeError} If `bytes` end before the `Sample` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: SampleFields
+    ): void {
+        writeUint32(bytes, offset, fields.key);
+        writeFloat32(bytes, offset + 4, fields.a);
+        writeFloat32(bytes, offset + 8, fields.b);
     }
 
     key(): number {

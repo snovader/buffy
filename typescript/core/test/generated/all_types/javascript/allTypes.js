@@ -15,7 +15,17 @@ import {
     readUint64,
     StructWriter,
     TableLayout,
-    TableSizer
+    TableSizer,
+    writeFloat32,
+    writeFloat64,
+    writeInt8,
+    writeInt16,
+    writeInt32,
+    writeInt64,
+    writeUint8,
+    writeUint16,
+    writeUint32,
+    writeUint64
 } from 'tafla';
 
 /** A field of every scalar type */
@@ -1059,8 +1069,6 @@ export class Segment {
      */
     static ALIGNMENT = 4;
 
-    static #writer = new StructWriter(new Uint8Array(Segment.SIZE));
-
     /** @type {Point} */
     #start;
     /** @type {Point} */
@@ -1086,11 +1094,10 @@ export class Segment {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const writer = Segment.#writer;
-        writer.reset();
-        Segment.write(writer, fields);
+        const bytes = new Uint8Array(Segment.SIZE);
+        Segment.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /**
@@ -1119,6 +1126,20 @@ export class Segment {
     static write(writer, fields) {
         Point.write(writer, fields.start);
         Point.write(writer, fields.end);
+    }
+
+    /**
+     * Writes a `Segment` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {SegmentFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Segment` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        Point.writeAt(bytes, offset, fields.start);
+        Point.writeAt(bytes, offset + 8, fields.end);
     }
 
     /** @returns {Point} */
@@ -1193,8 +1214,6 @@ export class Point {
      */
     static ALIGNMENT = 4;
 
-    static #writer = new StructWriter(new Uint8Array(Point.SIZE));
-
     /** @type {number} */
     #x;
     /** @type {number} */
@@ -1220,11 +1239,10 @@ export class Point {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const writer = Point.#writer;
-        writer.reset();
-        Point.write(writer, fields);
+        const bytes = new Uint8Array(Point.SIZE);
+        Point.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /**
@@ -1253,6 +1271,20 @@ export class Point {
     static write(writer, fields) {
         writer.setFloat32(fields.x);
         writer.setFloat32(fields.y);
+    }
+
+    /**
+     * Writes a `Point` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {PointFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Point` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeFloat32(bytes, offset, fields.x);
+        writeFloat32(bytes, offset + 4, fields.y);
     }
 
     /** @returns {number} */
@@ -1328,8 +1360,6 @@ export class Packed {
      */
     static ALIGNMENT = 8;
 
-    static #writer = new StructWriter(new Uint8Array(Packed.SIZE));
-
     /** @type {number} */
     #int8;
     /** @type {number} */
@@ -1379,11 +1409,10 @@ export class Packed {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const writer = Packed.#writer;
-        writer.reset();
-        Packed.write(writer, fields);
+        const bytes = new Uint8Array(Packed.SIZE);
+        Packed.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /**
@@ -1420,6 +1449,28 @@ export class Packed {
         writer.setUint64(fields.uint64);
         writer.setFloat32(fields.float32);
         writer.setFloat64(fields.float64);
+    }
+
+    /**
+     * Writes a `Packed` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {PackedFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Packed` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeInt8(bytes, offset, fields.int8);
+        writeUint8(bytes, offset + 1, fields.uint8);
+        writeInt16(bytes, offset + 2, fields.int16);
+        writeUint16(bytes, offset + 4, fields.uint16);
+        writeInt32(bytes, offset + 6, fields.int32);
+        writeUint32(bytes, offset + 10, fields.uint32);
+        writeInt64(bytes, offset + 14, fields.int64);
+        writeUint64(bytes, offset + 22, fields.uint64);
+        writeFloat32(bytes, offset + 30, fields.float32);
+        writeFloat64(bytes, offset + 34, fields.float64);
     }
 
     /** @returns {number} */
@@ -1507,8 +1558,6 @@ export class Documented {
      */
     static ALIGNMENT = 4;
 
-    static #writer = new StructWriter(new Uint8Array(Documented.SIZE));
-
     /** @type {number} */
     #one;
     /** @type {number} */
@@ -1537,11 +1586,10 @@ export class Documented {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const writer = Documented.#writer;
-        writer.reset();
-        Documented.write(writer, fields);
+        const bytes = new Uint8Array(Documented.SIZE);
+        Documented.writeAt(bytes, 0, fields);
 
-        return writer.bytes();
+        return bytes;
     }
 
     /**
@@ -1571,6 +1619,21 @@ export class Documented {
         writer.setUint8(fields.one);
         writer.setUint16(fields.two);
         writer.setUint32(fields.undocumented);
+    }
+
+    /**
+     * Writes a `Documented` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {DocumentedFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Documented` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeUint8(bytes, offset, fields.one);
+        writeUint16(bytes, offset + 1, fields.two);
+        writeUint32(bytes, offset + 3, fields.undocumented);
     }
 
     /** @returns {number} A field's documentation, of one line */
