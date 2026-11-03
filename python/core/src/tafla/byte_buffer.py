@@ -5,7 +5,7 @@ from typing import Any, overload
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, from_little_endian, little_endian_bytes
-from .errors import DecodeError, out_of_range
+from .errors import DecodeError, describe_int
 from .layout import TableLayout
 from .structs import (
     float32,
@@ -43,7 +43,9 @@ class ByteBuffer:
     copies in the host's byte order on a big-endian host.
 
     Every read checks that it stays within the bytes and raises ``DecodeError``
-    otherwise. A write that doesn't fit in the bytes raises ``ValueError`` and
+    otherwise, at any position, however large. The bytes, and any other buffer
+    given as bytes, must be C-contiguous, and one that isn't raises
+    ``TypeError``. A write that doesn't fit in the bytes raises ``ValueError`` and
     writes nothing. So does an array, string or vector whose count, length or
     item ends are too large for the layout's ``offset_size``, which
     ``TableBuilder`` rejects before it writes a table. A scalar, offset or
@@ -69,7 +71,19 @@ class ByteBuffer:
     def __init__(
         self, bytes: Buffer, layout: TableLayout = TableLayout.DEFAULT
     ) -> None:
+        """Reads and writes ``bytes`` in ``layout``, which must be the layout
+        that the table was written in.
+
+        Raises ``TypeError`` if ``bytes`` isn't C-contiguous, such as a slice
+        with a step. Reads return views of the bytes, which a copy of them
+        wouldn't be.
+        """
+        # byte_view() inline, since its call made a constructor 10% slower,
+        # and every reader that tafla-gen generates constructs one
         view = memoryview(bytes)
+        if not view.c_contiguous:
+            raise _not_contiguous()
+
         self.__view = view if view.format == "B" and view.ndim == 1 else view.cast("B")
         self.__length = len(self.__view)
 
@@ -128,88 +142,89 @@ class ByteBuffer:
 
     # The scalar getters are written out, since a shared helper's call made
     # each read a quarter slower. struct checks the end and raises struct.error,
-    # which isn't a ValueError, and counts a negative position from the end,
-    # so both fall through to a DecodeError.
+    # which isn't a ValueError, raises OverflowError for a position too large
+    # for a C ssize_t, and counts a negative position from the end, so all
+    # three fall through to a DecodeError.
 
     def get_int8(self, position: int) -> int:
         try:
             if position >= 0:
                 return int8.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_8, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_8, self.__length)
 
     def get_uint8(self, position: int) -> int:
         try:
             if position >= 0:
                 return uint8.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_8, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_8, self.__length)
 
     def get_int16(self, position: int) -> int:
         try:
             if position >= 0:
                 return int16.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_16, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_16, self.__length)
 
     def get_uint16(self, position: int) -> int:
         try:
             if position >= 0:
                 return uint16.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_16, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_16, self.__length)
 
     def get_int32(self, position: int) -> int:
         try:
             if position >= 0:
                 return int32.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_32, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_32, self.__length)
 
     def get_uint32(self, position: int) -> int:
         try:
             if position >= 0:
                 return uint32.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_32, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_32, self.__length)
 
     def get_int64(self, position: int) -> int:
         try:
             if position >= 0:
                 return int64.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_64, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_64, self.__length)
 
     def get_uint64(self, position: int) -> int:
         try:
             if position >= 0:
                 return uint64.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_64, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_64, self.__length)
 
     def get_float32(self, position: int) -> float:
         try:
             if position >= 0:
                 return float32.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_32, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_32, self.__length)
 
     def get_float64(self, position: int) -> float:
         try:
             if position >= 0:
                 return float64.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, SIZEOF_64, self.__length)
+        raise DecodeError.out_of_range(position, SIZEOF_64, self.__length)
 
     def get_int8_array(self, position: int) -> memoryview[int]:
         """Reads the array at ``position``, as a view of the buffer."""
@@ -283,7 +298,7 @@ class ByteBuffer:
         whose scalars lie at fixed offsets from its start."""
         end = position + size
         if position < 0 or size < 0 or end > self.__length:
-            raise out_of_range(position, size, self.__length)
+            raise DecodeError.out_of_range(position, size, self.__length)
 
         return self.__view[position:end]
 
@@ -432,7 +447,7 @@ class ByteBuffer:
         Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
         whole number of structs.
         """
-        source = _byte_view(data)
+        source = byte_view(data)
         count = struct_count(len(source), size)
         self.__check_writable(self.__size + len(source))
         self.__check_size(count)
@@ -445,7 +460,7 @@ class ByteBuffer:
         struct."""
         # Checked and written inline, since TableBuilder writes every table
         # nested as bytes with it
-        source = _byte_view(bytes)
+        source = byte_view(bytes)
         end = self.__position + len(source)
         if end > self.__length:
             raise self.__overflow(len(source))
@@ -471,7 +486,7 @@ class ByteBuffer:
 
     def set_string(self, encoded: Buffer) -> None:
         """Writes a string encoded as UTF-8, after its length."""
-        source = _byte_view(encoded)
+        source = byte_view(encoded)
         self.__check_writable(self.__size + len(source))
         self.__check_size(len(source))
 
@@ -502,7 +517,8 @@ class ByteBuffer:
         count = self.__get_size(position)
         if not 0 <= index < count:
             raise IndexError(
-                f"Item {index} is outside the vector of {count} at {position}"
+                f"Item {describe_int(index)} is outside the vector of {count} "
+                f"at {position}"
             )
 
         if index == 0:
@@ -553,7 +569,7 @@ class ByteBuffer:
     def set_vector(self, vector: Sequence[Buffer]) -> None:
         """Writes the number of items, the end of each, counted from the
         vector's position, and then the items."""
-        sources = [_byte_view(item) for item in vector]
+        sources = [byte_view(item) for item in vector]
         # Item 0 starts after the count and the ends, and the last item ends
         # at the vector's end, which is the largest end
         first = self.__size * (1 + len(sources))
@@ -611,13 +627,13 @@ class ByteBuffer:
                 f"at {position + end}"
             )
 
-        return out_of_range(position + start, end - start, self.__length)
+        return DecodeError.out_of_range(position + start, end - start, self.__length)
 
     def __check_range(self, position: int, byte_length: int) -> int:
         """Returns ``position`` if ``byte_length`` bytes from it lie within the
         buffer, and raises ``DecodeError`` otherwise."""
         if position < 0 or position + byte_length > self.__length:
-            raise out_of_range(position, byte_length, self.__length)
+            raise DecodeError.out_of_range(position, byte_length, self.__length)
 
         return position
 
@@ -644,9 +660,9 @@ class ByteBuffer:
         try:
             if position >= 0:
                 return self.__size_struct.unpack_from(self.__view, position)[0]
-        except StructError:
+        except StructError, OverflowError:
             pass
-        raise out_of_range(position, self.__size, self.__length)
+        raise DecodeError.out_of_range(position, self.__size, self.__length)
 
     def __set_size(self, value: int) -> None:
         self.__pack(self.__size_struct, value)
@@ -660,7 +676,8 @@ def struct_count(byte_length: int, size: int) -> int:
     _check_struct_size(size)
     if byte_length % size != 0:
         raise ValueError(
-            f"{byte_length} bytes aren't a whole number of {size}-byte structs"
+            f"{byte_length} bytes aren't a whole number of "
+            f"{describe_int(size)}-byte structs"
         )
 
     return byte_length // size
@@ -668,10 +685,28 @@ def struct_count(byte_length: int, size: int) -> int:
 
 def _check_struct_size(size: int) -> None:
     if size < 1:
-        raise ValueError(f"A struct's size must be a positive integer, not {size}")
+        raise ValueError(
+            f"A struct's size must be a positive integer, not {describe_int(size)}"
+        )
 
 
-def _byte_view(buffer: Buffer) -> memoryview:
-    """Returns the bytes of any buffer, as a one-dimensional view"""
+def byte_view(buffer: Buffer) -> memoryview:
+    """Returns the bytes of a C-contiguous buffer, as a one-dimensional view.
+
+    Raises ``TypeError`` for a buffer that isn't C-contiguous, such as a slice
+    with a step, as ``memoryview.cast()`` does, and as ``bytearray`` does when
+    ``TableWriter`` appends it. A one-dimensional view of bytes needs no cast,
+    so it's checked here.
+    """
     view = memoryview(buffer)
+    if not view.c_contiguous:
+        raise _not_contiguous()
+
     return view if view.format == "B" and view.ndim == 1 else view.cast("B")
+
+
+def _not_contiguous() -> TypeError:
+    return TypeError(
+        "Can't view the bytes of a buffer that isn't C-contiguous, such as a "
+        "slice with a step"
+    )

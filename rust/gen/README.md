@@ -99,6 +99,11 @@ or read its tables, or a target couldn't generate its code:
   offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
   even within another struct. Arrays of strings aren't supported.
+- A definition's fields fit in a Java constructor, which takes at most 254
+  slots of parameters, since the generated Java reads a struct into a record
+  of its fields and writes a message or table from a record of them. A
+  `uint32`, `int64`, `uint64` or `float64` takes two slots, as a `long` or
+  `double`, and every other field one.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
 - A field can't take the name of the view of a vector or an array of structs
@@ -202,8 +207,10 @@ Field names that are keywords in a target take a `_` after them, such as
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
 `constructor_` and `toString_` in TypeScript, `serialize_` and `int_` in
-Python, `hashCode_` and `serialize_` in Java, and `new_` in Rust. `MEMBERS` in
-each target's generator lists them; other targets keep the name.
+Python, `hashCode_` and `serialize_` in Java, and `new_` in Rust. So does
+`then` in TypeScript and JavaScript, since a `then()` method would make a
+reader a thenable, which `await` calls and never settles. `MEMBERS` in each
+target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
 it: Biome for TypeScript and JavaScript, Ruff for Python and rustfmt for

@@ -5,6 +5,7 @@ from typing import Literal, overload
 from .byte_buffer import struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
+from .errors import describe_int
 from .layout import MAX_LENGTHS, TableLayout, header_length
 from .structs import (
     float32,
@@ -31,6 +32,12 @@ _LENGTHS: dict[AddressableSpace, Struct] = {
 # The zeros that pad a field to its alignment, by their number
 _PADDING = tuple(bytes(length) for length in range(SIZEOF_64))
 
+# What struct raises for a value or slot that it can't write: struct.error for
+# an integer out of range or a slot past the bytes, OverflowError for a float
+# too large for a float32, and for a slot beyond a C ssize_t, which
+# pack_into() raises as IndexError in Python 3.14
+_PACK_ERRORS = (StructError, OverflowError, IndexError)
+
 
 class TableWriter:
     """Writes a table forward, appending each field to its bytes as it's set,
@@ -45,7 +52,13 @@ class TableWriter:
     field's offset is written as the writer reaches the field. Arrays and nested
     tables are padded as ``TableBuilder`` pads them, so the two write the same
     bytes for the same fields, and convert arrays, strings and structs the same
-    way, with the same errors.
+    way, with the same errors: a struct that isn't a C-contiguous buffer raises
+    ``TypeError``.
+
+    The index of each field and the item of each end must be their own, as the
+    generated code passes them, since the writer doesn't check them: another
+    writes the offset or end into another slot of the bytes, or raises
+    ``ValueError`` where the bytes have no such slot.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
     them, without copying them. A table too long for the layout's
@@ -148,10 +161,9 @@ class TableWriter:
 
     # The scalar setters are written out, with the offset's write, since a
     # shared helper's call made writing a Point a fifth slower. struct raises
-    # struct.error, which isn't a ValueError, or OverflowError for a float too
-    # large for a float32, which __scalar_error() turns into ValueError, as
-    # ByteBuffer does. It's the offset that doesn't fit when the table is
-    # longer than its offset size addresses.
+    # _PACK_ERRORS, none of which is a ValueError, and __scalar_error() turns
+    # them into ValueError, as ByteBuffer does. It's the offset that doesn't
+    # fit when the table is longer than its offset size addresses.
 
     def set_int8(self, index: int, value: int) -> None:
         data = self.__data
@@ -159,7 +171,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += int8.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_uint8(self, index: int, value: int) -> None:
@@ -168,7 +180,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += uint8.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_int16(self, index: int, value: int) -> None:
@@ -177,7 +189,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += int16.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_uint16(self, index: int, value: int) -> None:
@@ -186,7 +198,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += uint16.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_int32(self, index: int, value: int) -> None:
@@ -195,7 +207,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += int32.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_uint32(self, index: int, value: int) -> None:
@@ -204,7 +216,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += uint32.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_int64(self, index: int, value: int) -> None:
@@ -213,7 +225,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += int64.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_uint64(self, index: int, value: int) -> None:
@@ -222,7 +234,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += uint64.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_float32(self, index: int, value: float) -> None:
@@ -231,7 +243,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += float32.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     def set_float64(self, index: int, value: float) -> None:
@@ -240,7 +252,7 @@ class TableWriter:
         try:
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
             data += float64.pack(value)
-        except (StructError, OverflowError) as error:
+        except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
 
     # Each array is converted as TableBuilder converts it: a contiguous buffer
@@ -338,8 +350,8 @@ class TableWriter:
             self.__length.pack_into(
                 data, vector + (item + 1) * self.__size, len(data) - vector
             )
-        except StructError as error:
-            raise self.__too_long() from error
+        except _PACK_ERRORS as error:
+            raise self.__slot_error(len(data) - vector, error) from error
 
     def __set_array(
         self,
@@ -374,8 +386,8 @@ class TableWriter:
             self.__length.pack_into(
                 data, self.__slots + index * self.__size, len(data) - self.__table
             )
-        except StructError as error:
-            raise self.__too_long() from error
+        except _PACK_ERRORS as error:
+            raise self.__slot_error(len(data) - self.__table, error) from error
 
     def __set_count(self, count: int) -> None:
         """Appends a count or length, as wide as the offsets"""
@@ -389,6 +401,17 @@ class TableWriter:
             return self.__too_long()
 
         return ValueError(f"Can't write {value!r} at {len(self.__data)}: {error}")
+
+    def __slot_error(self, value: int, error: Exception) -> ValueError:
+        """The error of an offset or item end that wasn't written: one too
+        large for the offset size, or one whose slot lies outside the bytes,
+        which only an index or item that isn't its own has"""
+        if value > self.__max_length:
+            return self.__too_long()
+
+        return ValueError(
+            f"Can't write {describe_int(value)} in a slot outside the table: {error}"
+        )
 
     def __too_long(self) -> ValueError:
         """The error of an offset, count or item end that doesn't fit in the

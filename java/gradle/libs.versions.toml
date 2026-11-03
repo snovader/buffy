@@ -19,6 +19,6 @@ protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 sbe-tool = "uk.co.real-logic:sbe-tool:1.41.0"
 
 [plugins]
-errorprone = { id = "net.ltgt.errorprone", version = "5.1.1" }
+errorprone = { id = "net.ltgt.errorprone", version = "5.2.0" }
 jmh = { id = "me.champeau.jmh", version = "0.7.4" }
 protobuf = { id = "com.google.protobuf", version = "0.10.0" }

@@ -23,6 +23,7 @@ from hypothesis.strategies import (
     data,
     integers,
     lists,
+    one_of,
     sampled_from,
     tuples,
 )
@@ -310,6 +311,18 @@ _GETTERS: dict[str, _Getter] = {
     "get_vector_offset": _last_vector_item,
 }
 
+# Positions and indices that a caller gives: around the bytes, around the
+# limits of the C ssize_t that struct takes positions as, of more digits than
+# Python converts to a string by default, and any
+_POSITIONS = one_of(
+    integers(-8, 72),
+    integers(2**63 - 16, 2**63 + 16),
+    integers(-(2**63) - 16, -(2**63) + 16),
+    integers(2**15000 - 16, 2**15000 + 16),
+    integers(-(2**15000) - 16, -(2**15000) + 16),
+    integers(),
+)
+
 
 class TestUntrustedBytes(unittest.TestCase):
     @given(tables(), data())
@@ -385,6 +398,35 @@ class TestUntrustedBytes(unittest.TestCase):
         reads: list[Callable[[], object]] = [buffer.get_size, read_value]
         if layout["versioned"]:
             reads.append(buffer.get_version)
+
+        for read in reads:
+            with suppress(DecodeError):
+                read()
+
+    @given(
+        binary(max_size=64),
+        LAYOUTS,
+        sampled_from(list(_GETTERS)),
+        _POSITIONS,
+        _POSITIONS,
+    )
+    def test_any_getter_at_any_position_reads_a_value_or_raises_decode_error(
+        self,
+        data: bytes,
+        layout: Description,
+        getter: str,
+        position: int,
+        index: int,
+    ) -> None:
+        """Positions and field indices come from the caller as well as from
+        the bytes, and may lie past any position that the bytes hold"""
+        buffer = ByteBuffer(data, layout_of(layout))
+
+        reads: list[Callable[[], object]] = [
+            partial(_GETTERS[getter], buffer, position),
+            partial(buffer.root_offset, index),
+            partial(buffer.field_offset, position, index),
+        ]
 
         for read in reads:
             with suppress(DecodeError):

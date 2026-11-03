@@ -1,7 +1,20 @@
+import sys
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 
 from tafla import ByteBuffer, DecodeError
+
+
+@contextmanager
+def _int_max_str_digits(limit: int) -> Generator[None]:
+    """Sets the most digits that Python converts an integer to or from"""
+    previous = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(limit)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(previous)
 
 
 class TestDecodeError(unittest.TestCase):
@@ -29,6 +42,74 @@ class TestDecodeError(unittest.TestCase):
                 self.assertRaisesRegex(DecodeError, "Read exceeds the supplied buffer"),
             ):
                 get()
+
+    def test_raises_at_positions_beyond_a_c_ssize_t_and_the_digit_limit(
+        self,
+    ) -> None:
+        """struct takes positions as a C ssize_t, and once raised OverflowError
+        for a larger one. Formatting a position of more digits than Python
+        converts, 4,300 by default, once raised ValueError."""
+        buffer = ByteBuffer(bytes(8))
+
+        reads: list[tuple[str, Callable[[int], object]]] = [
+            ("get_uint32", buffer.get_uint32),
+            ("get_float64", buffer.get_float64),
+            ("get_string", buffer.get_string),
+            ("get_int16_array", buffer.get_int16_array),
+            ("get_vector_offsets", buffer.get_vector_offsets),
+            ("root_offset", buffer.root_offset),
+            ("field_offset", lambda position: buffer.field_offset(position, 0)),
+            ("field_offset", lambda index: buffer.field_offset(0, index)),
+        ]
+
+        for position in [2**63, 2**100, -(2**100), 2**15000, -(2**15000)]:
+            for name, get in reads:
+                with (
+                    # Reports the bit length, which a failure can format
+                    self.subTest(read=name, bits=position.bit_length()),
+                    self.assertRaisesRegex(
+                        DecodeError, "Read exceeds the supplied buffer"
+                    ),
+                ):
+                    get(position)
+
+    def test_gives_positions_and_lengths_beyond_64_bits_by_their_bit_length(
+        self,
+    ) -> None:
+        """Whatever the digit limit, which callers can lower to 640"""
+        buffer = ByteBuffer(bytes(8))
+
+        cases: list[tuple[Callable[[], object], str]] = [
+            (
+                lambda: buffer.get_uint32(2**64 - 1),
+                "4 bytes at 18446744073709551615 of 8",
+            ),
+            (lambda: buffer.get_uint32(2**64), "4 bytes at <65-bit integer> of 8"),
+            (
+                lambda: buffer.get_uint32(-(2**64) + 1),
+                "4 bytes at -18446744073709551615 of 8",
+            ),
+            (
+                lambda: buffer.get_uint32(-(2**64)),
+                "4 bytes at <negative 65-bit integer> of 8",
+            ),
+            (
+                lambda: buffer.get_float64(2**15000),
+                "8 bytes at <15001-bit integer> of 8",
+            ),
+            (
+                lambda: buffer.get_struct(0, 2**15000),
+                "<15001-bit integer> bytes at 0 of 8",
+            ),
+        ]
+
+        with _int_max_str_digits(640):
+            for read, range_ in cases:
+                with (
+                    self.subTest(range=range_),
+                    self.assertRaisesRegex(DecodeError, f"Read exceeds .*: {range_}$"),
+                ):
+                    read()
 
     def test_raises_for_a_string_that_isnt_utf_8(self) -> None:
         cases = [

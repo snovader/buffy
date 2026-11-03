@@ -4,7 +4,7 @@ with tafla."""
 import unittest
 
 from hypothesis import given
-from hypothesis.strategies import binary, integers
+from hypothesis.strategies import binary, integers, one_of
 
 from tafla import DecodeError
 from tests.generated import SETTINGS
@@ -49,6 +49,9 @@ from tests.tables import build_table
 _OTHER_VERSIONS = integers(0, 0xFFFF_FFFF).filter(
     lambda version: version != DOCUMENT_VERSION
 )
+
+# Integers of more digits than Python converts to a string by default, 4,300
+_BEYOND_THE_DIGIT_LIMIT = integers(2**15000, 2**15000 + 16)
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -166,6 +169,14 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_document(Document(data)))
         assert_values_or_decode_error(lambda: read_item_list(ItemList(data)))
 
+    def test_rejects_data_that_isnt_c_contiguous_with_type_error(self) -> None:
+        """The readers read views of the data, which a copy of it wouldn't be"""
+        strided = memoryview(bytes(64))[::2]
+
+        for message in [Point, Document, ItemList]:
+            with self.subTest(message=message.__name__), self.assertRaises(TypeError):
+                message(strided)
+
 
 class TestSample(unittest.TestCase):
     @SETTINGS
@@ -199,9 +210,11 @@ class TestSample(unittest.TestCase):
             Sample.read(data, offset)
 
     # Struct.unpack_from() would read a negative offset from the end of the
-    # data, so Sample.read(data, -12) once read the last sample
+    # data, so Sample.read(data, -12) once read the last sample. Formatting
+    # one of more digits than Python converts to a string once raised
+    # ValueError.
     @SETTINGS
-    @given(samples, integers(1, 64))
+    @given(samples, one_of(integers(1, 64), _BEYOND_THE_DIGIT_LIMIT))
     def test_raises_decode_error_at_a_negative_offset(
         self, sample: Sample, distance: int
     ) -> None:
@@ -209,6 +222,29 @@ class TestSample(unittest.TestCase):
 
         with self.assertRaises(DecodeError):
             Sample.read(data, -distance)
+
+    # Struct.unpack_from() takes the offset as a C ssize_t, and raises
+    # OverflowError for a larger one
+    @SETTINGS
+    @given(
+        samples,
+        one_of(integers(min_value=2**63 - Sample.SIZE), _BEYOND_THE_DIGIT_LIMIT),
+    )
+    def test_raises_decode_error_at_an_offset_however_large(
+        self, sample: Sample, offset: int
+    ) -> None:
+        data = sample.serialize() * 4
+
+        with self.assertRaises(DecodeError):
+            Sample.read(data, offset)
+
+    def test_raises_type_error_for_data_that_isnt_c_contiguous(self) -> None:
+        strided = memoryview(Sample(1, 0.5, -0.5).serialize() * 2)[::2]
+
+        with self.assertRaises(TypeError):
+            Sample.read(strided)
+        with self.assertRaises(TypeError):
+            Sample.read_array(strided)
 
     def test_raises_value_error_for_a_value_that_doesnt_fit_its_field(self) -> None:
         for sample in [

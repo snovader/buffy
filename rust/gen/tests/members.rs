@@ -17,6 +17,7 @@ message Members {
     equals: uint8;
     read: uint8;
     write: uint8;
+    then: uint8;
 }
 
 struct Frame {
@@ -45,12 +46,13 @@ fn assert_declares(target: &str, declarations: &[&str]) {
 }
 
 #[test]
-fn typescript_renames_object_members() {
+fn typescript_renames_object_members_and_then() {
     assert_declares(
         "typescript",
         &[
             "    constructor_(): number {",
             "    toString_(): number {",
+            "    then_(): number {",
             "    constructor_: number;",
             "    readonly #writer: number;",
             "    serialize(): number {",
@@ -60,12 +62,13 @@ fn typescript_renames_object_members() {
 }
 
 #[test]
-fn javascript_renames_object_members() {
+fn javascript_renames_object_members_and_then() {
     assert_declares(
         "javascript",
         &[
             "    constructor_() {",
             "    toString_() {",
+            "    then_() {",
             " * @property {number} constructor_",
             "    #writer;",
             "    serialize() {",
@@ -87,6 +90,7 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
             "    serialize_: int\n",
             "    cls_: int\n",
             "    def constructor(self) -> int:",
+            "    def then(self) -> int:",
         ],
     );
 }
@@ -102,6 +106,7 @@ fn java_renames_object_methods_and_the_members_of_structs() {
             "    public short equals() {",
             "    public short builder() {",
             "    public short read() {",
+            "    public short then() {",
         ],
     );
 }
@@ -116,6 +121,7 @@ fn rust_renames_the_constructor_of_views() {
             "    pub fn serialize(&self) -> Result<u8, DecodeError> {",
             "    pub fn read(&self) -> Result<u8, DecodeError> {",
             "    pub serialize: u8,",
+            "    pub fn then(&self) -> Result<u8, DecodeError> {",
         ],
     );
 }

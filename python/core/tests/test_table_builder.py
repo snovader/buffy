@@ -172,6 +172,36 @@ class TestStructs(unittest.TestCase):
                     builder.bytes(), pack("<II", 4, 2) + b"\x01\x02\x03\x04"
                 )
 
+    def test_rejects_bytes_that_arent_c_contiguous_from_the_setter_and_stays_as_it_was(
+        self,
+    ) -> None:
+        setters: list[tuple[str, Callable[[TableBuilder, memoryview], None]]] = [
+            ("set_struct", TableBuilder.set_struct),
+            (
+                "set_struct_array",
+                lambda builder, data: builder.set_struct_array(data, 2, 2),
+            ),
+            ("set_table", TableBuilder.set_table),
+            ("set_vector", lambda builder, data: builder.set_vector([b"", data])),
+        ]
+        # A step makes a view of bytes, or of wider elements, that isn't
+        # C-contiguous
+        strided_views = [
+            memoryview(bytes(range(8)))[::2],
+            memoryview(array("h", range(8)))[::-2],
+        ]
+
+        for strided in strided_views:
+            for name, set_field in setters:
+                with self.subTest(setter=name, format=strided.format):
+                    builder = TableBuilder(1)
+
+                    with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
+                        set_field(builder, strided)
+
+                    builder.set_struct(b"\x01\x02")
+                    self.assertEqual(builder.bytes(), pack("<I", 4) + b"\x01\x02")
+
     def test_pads_an_array_of_structs_so_that_they_start_at_their_alignment(
         self,
     ) -> None:

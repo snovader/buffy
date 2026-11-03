@@ -20,12 +20,14 @@ const STYLE: Style = Style {
 
 /// Members that classes define or inherit, which names take a `_` after: the
 /// constructor and the other methods of `Object.prototype`, which a getter
-/// would replace
-const MEMBERS: [&str; 7] = [
+/// would replace, and `then`, which would make a reader a thenable that
+/// `await` and `Promise.resolve()` call and never settle
+const MEMBERS: [&str; 8] = [
     "constructor",
     "hasOwnProperty",
     "isPrototypeOf",
     "propertyIsEnumerable",
+    "then",
     "toLocaleString",
     "toString",
     "valueOf",
