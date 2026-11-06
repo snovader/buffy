@@ -15,17 +15,17 @@ tafla hasn't been released yet.
 
 ## Packages
 
-| Language   | Runtime                                           | Code generator           |
-| ---------- | ------------------------------------------------- | ------------------------ |
-| TypeScript | `tafla` on npm                                    | Not yet packaged         |
-| Python     | `tafla` on PyPI                                   | Not yet packaged         |
-| Java       | `io.github.snovader.tafla:tafla` on Maven Central | Not yet packaged         |
-| Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io |
+| Language   | Runtime                                           | Code generator                                        |
+| ---------- | ------------------------------------------------- | ----------------------------------------------------- |
+| TypeScript | `tafla` on npm                                    | `tafla-gen` on npm                                    |
+| Python     | `tafla` on PyPI                                   | `tafla-gen` on PyPI                                   |
+| Java       | `io.github.snovader.tafla:tafla` on Maven Central | `io.github.snovader.tafla:tafla-gen` on Maven Central |
+| Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io                              |
 
 A runtime writes and reads tables. The code generator compiles a schema of
 messages and tables into code that writes and reads them with a language's
-runtime. It's written in Rust, and also builds as a WebAssembly module, which
-packages for the other languages are to run.
+runtime. It's written in Rust, and the packages for the other languages run it
+as WebAssembly.
 
 ## Repository
 
