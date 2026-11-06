@@ -148,7 +148,7 @@ proptest! {
     }
 }
 
-const SHORT_OFFSET_SIZES: [OffsetSize; 2] = [OffsetSize::U8, OffsetSize::U16];
+const SHORT_OFFSET_SIZES: [OffsetSize; 2] = [OffsetSize::Uint8, OffsetSize::Uint16];
 
 /// Tables of the layouts that `layouts` generates whose nested tables a
 /// `TableWriter` writes in place
@@ -162,7 +162,7 @@ fn in_place_tables(
 /// Miri, only of 1-byte offsets, since writing 64 KiB takes it minutes.
 fn short_layouts() -> impl Strategy<Value = Layout> {
     let offset_sizes = if cfg!(miri) {
-        vec![OffsetSize::U8]
+        vec![OffsetSize::Uint8]
     } else {
         SHORT_OFFSET_SIZES.to_vec()
     };
@@ -178,7 +178,7 @@ fn unpadded_field() -> impl Strategy<Value = Field> {
         field.alignment() == Alignment::One && !matches!(field, Field::Table { .. })
     };
 
-    strategy::tables(strategy::layouts(Just(OffsetSize::U8)))
+    strategy::tables(strategy::layouts(Just(OffsetSize::Uint8)))
         .prop_filter_map("a table of padded fields", move |table| {
             table.fields.into_iter().find(unpadded)
         })
@@ -307,7 +307,7 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
     let nested = |fields| Nested {
         from: Source::Builder,
         table: Table {
-            layout: Layout::headerless(OffsetSize::U16),
+            layout: Layout::headerless(OffsetSize::Uint16),
             version: None,
             fields,
         },
@@ -316,7 +316,7 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
         layout: Layout {
             sized: true,
             versioned: true,
-            offset_size: OffsetSize::U16,
+            offset_size: OffsetSize::Uint16,
         },
         version: Some(7),
         fields: vec![
@@ -346,13 +346,13 @@ fn test_names_the_root_field_that_makes_the_table_too_long_with_the_length_after
     let item = Nested {
         from: Source::Builder,
         table: Table {
-            layout: Layout::headerless(OffsetSize::U8),
+            layout: Layout::headerless(OffsetSize::Uint8),
             version: None,
             fields: vec![Field::U8Array(vec![0; 100])],
         },
     };
     let table = Table {
-        layout: Layout::headerless(OffsetSize::U8),
+        layout: Layout::headerless(OffsetSize::Uint8),
         version: None,
         fields: vec![Field::U8(1), Field::Vector(vec![item; 3]), Field::U8(2)],
     };
@@ -360,7 +360,7 @@ fn test_names_the_root_field_that_makes_the_table_too_long_with_the_length_after
     let error = BuildError::TooLong {
         index: 1,
         length: 314,
-        offset_size: OffsetSize::U8,
+        offset_size: OffsetSize::Uint8,
     };
     assert_eq!(table.write(), Err(error));
     assert_eq!(table.to_bytes(), Err(error));
@@ -375,7 +375,7 @@ fn test_rejects_a_table_of_32_bit_offsets_past_4_gib_before_allocating_it() {
     let error = BuildError::TooLong {
         index: 0,
         length: 4_294_967_304,
-        offset_size: OffsetSize::U32,
+        offset_size: OffsetSize::Uint32,
     };
     assert_eq!(sizer.byte_length(), Err(error));
     assert_eq!(sizer.writer().unwrap_err(), error);
@@ -402,7 +402,7 @@ fn test_counts_lengths_past_any_usize_without_overflowing() {
         sizer.writer(),
         Err(BuildError::TooLong {
             index: 1,
-            offset_size: OffsetSize::U32,
+            offset_size: OffsetSize::Uint32,
             ..
         })
     ));
@@ -410,7 +410,7 @@ fn test_counts_lengths_past_any_usize_without_overflowing() {
 
 #[test]
 fn test_rejects_a_header_too_long_for_its_offsets_as_table_builder_does() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
+    for (offset_size, max) in [(OffsetSize::Uint8, 0xff), (OffsetSize::Uint16, 0xffff)] {
         let width = offset_size.bytes();
 
         for sized in [false, true] {
@@ -441,7 +441,7 @@ fn test_rejects_a_header_too_long_for_its_offsets_as_table_builder_does() {
 
 #[test]
 fn test_rejects_a_version_too_large_for_its_slot_as_table_builder_does() {
-    for (offset_size, version) in [(OffsetSize::U8, 0x100), (OffsetSize::U16, 0x1_0000)] {
+    for (offset_size, version) in [(OffsetSize::Uint8, 0x100), (OffsetSize::Uint16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
             .with_offset_size(offset_size)
             .versioned();

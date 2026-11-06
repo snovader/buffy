@@ -95,7 +95,7 @@ public final class TaflaCodec {
             var buffer = openDocument(bytes);
             var a = buffer.fieldOffset(buffer.rootOffset(3), 2);
 
-            // The elements follow their count, which is as wide as the layout's 32-bit offsets. An
+            // The elements follow their count, which is of the layout's offset type, uint32. An
             // int count makes this a counted loop, which C2 optimizes; a long one made summing 100
             // elements 2.8 times slower.
             var length = Math.toIntExact(buffer.getUint32(a));

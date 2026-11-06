@@ -21,7 +21,7 @@ import {
 import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
 import { TableLayout } from './layout.ts';
-import type { AddressableSpace, ElementSize } from './types.ts';
+import type { OffsetSize, ElementSize } from './types.ts';
 
 /**
  * Reads and writes within the supplied byte slice, in the table layout it was
@@ -43,8 +43,8 @@ export class ByteBuffer {
 
     readonly #sized: boolean;
     readonly #versioned: boolean;
-    /** The width of offsets, lengths and header slots */
-    readonly #size: AddressableSpace;
+    /** The offset size, the width of offsets, lengths and header slots */
+    readonly #size: OffsetSize;
     /** The byte length of the header slots before the root's field offsets */
     readonly #headerSize: number;
 

@@ -5,7 +5,7 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** 32-bit offsets, after the table's length */
+/** {@code uint32} offsets, after the table's length */
 public final class Offset32Sized {
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)

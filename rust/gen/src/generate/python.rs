@@ -997,7 +997,7 @@ fn layout_expression(layout: Layout) -> String {
     if layout.version.is_some() {
         arguments.push("versioned=True".to_owned());
     }
-    if layout.offset_size != OffsetSize::U32 {
+    if layout.offset_size != OffsetSize::Uint32 {
         arguments.push(format!("offset_size={}", layout.offset_size.bytes()));
     }
 

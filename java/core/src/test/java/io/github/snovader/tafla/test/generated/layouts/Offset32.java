@@ -5,7 +5,7 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** 32-bit offsets, the default, for tables of up to 4 GiB */
+/** {@code uint32} offsets, the default, for tables of up to 4 GiB */
 public final class Offset32 {
     private static final TableLayout LAYOUT = TableLayout.DEFAULT;
 

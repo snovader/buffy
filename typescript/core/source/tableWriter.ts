@@ -14,7 +14,7 @@ import {
 } from './elements.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
 import { assertCount, headerLength, maxLength, TableLayout } from './layout.ts';
-import type { AddressableSpace, ElementSize } from './types.ts';
+import type { OffsetSize, ElementSize } from './types.ts';
 
 /**
  * Counts the bytes of a table, so that a {@link TableWriter} can write it
@@ -34,8 +34,8 @@ export class TableSizer {
     readonly #layout: TableLayout;
     readonly #version: number | undefined;
     readonly #fields: number;
-    /** The width of offsets, lengths and header slots */
-    readonly #size: AddressableSpace;
+    /** The offset size, the width of offsets, lengths and header slots */
+    readonly #size: OffsetSize;
     /** The table's length so far, which is where the next field goes */
     #position: number;
     /** The start of the table being sized, which arrays are aligned from */
@@ -43,7 +43,7 @@ export class TableSizer {
 
     /**
      * @param fields - The number of fields that the table holds.
-     * @param layout - The table's header and offset width, which its readers
+     * @param layout - The table's header and offset size, which its readers
      * must use too.
      * @param version - The version that the writer writes to the header,
      * required when the layout is versioned.
@@ -314,8 +314,8 @@ export class TableWriter {
     // writing it as bytes took 140 ns in all. A vector of 100 tables of
     // scalars took 5-15% longer, which arrays of structs write faster anyway.
     readonly #bytes: Uint8Array;
-    /** The width of offsets, lengths and header slots */
-    readonly #size: AddressableSpace;
+    /** The offset size, the width of offsets, lengths and header slots */
+    readonly #size: OffsetSize;
     readonly #headerSize: number;
     /** Where the next field goes */
     #position: number;

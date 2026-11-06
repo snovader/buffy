@@ -29,7 +29,7 @@ const FIELD_NAMES: [&str; 24] = [
 
 /// The tokens of the schema language and some that aren't, for input that
 /// gets further into the parser and the checker than arbitrary text does
-const TOKENS: [&str; 38] = [
+const TOKENS: [&str; 39] = [
     "message",
     "table",
     "struct",
@@ -55,7 +55,8 @@ const TOKENS: [&str; 38] = [
     ",",
     "sized",
     "version",
-    "offset_size",
+    "offset_type",
+    "uint16",
     "8",
     "16",
     "32",
@@ -316,9 +317,9 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 
 /// A schema that the checker accepts, by construction: unique names, tables
 /// nested only in definitions before them, so that none contains itself,
-/// tables only in messages of 32-bit offsets, structs of scalars and of the
+/// tables only in messages of `uint32` offsets, structs of scalars and of the
 /// structs after them, which can share a struct, and versions that fit in
-/// their offsets. Of at most 5 definitions of at most 5 fields, a struct
+/// their offset type. Of at most 5 definitions of at most 5 fields, a struct
 /// takes at most 5^5 float64s, 25,000 bytes, within the 65,536 that a struct
 /// takes at most.
 #[derive(Debug)]
@@ -497,7 +498,7 @@ impl Schema {
                             version.index(usize::try_from(max).unwrap().saturating_add(1));
                         attributes.push(format!("version: {version}"));
                     }
-                    attributes.push(format!("offset_size: {offset_bits}"));
+                    attributes.push(format!("offset_type: uint{offset_bits}"));
                     let comma = if trailing_comma { "," } else { "" };
                     writeln!(
                         source,

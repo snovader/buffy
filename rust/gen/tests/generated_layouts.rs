@@ -82,8 +82,8 @@ macro_rules! message {
     };
 }
 
-const OFFSET_8: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
-const OFFSET_16: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U16);
+const OFFSET_8: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint8);
+const OFFSET_16: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint16);
 const OFFSET_32: TableLayout = TableLayout::DEFAULT;
 
 /// Every message, with its layout and version from its attributes
@@ -155,7 +155,7 @@ fn describe(owned: &Owned) -> Vec<Value> {
 }
 
 /// The most characters of a name and elements of `values`, in tables of up
-/// to about 600 bytes, so that those of 8-bit offsets are too long for their
+/// to about 600 bytes, so that those of `uint8` offsets are too long for their
 /// offsets about half the time
 const MAX_LENGTH: usize = 96;
 
@@ -186,7 +186,7 @@ proptest! {
         for message in messages() {
             let bytes = match (message.serialize)(&owned) {
                 Ok(bytes) => placement.place(&bytes),
-                // Too long for 8-bit offsets, as the next property checks
+                // Too long for `uint8` offsets, as the next property checks
                 Err(error) => {
                     let too_long = matches!(error, BuildError::TooLong { .. });
                     prop_assert!(too_long, "{}: {}", message.name, error);
@@ -267,9 +267,10 @@ proptest! {
     }
 }
 
-/// Names of every length from 64 bytes short of the limit of 8- and 16-bit
-/// offsets to past it, so that each message's longest table that fits is
-/// written as `TableBuilder` writes it, and those longer fail as it fails.
+/// Names of every length from 64 bytes short of the limit of `uint8` and
+/// `uint16` offsets to past it, so that each message's longest table that
+/// fits is written as `TableBuilder` writes it, and those longer fail as it
+/// fails.
 /// Each byte of the name makes the table a byte longer, or two with the
 /// padding of the array after it, so the longest is at the limit or a byte
 /// short of it.

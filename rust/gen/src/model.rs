@@ -43,27 +43,49 @@ pub struct Layout {
     pub offset_size: OffsetSize,
 }
 
+/// The width of a message's offsets, which its `offset_type` attribute names
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OffsetSize {
-    U8,
-    U16,
-    U32,
+    Uint8,
+    Uint16,
+    Uint32,
 }
 
 impl OffsetSize {
+    /// The offset type of a schema's `offset_type` attribute, or `None` for
+    /// any other name
+    pub fn from_type_name(name: &str) -> Option<Self> {
+        match name {
+            "uint8" => Some(Self::Uint8),
+            "uint16" => Some(Self::Uint16),
+            "uint32" => Some(Self::Uint32),
+            _ => None,
+        }
+    }
+
+    /// The offset type, as schemas name it: `uint8`, `uint16` or `uint32`
+    pub const fn type_name(self) -> &'static str {
+        match self {
+            Self::Uint8 => "uint8",
+            Self::Uint16 => "uint16",
+            Self::Uint32 => "uint32",
+        }
+    }
+
+    /// The offset size in bytes: 1, 2 or 4
     pub const fn bytes(self) -> u8 {
         match self {
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
+            Self::Uint8 => 1,
+            Self::Uint16 => 2,
+            Self::Uint32 => 4,
         }
     }
 
     pub const fn max_value(self) -> u64 {
         match self {
-            Self::U8 => 0xff,
-            Self::U16 => 0xffff,
-            Self::U32 => 0xffff_ffff,
+            Self::Uint8 => 0xff,
+            Self::Uint16 => 0xffff,
+            Self::Uint32 => 0xffff_ffff,
         }
     }
 }

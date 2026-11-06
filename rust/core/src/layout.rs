@@ -1,34 +1,38 @@
 use crate::BuildError;
 
-/// The width of a table's header slots, field offsets and length prefixes,
-/// which limits how long the table can be.
+/// A table's offset size: the width in bytes of its offset type, the unsigned
+/// integer type of its header slots, field offsets, counts, lengths and item
+/// ends, which limits how long the table can be.
+///
+/// Each variant is named after its offset type, as `SPEC.md` and schemas
+/// name it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OffsetSize {
-    /// One byte, for tables of up to 255 bytes
-    U8,
-    /// Two bytes, for tables of up to 65,535 bytes
-    U16,
-    /// Four bytes, for tables of up to 4 GiB
-    U32,
+    /// One byte, of `uint8` offsets, for tables of up to 255 bytes
+    Uint8,
+    /// Two bytes, of `uint16` offsets, for tables of up to 65,535 bytes
+    Uint16,
+    /// Four bytes, of `uint32` offsets, for tables of up to 4 GiB
+    Uint32,
 }
 
 impl OffsetSize {
-    /// The width in bytes: 1, 2 or 4
+    /// The offset size in bytes: 1, 2 or 4
     pub const fn bytes(self) -> usize {
         match self {
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
+            Self::Uint8 => 1,
+            Self::Uint16 => 2,
+            Self::Uint32 => 4,
         }
     }
 
-    /// The largest value that the width holds unsigned, which is also the
-    /// longest table that its offsets address
+    /// The largest value of the offset type, which is also the longest table
+    /// that its offsets address
     pub const fn max_value(self) -> u32 {
         match self {
-            Self::U8 => 0xff,
-            Self::U16 => 0xffff,
-            Self::U32 => 0xffff_ffff,
+            Self::Uint8 => 0xff,
+            Self::Uint16 => 0xffff,
+            Self::Uint32 => 0xffff_ffff,
         }
     }
 }
@@ -56,7 +60,7 @@ impl Alignment {
     }
 }
 
-/// The header and offset width of a table.
+/// The header and offset size of a table.
 ///
 /// A format creates its layout once and passes it to both the `TableBuilder`
 /// that writes the table and the `ByteBuffer` that reads it, so that the two
@@ -70,7 +74,7 @@ impl Alignment {
 /// use tafla::{OffsetSize, TableLayout};
 ///
 /// const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
-/// const FRAME: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
+/// const FRAME: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint8);
 ///
 /// assert_eq!(LAYOUT.header_size(), 8);
 /// assert_eq!(FRAME.header_size(), 0);
@@ -82,10 +86,10 @@ pub struct TableLayout<const VERSIONED: bool = false> {
 }
 
 impl TableLayout {
-    /// No header slots, and 32-bit offsets and lengths
+    /// No header slots, and offsets and lengths of the offset type `uint32`
     pub const DEFAULT: Self = Self {
         sized: false,
-        offset_size: OffsetSize::U32,
+        offset_size: OffsetSize::Uint32,
     };
 
     /// Adds a slot for a version to the header, after the length when
@@ -108,9 +112,9 @@ impl<const VERSIONED: bool> TableLayout<VERSIONED> {
         }
     }
 
-    /// Sets the width of the header slots, field offsets and length prefixes,
-    /// which limits how long the table can be. The default is
-    /// [`OffsetSize::U32`].
+    /// Sets the offset size, the width of the header slots, field offsets,
+    /// counts, lengths and item ends, which limits how long the table can be.
+    /// The default is [`OffsetSize::Uint32`].
     #[must_use]
     pub const fn with_offset_size(self, offset_size: OffsetSize) -> Self {
         Self {
@@ -197,7 +201,7 @@ mod tests {
         for layout in [TableLayout::DEFAULT, TableLayout::default()] {
             assert!(!layout.is_sized());
             assert!(!layout.is_versioned());
-            assert_eq!(layout.offset_size(), OffsetSize::U32);
+            assert_eq!(layout.offset_size(), OffsetSize::Uint32);
             assert_eq!(layout.header_size(), 0);
         }
     }
@@ -207,18 +211,18 @@ mod tests {
     fn test_header_size() {
         let layout = TableLayout::DEFAULT;
 
-        assert_eq!(layout.with_offset_size(OffsetSize::U8).header_size(), 0);
+        assert_eq!(layout.with_offset_size(OffsetSize::Uint8).header_size(), 0);
         assert_eq!(
             layout
                 .sized()
-                .with_offset_size(OffsetSize::U8)
+                .with_offset_size(OffsetSize::Uint8)
                 .header_size(),
             1
         );
         assert_eq!(
             layout
                 .versioned()
-                .with_offset_size(OffsetSize::U16)
+                .with_offset_size(OffsetSize::Uint16)
                 .header_size(),
             2
         );
@@ -226,7 +230,7 @@ mod tests {
             layout
                 .sized()
                 .versioned()
-                .with_offset_size(OffsetSize::U16)
+                .with_offset_size(OffsetSize::Uint16)
                 .header_size(),
             4
         );

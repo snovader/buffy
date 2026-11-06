@@ -27,7 +27,7 @@ public class RoundTripTest {
             fields.add(new ArrayField(type, limits.stream().mapToLong(Long::longValue).toArray()));
         }
 
-        var table = new TableDescription(LayoutDescription.headerless(AddressableSpace.SIZEOF_32), OptionalLong.empty(), fields);
+        var table = new TableDescription(LayoutDescription.headerless(OffsetSize.UINT32), OptionalLong.empty(), fields);
         var bytes = Tables.build(table).bytes();
 
         assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));

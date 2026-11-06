@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { SIZEOF_8, SIZEOF_16, TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
+import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import {
     ARRAY_FIELDS,
@@ -168,7 +168,7 @@ describe('tables longer than the offsets address', () => {
         }
     );
 
-    it('should reject a table of 32-bit offsets past 4 GiB before allocating it', () => {
+    it('should reject a table of uint32 offsets past 4 GiB before allocating it', () => {
         // The table would hold its offset, its length and 2^32 elements
         const sizer = new TableSizer(1);
         sizer.addInt8Array(MAX_VALUES[4] + 1);
@@ -180,7 +180,7 @@ describe('tables longer than the offsets address', () => {
         );
     });
 
-    it.each([SIZEOF_8, SIZEOF_16] as const)(
+    it.each([1, 2] as const)(
         'should reject a header longer than %s-byte offsets address, as TableBuilder does',
         offsetSize => {
             const max = MAX_VALUES[offsetSize];

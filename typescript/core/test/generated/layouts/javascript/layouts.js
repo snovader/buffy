@@ -2,7 +2,7 @@
 
 import { ByteBuffer, DecodeError, TableLayout, TableSizer } from 'tafla';
 
-/** 8-bit offsets, for tables of up to 255 bytes */
+/** `uint8` offsets, for tables of up to 255 bytes */
 export class Offset8 {
     static #LAYOUT = TableLayout.create({ offsetSize: 1 });
 
@@ -59,7 +59,7 @@ export class Offset8 {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 8-bit offsets, after the table's length */
+/** `uint8` offsets, after the table's length */
 export class Offset8Sized {
     static #LAYOUT = TableLayout.create({ sized: true, offsetSize: 1 });
 
@@ -116,7 +116,7 @@ export class Offset8Sized {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 8-bit offsets, after the largest version they hold */
+/** `uint8` offsets, after the largest version they hold */
 export class Offset8Versioned {
     /**
      * The version of the format, which the header carries and the
@@ -193,7 +193,7 @@ export class Offset8Versioned {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 8-bit offsets, after the table's length and version zero */
+/** `uint8` offsets, after the table's length and version zero */
 export class Offset8SizedVersioned {
     /**
      * The version of the format, which the header carries and the
@@ -274,7 +274,7 @@ export class Offset8SizedVersioned {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 16-bit offsets, for tables of up to 65,535 bytes */
+/** `uint16` offsets, for tables of up to 65,535 bytes */
 export class Offset16 {
     static #LAYOUT = TableLayout.create({ offsetSize: 2 });
 
@@ -331,7 +331,7 @@ export class Offset16 {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 16-bit offsets, after the table's length */
+/** `uint16` offsets, after the table's length */
 export class Offset16Sized {
     static #LAYOUT = TableLayout.create({ sized: true, offsetSize: 2 });
 
@@ -388,7 +388,7 @@ export class Offset16Sized {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 16-bit offsets, after the largest version they hold */
+/** `uint16` offsets, after the largest version they hold */
 export class Offset16Versioned {
     /**
      * The version of the format, which the header carries and the
@@ -465,7 +465,7 @@ export class Offset16Versioned {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 16-bit offsets, after the table's length and a version */
+/** `uint16` offsets, after the table's length and a version */
 export class Offset16SizedVersioned {
     /**
      * The version of the format, which the header carries and the
@@ -546,7 +546,7 @@ export class Offset16SizedVersioned {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 32-bit offsets, the default, for tables of up to 4 GiB */
+/** `uint32` offsets, the default, for tables of up to 4 GiB */
 export class Offset32 {
     static #LAYOUT = TableLayout.DEFAULT;
 
@@ -603,7 +603,7 @@ export class Offset32 {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 32-bit offsets, after the table's length */
+/** `uint32` offsets, after the table's length */
 export class Offset32Sized {
     static #LAYOUT = TableLayout.create({ sized: true });
 
@@ -660,7 +660,7 @@ export class Offset32Sized {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 32-bit offsets, after the largest version they hold */
+/** `uint32` offsets, after the largest version they hold */
 export class Offset32Versioned {
     /**
      * The version of the format, which the header carries and the
@@ -737,7 +737,7 @@ export class Offset32Versioned {
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
-/** 32-bit offsets, after the table's length and a version */
+/** `uint32` offsets, after the table's length and a version */
 export class Offset32SizedVersioned {
     /**
      * The version of the format, which the header carries and the

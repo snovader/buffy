@@ -108,9 +108,9 @@ proptest! {
 /// 2-byte offsets.
 fn tables_of_short_offsets() -> impl Strategy<Value = Table> {
     let offset_sizes = if cfg!(miri) {
-        vec![OffsetSize::U8]
+        vec![OffsetSize::Uint8]
     } else {
-        vec![OffsetSize::U8, OffsetSize::U16]
+        vec![OffsetSize::Uint8, OffsetSize::Uint16]
     };
 
     strategy::tables(strategy::layouts(select(offset_sizes)))
@@ -190,13 +190,13 @@ impl LongField {
     }
 }
 
-/// A table of `fields` with no header and 32-bit offsets, which fits in any
+/// A table of `fields` with no header and `uint32` offsets, which fits in any
 /// parent
 const fn nested(from: Source, fields: Vec<Field>) -> Nested {
     Nested {
         from,
         table: Table {
-            layout: Layout::headerless(OffsetSize::U32),
+            layout: Layout::headerless(OffsetSize::Uint32),
             version: None,
             fields,
         },
@@ -240,7 +240,7 @@ fn test_reject_writing_before_every_field_is_set() {
 
 #[test]
 fn test_reject_field_that_makes_table_too_long() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
+    for (offset_size, max) in [(OffsetSize::Uint8, 0xff), (OffsetSize::Uint16, 0xffff)] {
         let layout = TableLayout::DEFAULT.with_offset_size(offset_size);
         let width = offset_size.bytes();
 
@@ -307,7 +307,7 @@ fn test_reject_bytes_that_arent_whole_structs() {
 
 #[test]
 fn test_reject_header_too_long() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
+    for (offset_size, max) in [(OffsetSize::Uint8, 0xff), (OffsetSize::Uint16, 0xffff)] {
         let width = offset_size.bytes();
 
         for sized in [false, true] {
@@ -350,7 +350,7 @@ fn test_reject_table_of_32_bit_offsets_past_4_gib_before_writing() {
 
 #[test]
 fn test_reject_version_too_large_for_slot() {
-    for (offset_size, version) in [(OffsetSize::U8, 0x100), (OffsetSize::U16, 0x1_0000)] {
+    for (offset_size, version) in [(OffsetSize::Uint8, 0x100), (OffsetSize::Uint16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
             .with_offset_size(offset_size)
             .versioned();

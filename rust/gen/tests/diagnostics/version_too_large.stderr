@@ -1,16 +1,16 @@
-error: version 256 doesn't fit in 8-bit offsets
- --> version_too_large.tafla:3:43
+error: version 256 doesn't fit in the offset type `uint8`
+ --> version_too_large.tafla:3:47
   |
-3 | message Offset8 (offset_size: 8, version: 256) {
-  |                                           ^^^ the largest is 255
+3 | message Offset8 (offset_type: uint8, version: 256) {
+  |                                               ^^^ the largest is 255
 
-error: version 65536 doesn't fit in 16-bit offsets
+error: version 65536 doesn't fit in the offset type `uint16`
  --> version_too_large.tafla:7:28
   |
-7 | message Offset16 (version: 65536, offset_size: 16) {
+7 | message Offset16 (version: 65536, offset_type: uint16) {
   |                            ^^^^^ the largest is 65535
 
-error: version 4294967296 doesn't fit in 32-bit offsets
+error: version 4294967296 doesn't fit in the offset type `uint32`
   --> version_too_large.tafla:11:35
    |
 11 | message Offset32 (sized, version: 4294967296) {

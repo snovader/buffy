@@ -124,7 +124,7 @@ impl Generator<'_> {
         let has_offset_size = definitions.iter().any(|definition| {
             definition
                 .layout()
-                .is_some_and(|layout| layout.offset_size != OffsetSize::U32)
+                .is_some_and(|layout| layout.offset_size != OffsetSize::Uint32)
         });
         let has_structs = definitions.iter().any(Definition::is_struct);
         let has_vector = definitions
@@ -500,8 +500,8 @@ impl Generator<'_> {
         docs.extend(error_doc(
             "a [`BuildError`]",
             &format!(
-                "if it's longer than its {}-bit offsets address",
-                layout.offset_size.bytes() * 8
+                "if it's longer than its offset type, `{}`, addresses",
+                layout.offset_size.type_name()
             ),
         ));
         rust_doc(writer, &docs);
@@ -998,9 +998,9 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
         calls.push(".versioned()".to_owned());
     }
     match layout.offset_size {
-        OffsetSize::U8 => calls.push(".with_offset_size(OffsetSize::U8)".to_owned()),
-        OffsetSize::U16 => calls.push(".with_offset_size(OffsetSize::U16)".to_owned()),
-        OffsetSize::U32 => {}
+        OffsetSize::Uint8 => calls.push(".with_offset_size(OffsetSize::Uint8)".to_owned()),
+        OffsetSize::Uint16 => calls.push(".with_offset_size(OffsetSize::Uint16)".to_owned()),
+        OffsetSize::Uint32 => {}
     }
 
     let prefix = format!("const LAYOUT: TableLayout{generics} = ");

@@ -18,12 +18,11 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
+from tafla import ByteBuffer, OffsetSize, TableBuilder, TableLayout, TableWriter
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
 
-type OffsetSize = Literal[1, 2, 4]
 type Alignment = Literal[1, 2, 4, 8]
 
 # The struct format of each scalar type, which is also the type code of the

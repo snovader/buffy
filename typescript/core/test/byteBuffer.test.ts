@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, SIZEOF_8, SIZEOF_16, SIZEOF_32, TableBuilder, TableLayout } from 'tafla';
+import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { LAYOUTS, MAX_VALUES, SLICES, sliceOf } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
@@ -62,11 +62,11 @@ it('should find each vector item from its ends, as reading every item finds it',
 
 describe('versioned tables', () => {
     it.each([
-        [SIZEOF_8, MAX_VALUES[1] + 1],
-        [SIZEOF_16, MAX_VALUES[2] + 1],
-        [SIZEOF_32, MAX_VALUES[4] + 1],
-        [SIZEOF_32, -1],
-        [SIZEOF_32, 1.5]
+        [1, MAX_VALUES[1] + 1],
+        [2, MAX_VALUES[2] + 1],
+        [4, MAX_VALUES[4] + 1],
+        [4, -1],
+        [4, 1.5]
     ] as const)(
         'should reject a version that a slot of %s bytes cannot hold (%s)',
         (size, version) => {

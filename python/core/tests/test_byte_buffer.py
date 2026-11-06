@@ -8,7 +8,7 @@ from unittest.mock import patch
 from hypothesis import given
 from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
-from tafla import SIZEOF_8, SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
 from tafla.types import IntTypeCode
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
@@ -145,7 +145,7 @@ class TestByteBuffer(unittest.TestCase):
         self,
     ) -> None:
         backing = bytearray(b"\xaa" * 600)
-        buffer = ByteBuffer(backing, TableLayout(offset_size=SIZEOF_8))
+        buffer = ByteBuffer(backing, TableLayout(offset_size=1))
 
         writes = [
             lambda: buffer.set_uint8_array(bytes(256)),

@@ -3,7 +3,7 @@ package io.github.snovader.tafla;
 import java.util.*;
 
 /**
- * The header and offset width of a table. A format creates its layout once and passes it to both
+ * The header and offset size of a table. A format creates its layout once and passes it to both
  * the {@link TableBuilder} that writes the table and the {@link ByteBuffer} that reads it, so that
  * the two can't disagree. Nested tables use {@link #DEFAULT}.
  *
@@ -16,27 +16,27 @@ import java.util.*;
  * }
  */
 public final class TableLayout {
-    /** No header slots, and 32-bit offsets and lengths */
-    public static final TableLayout DEFAULT = new TableLayout(false, false, AddressableSpace.SIZEOF_32);
+    /** No header slots, and offsets and lengths of the offset type {@code uint32} */
+    public static final TableLayout DEFAULT = new TableLayout(false, false, OffsetSize.UINT32);
 
     /**
-     * The longest array that the JDK's own collections allocate, which limits a table of 32-bit
-     * offsets to about 2 GiB rather than their 4 GiB
+     * The longest array that the JDK's own collections allocate, which limits a table of
+     * {@code uint32} offsets to about 2 GiB rather than their 4 GiB
      */
     static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
 
     private final boolean sized;
     private final boolean versioned;
-    private final AddressableSpace offsetSize;
+    private final OffsetSize offsetSize;
     private final int headerSize;
 
-    private TableLayout(boolean sized, boolean versioned, AddressableSpace offsetSize) {
+    private TableLayout(boolean sized, boolean versioned, OffsetSize offsetSize) {
         this.sized = sized;
         this.versioned = versioned;
         this.offsetSize = offsetSize;
 
         var headerSlots = (sized ? 1 : 0) + (versioned ? 1 : 0);
-        this.headerSize = headerSlots * offsetSize.valueOf();
+        this.headerSize = headerSlots * offsetSize.bytes();
     }
 
     /** {@return a builder of a layout, which starts as {@link #DEFAULT}} */
@@ -54,8 +54,11 @@ public final class TableLayout {
         return versioned;
     }
 
-    /** {@return the width of the header slots, field offsets and length prefixes} */
-    public AddressableSpace offsetSize() {
+    /**
+     * {@return the offset size, the width of the header slots, field offsets, counts, lengths and
+     * item ends}
+     */
+    public OffsetSize offsetSize() {
         return offsetSize;
     }
 
@@ -68,7 +71,7 @@ public final class TableLayout {
 
     /**
      * {@return the longest table that the offsets address and a Java array holds}: 255 bytes, 64 KiB,
-     * or for 32-bit offsets, about 2 GiB rather than their 4 GiB
+     * or for {@code uint32} offsets, about 2 GiB rather than their 4 GiB
      */
     long maxLength() {
         return Math.min(offsetSize.maxValue(), MAX_ARRAY_LENGTH);
@@ -91,7 +94,7 @@ public final class TableLayout {
 
         if (versioned && (version < 0 || version > offsetSize.maxValue())) {
             throw new IllegalArgumentException(
-                String.format("Version %d doesn't fit in a %d-byte slot", version, offsetSize.valueOf())
+                String.format("Version %d doesn't fit in a %d-byte slot", version, offsetSize.bytes())
             );
         }
 
@@ -99,10 +102,10 @@ public final class TableLayout {
             throw new IllegalArgumentException(String.format("A table can't hold %d fields", fields));
         }
 
-        var length = headerSize + (long) fields * offsetSize.valueOf();
+        var length = headerSize + (long) fields * offsetSize.bytes();
         if (length > maxLength()) {
             throw new IllegalArgumentException(
-                String.format("A header of %d fields doesn't fit in %d-byte offsets", fields, offsetSize.valueOf())
+                String.format("A header of %d fields doesn't fit in %d-byte offsets", fields, offsetSize.bytes())
             );
         }
 
@@ -143,7 +146,7 @@ public final class TableLayout {
     public static final class Builder {
         private boolean sized = false;
         private boolean versioned = false;
-        private AddressableSpace offsetSize = AddressableSpace.SIZEOF_32;
+        private OffsetSize offsetSize = OffsetSize.UINT32;
 
         private Builder() {}
 
@@ -164,12 +167,12 @@ public final class TableLayout {
         }
 
         /**
-         * The width of the header slots, field offsets and length prefixes, which limits the table's
-         * size: {@link AddressableSpace#SIZEOF_8} for up to 255 bytes,
-         * {@link AddressableSpace#SIZEOF_16} for 65,535, and {@link AddressableSpace#SIZEOF_32}, the
-         * default, for as long as a Java array can be, about 2 GiB.
+         * The offset size, the width of the header slots, field offsets, counts, lengths and item ends,
+         * which limits the table's length: {@link OffsetSize#UINT8} for up to 255 bytes,
+         * {@link OffsetSize#UINT16} for 65,535, and {@link OffsetSize#UINT32}, the default, for as
+         * long as a Java array can be, about 2 GiB.
          */
-        public Builder offsetSize(AddressableSpace offsetSize) {
+        public Builder offsetSize(OffsetSize offsetSize) {
             this.offsetSize = Objects.requireNonNull(offsetSize);
             return this;
         }

@@ -78,8 +78,10 @@ Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
 
 `file` is relative to `cases.json`. A table has:
 
-- `layout`: `sized`, `versioned` and `offsetSize` (1, 2 or 4), which a
-  `TableLayout` takes. Every layout is written out in full.
+- `layout`: `sized`, `versioned` and `offsetSize`, the offset size in bytes:
+  1, 2 or 4 for the offset types `uint8`, `uint16` and `uint32`, as `SPEC.md`
+  defines them. A `TableLayout` takes these. Every layout is written out in
+  full.
 - `version`: the version in the header, present only when `versioned`.
 - `fields`: in the order that they're set, which is the order of their
   offsets in the header.
@@ -174,7 +176,7 @@ An implementation's test loads `cases.json` and:
 | Every element type as a scalar                             | `integer-scalars`, `float-scalars`                                                                  |
 | Every element type as an array, and empty                  | `integer-arrays`, `float-arrays`, `empty-arrays`                                                    |
 | Offset sizes 1, 2 and 4, without and with each header slot | `offset-size-{1,2,4}`, with `-sized`, `-versioned` and `-sized-versioned`                           |
-| Values of 128 and more in 1-byte offsets and lengths       | `offset-size-1-full`                                                                                |
+| Values of 128 and more in `uint8` offsets and lengths      | `offset-size-1-full`                                                                                |
 | The padding that aligns arrays                             | `padding`, `empty-arrays`, `integer-arrays` and the offset size cases                               |
 | Nested tables from builders and bytes, and alignments      | `nested-tables`, `nested-two-deep`                                                                  |
 | Nested builders of other offset sizes than their parent's  | `nested-narrower-offsets`, `nested-wider-offsets`                                                   |
@@ -190,9 +192,9 @@ An implementation's test loads `cases.json` and:
 
 It doesn't cover:
 
-- Offsets and lengths of 2^15 and more in tables of 2-byte offsets, or of 2^31
-  and more in tables of 4-byte offsets, which would take files of 32 KiB and
-  2 GiB.
+- Offsets and lengths of 2^15 and more in tables of the offset type `uint16`,
+  or of 2^31 and more in tables of `uint32`, which would take files of 32 KiB
+  and 2 GiB.
 - Strings with lone surrogates, which TypeScript and Java write as U+FFFD,
   Python rejects and Rust strings can't hold, and NaNs other than the quiet
   NaN.

@@ -1,11 +1,10 @@
 from typing import ClassVar, Literal, cast, overload, override
 
-from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32
-from .types import AddressableSpace
+from .types import OffsetSize
 
 
 class TableLayout[Versioned: bool = bool]:
-    """The header and offset width of a table. A format creates its layout once
+    """The header and offset size of a table. A format creates its layout once
     and passes it to both the ``TableBuilder`` that writes the table and the
     ``ByteBuffer`` that reads it, so that the two can't disagree. Nested tables
     use ``TableLayout.DEFAULT``.
@@ -13,9 +12,10 @@ class TableLayout[Versioned: bool = bool]:
     - ``sized``: whether the header starts with the table's total byte length.
     - ``versioned``: whether the header has a slot for a version, after the
       length when ``sized``. Readers can check it before reading any field.
-    - ``offset_size``: the width in bytes of the header slots, field offsets,
-      counts and vector item ends, which limits the table's size: 1 for up to
-      255 bytes, 2 for 65,535 and 4, the default, for 4 GiB.
+    - ``offset_size``: the offset size, the width in bytes of the header slots,
+      field offsets, counts, lengths and item ends, which limits the table's
+      length: 1, of ``uint8`` offsets, for up to 255 bytes, 2, of ``uint16``,
+      for 65,535 and 4, of ``uint32``, the default, for 4 GiB.
 
     ``Versioned`` lets type checkers require a version where a versioned table
     is built.
@@ -26,7 +26,7 @@ class TableLayout[Versioned: bool = bool]:
     __slots__ = ["__header_size", "__offset_size", "__sized", "__versioned"]
 
     DEFAULT: ClassVar[TableLayout[Literal[False]]]
-    """No header slots, and 32-bit offsets and lengths"""
+    """No header slots, and offsets and lengths of the offset type ``uint32``"""
 
     __versioned: Versioned
 
@@ -36,7 +36,7 @@ class TableLayout[Versioned: bool = bool]:
         *,
         sized: bool = False,
         versioned: Literal[False] = False,
-        offset_size: AddressableSpace = SIZEOF_32,
+        offset_size: OffsetSize = 4,
     ) -> None: ...
 
     @overload
@@ -45,7 +45,7 @@ class TableLayout[Versioned: bool = bool]:
         *,
         sized: bool = False,
         versioned: Literal[True],
-        offset_size: AddressableSpace = SIZEOF_32,
+        offset_size: OffsetSize = 4,
     ) -> None: ...
 
     @overload
@@ -54,7 +54,7 @@ class TableLayout[Versioned: bool = bool]:
         *,
         sized: bool = False,
         versioned: bool,
-        offset_size: AddressableSpace = SIZEOF_32,
+        offset_size: OffsetSize = 4,
     ) -> None: ...
 
     def __init__(
@@ -62,14 +62,14 @@ class TableLayout[Versioned: bool = bool]:
         *,
         sized: bool = False,
         versioned: bool = False,
-        offset_size: AddressableSpace = SIZEOF_32,
+        offset_size: OffsetSize = 4,
     ) -> None:
-        if offset_size not in (SIZEOF_8, SIZEOF_16, SIZEOF_32):
+        if offset_size not in (1, 2, 4):
             raise ValueError(f"Offsets can't be {offset_size} bytes wide")
 
         self.__sized = sized
         self.__versioned = cast(Versioned, versioned)
-        self.__offset_size: AddressableSpace = offset_size
+        self.__offset_size: OffsetSize = offset_size
         header_slots = (1 if sized else 0) + (1 if versioned else 0)
         self.__header_size = header_slots * offset_size
 
@@ -86,7 +86,7 @@ class TableLayout[Versioned: bool = bool]:
     def versioned(self) -> Versioned:
         return self.__versioned
 
-    def offset_size(self) -> AddressableSpace:
+    def offset_size(self) -> OffsetSize:
         return self.__offset_size
 
     def header_size(self) -> int:
@@ -98,10 +98,10 @@ TableLayout.DEFAULT = TableLayout()
 
 
 # The longest table that offsets and lengths of each size address
-MAX_LENGTHS: dict[AddressableSpace, int] = {
-    SIZEOF_8: 0xFF,
-    SIZEOF_16: 0xFFFF,
-    SIZEOF_32: 0xFFFF_FFFF,
+MAX_LENGTHS: dict[OffsetSize, int] = {
+    1: 0xFF,
+    2: 0xFFFF,
+    4: 0xFFFF_FFFF,
 }
 
 

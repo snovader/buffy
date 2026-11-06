@@ -1,26 +1,25 @@
 import unittest
 from typing import Any, cast
 
-from tafla import SIZEOF_8, SIZEOF_16, SIZEOF_32, TableLayout
-from tests.tables import OffsetSize
+from tafla import OffsetSize, TableLayout
 
 
 class TestTableLayout(unittest.TestCase):
-    def test_defaults_to_no_header_slots_and_32_bit_offsets(self) -> None:
+    def test_defaults_to_no_header_slots_and_uint32_offsets(self) -> None:
         for layout in [TableLayout.DEFAULT, TableLayout()]:
             with self.subTest(layout=layout):
                 self.assertFalse(layout.sized())
                 self.assertFalse(layout.versioned())
-                self.assertEqual(layout.offset_size(), SIZEOF_32)
+                self.assertEqual(layout.offset_size(), 4)
                 self.assertEqual(layout.header_size(), 0)
 
     def test_has_a_header_slot_for_the_length_and_the_version(self) -> None:
         cases: list[tuple[bool, bool, OffsetSize, int]] = [
-            (False, False, SIZEOF_8, 0),
-            (True, False, SIZEOF_8, 1),
-            (False, True, SIZEOF_16, 2),
-            (True, True, SIZEOF_16, 4),
-            (True, True, SIZEOF_32, 8),
+            (False, False, 1, 0),
+            (True, False, 1, 1),
+            (False, True, 2, 2),
+            (True, True, 2, 4),
+            (True, True, 4, 8),
         ]
 
         for sized, versioned, offset_size, header_size in cases:

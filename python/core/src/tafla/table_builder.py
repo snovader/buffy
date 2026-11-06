@@ -5,7 +5,7 @@ from .byte_buffer import ByteBuffer, byte_view, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
 from .layout import MAX_LENGTHS, TableLayout, header_length
-from .types import AddressableSpace, ElementSize, TypeCode
+from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[[ByteBuffer, Any], None]
 
@@ -45,7 +45,7 @@ class TableBuilder:
     ]
 
     __buffer: ByteBuffer | None
-    __size: AddressableSpace
+    __size: OffsetSize
     __alignment: ElementSize
     # Per field: the padding before it, its position from the table's start,
     # the function that writes it and its value. The functions aren't bound
@@ -69,7 +69,7 @@ class TableBuilder:
         version: int | None = None,
     ) -> None:
         """``fields`` is the number of fields that the table will hold, and
-        ``layout`` its header and offset width, which its readers must use too.
+        ``layout`` its header and offset size, which its readers must use too.
         ``version`` is written to the header, and required when the layout is
         versioned. Readers can check it with ``ByteBuffer.get_version()``
         before reading any field.
@@ -413,7 +413,7 @@ class TableBuilder:
 
     @staticmethod
     def __write_table(
-        buffer: ByteBuffer, field: tuple[TableBuilder, AddressableSpace]
+        buffer: ByteBuffer, field: tuple[TableBuilder, OffsetSize]
     ) -> None:
         table, size = field
         TableBuilder.__write_item(buffer, table, size)
@@ -421,7 +421,7 @@ class TableBuilder:
     @staticmethod
     def __write_vector(
         buffer: ByteBuffer,
-        field: tuple[tuple[TableBuilder | Buffer, ...], int, AddressableSpace],
+        field: tuple[tuple[TableBuilder | Buffer, ...], int, OffsetSize],
     ) -> None:
         """Writes a vector into a buffer whose offsets are ``size`` bytes wide,
         like the vector's count and item ends"""
@@ -443,7 +443,7 @@ class TableBuilder:
 
     @staticmethod
     def __write_item(
-        buffer: ByteBuffer, table: TableBuilder | Buffer, size: AddressableSpace
+        buffer: ByteBuffer, table: TableBuilder | Buffer, size: OffsetSize
     ) -> None:
         """Writes a builder straight into a buffer whose offsets are ``size``
         bytes wide, unless it was finalized already or has offsets of another

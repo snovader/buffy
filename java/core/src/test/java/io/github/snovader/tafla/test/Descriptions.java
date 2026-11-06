@@ -44,7 +44,7 @@ final class Descriptions {
         var layouts = new ArrayList<LayoutDescription>();
         for (var isSized : sized) {
             for (var isVersioned : versioned) {
-                for (var offsetSize : AddressableSpace.values()) {
+                for (var offsetSize : OffsetSize.values()) {
                     layouts.add(new LayoutDescription(isSized, isVersioned, offsetSize));
                 }
             }
@@ -71,11 +71,11 @@ final class Descriptions {
         return tables(LAYOUTS, MAX_DEPTH, Nesting.FREQUENT);
     }
 
-    /** {@return tables of 1- and 2-byte offsets, whose limits a test can reach} */
+    /** {@return tables of offset sizes 1 and 2, whose limits a test can reach} */
     static Arbitrary<TableDescription> narrowTables() {
-        // A table too long for 2-byte offsets is widened to 4
-        return tables(layout -> layout.offsetSize() != AddressableSpace.SIZEOF_32)
-            .filter(table -> table.layout().offsetSize() != AddressableSpace.SIZEOF_32);
+        // A table too long for an offset size of 2 is widened to 4
+        return tables(layout -> layout.offsetSize() != OffsetSize.UINT32)
+            .filter(table -> table.layout().offsetSize() != OffsetSize.UINT32);
     }
 
     /** {@return tables without a header, which can be nested with {@code setTable()}} */
@@ -196,11 +196,11 @@ final class Descriptions {
         return new TableDescription(layout, header.version(), fields);
     }
 
-    private static AddressableSpace wider(AddressableSpace offsetSize) {
+    private static OffsetSize wider(OffsetSize offsetSize) {
         return switch (offsetSize) {
-            case SIZEOF_8 -> AddressableSpace.SIZEOF_16;
-            case SIZEOF_16 -> AddressableSpace.SIZEOF_32;
-            case SIZEOF_32 -> throw new IllegalStateException("The fields don't fit in 32-bit offsets");
+            case UINT8 -> OffsetSize.UINT16;
+            case UINT16 -> OffsetSize.UINT32;
+            case UINT32 -> throw new IllegalStateException("The fields don't fit in uint32 offsets");
         };
     }
 

@@ -2,7 +2,7 @@ import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
 import { headerLength, maxLength, TableLayout } from './layout.ts';
-import type { AddressableSpace, ElementSize } from './types.ts';
+import type { OffsetSize, ElementSize } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
 const INT8 = 0;
@@ -54,8 +54,8 @@ export class TableBuilder {
 
     readonly #layout: TableLayout;
     readonly #version: number | undefined;
-    /** The width of offsets, lengths and header slots */
-    readonly #size: AddressableSpace;
+    /** The offset size, the width of offsets, lengths and header slots */
+    readonly #size: OffsetSize;
     readonly #fields: number;
     /** The longest table that the layout's offsets and lengths address */
     readonly #maxLength: number;
@@ -78,7 +78,7 @@ export class TableBuilder {
 
     /**
      * @param fields - The number of fields that the table will hold.
-     * @param layout - The table's header and offset width, which its readers
+     * @param layout - The table's header and offset size, which its readers
      * must use too.
      * @param version - The version to write to the header, required when the
      * layout is versioned. Readers can check it with `ByteBuffer.getVersion()`
@@ -670,7 +670,7 @@ function writeField(buffer: ByteBuffer, kind: number, value: unknown): void {
 /** Writes a length or count as wide as the table's offsets */
 function setLength(
     buffer: ByteBuffer,
-    size: AddressableSpace,
+    size: OffsetSize,
     length: number
 ): void {
     switch (size) {

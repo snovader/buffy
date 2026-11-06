@@ -1,86 +1,86 @@
-// Messages in every layout: 8-, 16- and 32-bit offsets, each with and without
-// the table's length and a version in its header. Their versions are zero or
-// the largest that their offsets hold.
+// Messages in every layout: each offset type, uint8, uint16 and uint32, with
+// and without the table's length and a version in its header. Their versions
+// are zero or the largest that their offset type holds.
 
-/// 8-bit offsets, for tables of up to 255 bytes
-message Offset8 (offset_size: 8) {
+/// `uint8` offsets, for tables of up to 255 bytes
+message Offset8 (offset_type: uint8) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 8-bit offsets, after the table's length
-message Offset8Sized (sized, offset_size: 8) {
+/// `uint8` offsets, after the table's length
+message Offset8Sized (sized, offset_type: uint8) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 8-bit offsets, after the largest version they hold
-message Offset8Versioned (offset_size: 8, version: 255) {
+/// `uint8` offsets, after the largest version they hold
+message Offset8Versioned (offset_type: uint8, version: 255) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 8-bit offsets, after the table's length and version zero
-message Offset8SizedVersioned (version: 0, sized, offset_size: 8,) {
+/// `uint8` offsets, after the table's length and version zero
+message Offset8SizedVersioned (version: 0, sized, offset_type: uint8,) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 16-bit offsets, for tables of up to 65,535 bytes
-message Offset16 (offset_size: 16) {
+/// `uint16` offsets, for tables of up to 65,535 bytes
+message Offset16 (offset_type: uint16) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 16-bit offsets, after the table's length
-message Offset16Sized (offset_size: 16, sized) {
+/// `uint16` offsets, after the table's length
+message Offset16Sized (offset_type: uint16, sized) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 16-bit offsets, after the largest version they hold
-message Offset16Versioned (offset_size: 16, version: 65535) {
+/// `uint16` offsets, after the largest version they hold
+message Offset16Versioned (offset_type: uint16, version: 65535) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 16-bit offsets, after the table's length and a version
-message Offset16SizedVersioned (sized, version: 1, offset_size: 16) {
+/// `uint16` offsets, after the table's length and a version
+message Offset16SizedVersioned (sized, version: 1, offset_type: uint16) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 32-bit offsets, the default, for tables of up to 4 GiB
+/// `uint32` offsets, the default, for tables of up to 4 GiB
 message Offset32 {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 32-bit offsets, after the table's length
+/// `uint32` offsets, after the table's length
 message Offset32Sized (sized) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 32-bit offsets, after the largest version they hold
+/// `uint32` offsets, after the largest version they hold
 message Offset32Versioned (version: 4294967295) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
-/// 32-bit offsets, after the table's length and a version
-message Offset32SizedVersioned (sized, version: 2, offset_size: 32) {
+/// `uint32` offsets, after the table's length and a version
+message Offset32SizedVersioned (sized, version: 2, offset_type: uint32) {
     id: uint32;
     name: string;
     values: [uint16];

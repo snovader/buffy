@@ -283,10 +283,10 @@ impl ByteBuffer<'_, true> {
 #[inline]
 pub fn read_slot(bytes: &[u8], offset_size: OffsetSize) -> Option<u32> {
     match offset_size {
-        OffsetSize::U8 => bytes.first().map(|&byte| u32::from(byte)),
-        OffsetSize::U16 => bytes
+        OffsetSize::Uint8 => bytes.first().map(|&byte| u32::from(byte)),
+        OffsetSize::Uint16 => bytes
             .first_chunk()
             .map(|&bytes| u32::from(u16::from_le_bytes(bytes))),
-        OffsetSize::U32 => bytes.first_chunk().map(|&bytes| u32::from_le_bytes(bytes)),
+        OffsetSize::Uint32 => bytes.first_chunk().map(|&bytes| u32::from_le_bytes(bytes)),
     }
 }

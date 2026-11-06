@@ -65,18 +65,18 @@ public class TableBuilderTest {
 
         /** An empty table, which takes no bytes and is read in place */
         private static final TableDescription EMPTY = new TableDescription(
-            LayoutDescription.headerless(AddressableSpace.SIZEOF_32),
+            LayoutDescription.headerless(OffsetSize.UINT32),
             OptionalLong.empty(),
             List.of()
         );
 
         /** {@return the bytes that each element adds in a table of offsets {@code offsetSize} wide} */
-        int unit(AddressableSpace offsetSize) {
+        int unit(OffsetSize offsetSize) {
             return switch (this) {
                 case FLOAT64_ARRAY -> Double.BYTES;
                 case STRUCT_ARRAY -> StructBytes.size(STRUCT);
                 // Each item's end
-                case VECTOR_ITEMS -> offsetSize.valueOf();
+                case VECTOR_ITEMS -> offsetSize.bytes();
                 default -> Byte.BYTES;
             };
         }
@@ -131,7 +131,7 @@ public class TableBuilderTest {
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void a_version_is_written_up_to_the_largest_that_its_slot_holds_and_rejected_beyond(
-        @ForAll AddressableSpace offsetSize
+        @ForAll OffsetSize offsetSize
     ) {
         var layout = versioned(offsetSize);
         var max = offsetSize.maxValue();
@@ -259,7 +259,7 @@ public class TableBuilderTest {
     void should_need_a_version_exactly_when_the_layout_has_a_slot_for_it() {
         var exception = assertThrows(
             IllegalArgumentException.class,
-            () -> new TableBuilder(1, versioned(AddressableSpace.SIZEOF_32))
+            () -> new TableBuilder(1, versioned(OffsetSize.UINT32))
         );
         assertEquals("A versioned layout needs a version", exception.getMessage());
 
@@ -278,19 +278,19 @@ public class TableBuilderTest {
 
     @Property
     void should_reject_a_header_longer_than_the_offsets_address(
-        @ForAll("limitedSizes") AddressableSpace size,
+        @ForAll("limitedSizes") OffsetSize size,
         @ForAll boolean sized
     ) {
         var layout = TableLayout.builder().sized(sized).offsetSize(size).build();
-        var fields = (int) (size.maxValue() / size.valueOf()) - (sized ? 1 : 0);
+        var fields = (int) (size.maxValue() / size.bytes()) - (sized ? 1 : 0);
 
         assertDoesNotThrow(() -> new TableBuilder(fields, layout));
         assertThrows(IllegalArgumentException.class, () -> new TableBuilder(fields + 1, layout));
     }
 
     @Provide
-    Arbitrary<AddressableSpace> limitedSizes() {
-        return Arbitraries.of(AddressableSpace.SIZEOF_8, AddressableSpace.SIZEOF_16);
+    Arbitrary<OffsetSize> limitedSizes() {
+        return Arbitraries.of(OffsetSize.UINT8, OffsetSize.UINT16);
     }
 
     @Example
@@ -368,7 +368,7 @@ public class TableBuilderTest {
         assertEquals(1, buffer.getVectorOffsets(buffer.rootOffset(0)).length);
     }
 
-    private static TableLayout versioned(AddressableSpace size) {
+    private static TableLayout versioned(OffsetSize size) {
         return TableLayout.builder().versioned(true).offsetSize(size).build();
     }
 }

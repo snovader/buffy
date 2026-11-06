@@ -2,14 +2,14 @@
 
 use tafla::{ArrayView, BuildError, ByteBuffer, DecodeError, OffsetSize, TableLayout, TableSizer};
 
-/// 8-bit offsets, for tables of up to 255 bytes
+/// `uint8` offsets, for tables of up to 255 bytes
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8<'a> {
     bytes: &'a [u8],
 }
 
 impl<'a> Offset8<'a> {
-    const LAYOUT: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
+    const LAYOUT: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint8);
 
     /// Reads an [`Offset8`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
@@ -57,7 +57,7 @@ impl Offset8Fields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 8-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset8::LAYOUT)?;
         sizer.add_u32();
@@ -73,7 +73,7 @@ impl Offset8Fields<'_> {
     }
 }
 
-/// 8-bit offsets, after the table's length
+/// `uint8` offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8Sized<'a> {
     bytes: &'a [u8],
@@ -82,7 +82,7 @@ pub struct Offset8Sized<'a> {
 impl<'a> Offset8Sized<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::U8);
+        .with_offset_size(OffsetSize::Uint8);
 
     /// Reads an [`Offset8Sized`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
@@ -130,7 +130,7 @@ impl Offset8SizedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 8-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset8Sized::LAYOUT)?;
         sizer.add_u32();
@@ -146,7 +146,7 @@ impl Offset8SizedFields<'_> {
     }
 }
 
-/// 8-bit offsets, after the largest version they hold
+/// `uint8` offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8Versioned<'a> {
     bytes: &'a [u8],
@@ -158,7 +158,7 @@ impl<'a> Offset8Versioned<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .versioned()
-        .with_offset_size(OffsetSize::U8);
+        .with_offset_size(OffsetSize::Uint8);
 
     /// Reads an [`Offset8Versioned`] from `bytes`
     ///
@@ -220,7 +220,7 @@ impl Offset8VersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 8-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,
@@ -240,7 +240,7 @@ impl Offset8VersionedFields<'_> {
     }
 }
 
-/// 8-bit offsets, after the table's length and version zero
+/// `uint8` offsets, after the table's length and version zero
 #[derive(Clone, Copy, Debug)]
 pub struct Offset8SizedVersioned<'a> {
     bytes: &'a [u8],
@@ -253,7 +253,7 @@ impl<'a> Offset8SizedVersioned<'a> {
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
         .versioned()
-        .with_offset_size(OffsetSize::U8);
+        .with_offset_size(OffsetSize::Uint8);
 
     /// Reads an [`Offset8SizedVersioned`] from `bytes`
     ///
@@ -315,7 +315,7 @@ impl Offset8SizedVersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 8-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,
@@ -335,14 +335,14 @@ impl Offset8SizedVersionedFields<'_> {
     }
 }
 
-/// 16-bit offsets, for tables of up to 65,535 bytes
+/// `uint16` offsets, for tables of up to 65,535 bytes
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16<'a> {
     bytes: &'a [u8],
 }
 
 impl<'a> Offset16<'a> {
-    const LAYOUT: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U16);
+    const LAYOUT: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint16);
 
     /// Reads an [`Offset16`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
@@ -390,7 +390,7 @@ impl Offset16Fields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 16-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset16::LAYOUT)?;
         sizer.add_u32();
@@ -406,7 +406,7 @@ impl Offset16Fields<'_> {
     }
 }
 
-/// 16-bit offsets, after the table's length
+/// `uint16` offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16Sized<'a> {
     bytes: &'a [u8],
@@ -415,7 +415,7 @@ pub struct Offset16Sized<'a> {
 impl<'a> Offset16Sized<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::U16);
+        .with_offset_size(OffsetSize::Uint16);
 
     /// Reads an [`Offset16Sized`] from `bytes`
     pub const fn new(bytes: &'a [u8]) -> Self {
@@ -463,7 +463,7 @@ impl Offset16SizedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 16-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset16Sized::LAYOUT)?;
         sizer.add_u32();
@@ -479,7 +479,7 @@ impl Offset16SizedFields<'_> {
     }
 }
 
-/// 16-bit offsets, after the largest version they hold
+/// `uint16` offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16Versioned<'a> {
     bytes: &'a [u8],
@@ -491,7 +491,7 @@ impl<'a> Offset16Versioned<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .versioned()
-        .with_offset_size(OffsetSize::U16);
+        .with_offset_size(OffsetSize::Uint16);
 
     /// Reads an [`Offset16Versioned`] from `bytes`
     ///
@@ -553,7 +553,7 @@ impl Offset16VersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 16-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,
@@ -573,7 +573,7 @@ impl Offset16VersionedFields<'_> {
     }
 }
 
-/// 16-bit offsets, after the table's length and a version
+/// `uint16` offsets, after the table's length and a version
 #[derive(Clone, Copy, Debug)]
 pub struct Offset16SizedVersioned<'a> {
     bytes: &'a [u8],
@@ -586,7 +586,7 @@ impl<'a> Offset16SizedVersioned<'a> {
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
         .versioned()
-        .with_offset_size(OffsetSize::U16);
+        .with_offset_size(OffsetSize::Uint16);
 
     /// Reads an [`Offset16SizedVersioned`] from `bytes`
     ///
@@ -648,7 +648,7 @@ impl Offset16SizedVersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 16-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,
@@ -668,7 +668,7 @@ impl Offset16SizedVersionedFields<'_> {
     }
 }
 
-/// 32-bit offsets, the default, for tables of up to 4 GiB
+/// `uint32` offsets, the default, for tables of up to 4 GiB
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32<'a> {
     bytes: &'a [u8],
@@ -723,7 +723,7 @@ impl Offset32Fields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset32::LAYOUT)?;
         sizer.add_u32();
@@ -739,7 +739,7 @@ impl Offset32Fields<'_> {
     }
 }
 
-/// 32-bit offsets, after the table's length
+/// `uint32` offsets, after the table's length
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32Sized<'a> {
     bytes: &'a [u8],
@@ -794,7 +794,7 @@ impl Offset32SizedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Offset32Sized::LAYOUT)?;
         sizer.add_u32();
@@ -810,7 +810,7 @@ impl Offset32SizedFields<'_> {
     }
 }
 
-/// 32-bit offsets, after the largest version they hold
+/// `uint32` offsets, after the largest version they hold
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32Versioned<'a> {
     bytes: &'a [u8],
@@ -882,7 +882,7 @@ impl Offset32VersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,
@@ -902,7 +902,7 @@ impl Offset32VersionedFields<'_> {
     }
 }
 
-/// 32-bit offsets, after the table's length and a version
+/// `uint32` offsets, after the table's length and a version
 #[derive(Clone, Copy, Debug)]
 pub struct Offset32SizedVersioned<'a> {
     bytes: &'a [u8],
@@ -974,7 +974,7 @@ impl Offset32SizedVersionedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(
             3,

@@ -7,7 +7,7 @@ from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
 
 
 class Offset8:
-    """8-bit offsets, for tables of up to 255 bytes"""
+    """``uint8`` offsets, for tables of up to 255 bytes"""
 
     __slots__ = ("_buffer",)
 
@@ -46,7 +46,7 @@ class Offset8Fields(TypedDict):
 
 
 class Offset8Sized:
-    """8-bit offsets, after the table's length"""
+    """``uint8`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
 
@@ -85,7 +85,7 @@ class Offset8SizedFields(TypedDict):
 
 
 class Offset8Versioned:
-    """8-bit offsets, after the largest version they hold"""
+    """``uint8`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
 
@@ -137,7 +137,7 @@ class Offset8VersionedFields(TypedDict):
 
 
 class Offset8SizedVersioned:
-    """8-bit offsets, after the table's length and version zero"""
+    """``uint8`` offsets, after the table's length and version zero"""
 
     __slots__ = ("_buffer",)
 
@@ -189,7 +189,7 @@ class Offset8SizedVersionedFields(TypedDict):
 
 
 class Offset16:
-    """16-bit offsets, for tables of up to 65,535 bytes"""
+    """``uint16`` offsets, for tables of up to 65,535 bytes"""
 
     __slots__ = ("_buffer",)
 
@@ -228,7 +228,7 @@ class Offset16Fields(TypedDict):
 
 
 class Offset16Sized:
-    """16-bit offsets, after the table's length"""
+    """``uint16`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
 
@@ -267,7 +267,7 @@ class Offset16SizedFields(TypedDict):
 
 
 class Offset16Versioned:
-    """16-bit offsets, after the largest version they hold"""
+    """``uint16`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
 
@@ -319,7 +319,7 @@ class Offset16VersionedFields(TypedDict):
 
 
 class Offset16SizedVersioned:
-    """16-bit offsets, after the table's length and a version"""
+    """``uint16`` offsets, after the table's length and a version"""
 
     __slots__ = ("_buffer",)
 
@@ -371,7 +371,7 @@ class Offset16SizedVersionedFields(TypedDict):
 
 
 class Offset32:
-    """32-bit offsets, the default, for tables of up to 4 GiB"""
+    """``uint32`` offsets, the default, for tables of up to 4 GiB"""
 
     __slots__ = ("_buffer",)
 
@@ -410,7 +410,7 @@ class Offset32Fields(TypedDict):
 
 
 class Offset32Sized:
-    """32-bit offsets, after the table's length"""
+    """``uint32`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
 
@@ -449,7 +449,7 @@ class Offset32SizedFields(TypedDict):
 
 
 class Offset32Versioned:
-    """32-bit offsets, after the largest version they hold"""
+    """``uint32`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
 
@@ -501,7 +501,7 @@ class Offset32VersionedFields(TypedDict):
 
 
 class Offset32SizedVersioned:
-    """32-bit offsets, after the table's length and a version"""
+    """``uint32`` offsets, after the table's length and a version"""
 
     __slots__ = ("_buffer",)
 

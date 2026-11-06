@@ -1,10 +1,10 @@
-// One more than the largest version that each offset size holds
+// One more than the largest version that each offset type holds
 
-message Offset8 (offset_size: 8, version: 256) {
+message Offset8 (offset_type: uint8, version: 256) {
     x: float64;
 }
 
-message Offset16 (version: 65536, offset_size: 16) {
+message Offset16 (version: 65536, offset_type: uint16) {
     x: float64;
 }
 

@@ -19,7 +19,7 @@ import java.util.function.*;
  *
  * <p>A setter throws, and leaves the builder as it was, when the table already holds all its
  * fields, or when its field would make the table longer than the layout's offset size addresses:
- * 255 bytes, 64 KiB, or for 32-bit offsets, as long as a Java array can be.</p>
+ * 255 bytes, 64 KiB, or for {@code uint32} offsets, as long as a Java array can be.</p>
  */
 public final class TableBuilder {
     private static final Consumer<ByteBuffer>[] NO_WRITERS = newWriters(0);
@@ -28,8 +28,8 @@ public final class TableBuilder {
 
     private final TableLayout layout;
     private final long version;
-    /** The width of offsets, lengths and header slots */
-    private final AddressableSpace size;
+    /** The offset size, the width of offsets, lengths and header slots */
+    private final OffsetSize size;
     private int fieldsSet;
     /** The longest table that the layout's offsets and lengths address */
     private final long maxLength;
@@ -54,7 +54,7 @@ public final class TableBuilder {
 
     /**
      * @param fields the number of fields that the table will hold
-     * @param layout the table's header and offset width, which its readers must use too
+     * @param layout the table's header and offset size, which its readers must use too
      * @throws IllegalArgumentException if the layout is versioned, or the header alone is longer
      *     than the layout addresses
      */
@@ -196,7 +196,7 @@ public final class TableBuilder {
     /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
     public void setString(String string) {
         var utf8 = Utf8.encode(string);
-        addField(size.valueOf() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
+        addField(size.bytes() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
     }
 
     /**
@@ -291,7 +291,7 @@ public final class TableBuilder {
         // A copy, so that the items can't change before the table is written
         var items = List.copyOf(tables);
 
-        var byteLength = size.valueOf() + (long) items.size() * size.valueOf();
+        var byteLength = size.bytes() + (long) items.size() * size.bytes();
         for (var item : items) {
             byteLength += lengthOf(item);
         }
@@ -303,7 +303,7 @@ public final class TableBuilder {
     public void setVector(byte[][] tables) {
         var items = tables.clone();
 
-        var byteLength = size.valueOf() + (long) items.length * size.valueOf();
+        var byteLength = size.bytes() + (long) items.length * size.bytes();
         for (var item : items) {
             byteLength += item.length;
         }
@@ -328,8 +328,8 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
      */
     private void addElements(long byteLength, int alignment, Consumer<ByteBuffer> writer) {
-        var padding = TableLayout.padding(offset + size.valueOf(), alignment);
-        addField(size.valueOf() + byteLength, padding, writer);
+        var padding = TableLayout.padding(offset + size.bytes(), alignment);
+        addField(size.bytes() + byteLength, padding, writer);
         alignTo(alignment);
     }
 
@@ -405,7 +405,7 @@ public final class TableBuilder {
             "Field %d makes the table %d bytes, too long for %d-byte offsets",
             index + 1,
             length,
-            size.valueOf()
+            size.bytes()
         );
     }
 
@@ -439,7 +439,7 @@ public final class TableBuilder {
         buffer.setLength(vector.size());
 
         // Each end counts from the vector's position, which is its count's
-        var end = (vector.size() + 1) * size.valueOf();
+        var end = (vector.size() + 1) * size.bytes();
         for (var table : vector) {
             end += table.offset;
             buffer.setLength(end);

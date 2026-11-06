@@ -127,11 +127,11 @@ final class Tables {
         return new TableDescription(table.layout(), table.version(), fields);
     }
 
-    private static List<FieldDescription> fieldsInPlace(List<FieldDescription> fields, AddressableSpace offsetSize) {
+    private static List<FieldDescription> fieldsInPlace(List<FieldDescription> fields, OffsetSize offsetSize) {
         return fields.stream().map(field -> fieldInPlace(field, offsetSize)).toList();
     }
 
-    private static FieldDescription fieldInPlace(FieldDescription field, AddressableSpace offsetSize) {
+    private static FieldDescription fieldInPlace(FieldDescription field, OffsetSize offsetSize) {
         return switch (field) {
             case TableField table -> new TableField(
                 Source.BUILDER,
@@ -145,11 +145,11 @@ final class Tables {
         };
     }
 
-    private static NestedTable itemInPlace(NestedTable item, AddressableSpace offsetSize) {
+    private static NestedTable itemInPlace(NestedTable item, OffsetSize offsetSize) {
         return new NestedTable(Source.BUILDER, tableInPlace(item.table(), offsetSize));
     }
 
-    private static TableDescription tableInPlace(TableDescription nested, AddressableSpace offsetSize) {
+    private static TableDescription tableInPlace(TableDescription nested, OffsetSize offsetSize) {
         var layout = LayoutDescription.headerless(offsetSize);
         return new TableDescription(layout, OptionalLong.empty(), fieldsInPlace(nested.fields(), offsetSize));
     }

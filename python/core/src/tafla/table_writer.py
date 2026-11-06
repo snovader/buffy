@@ -19,11 +19,11 @@ from .structs import (
     uint32,
     uint64,
 )
-from .types import AddressableSpace, ElementSize, TypeCode
+from .types import ElementSize, OffsetSize, TypeCode
 
 # The unsigned integer of each offset size, which offsets, lengths, counts,
 # item ends and header slots are written as
-_LENGTHS: dict[AddressableSpace, Struct] = {
+_LENGTHS: dict[OffsetSize, Struct] = {
     SIZEOF_8: uint8,
     SIZEOF_16: uint16,
     SIZEOF_32: uint32,
@@ -78,7 +78,7 @@ class TableWriter:
         "__table",
     ]
 
-    __size: AddressableSpace
+    __size: OffsetSize
 
     @overload
     def __init__(
@@ -97,7 +97,7 @@ class TableWriter:
         version: int | None = None,
     ) -> None:
         """``fields`` is the number of fields of the table, and ``layout`` its
-        header and offset width, which its readers must use too. ``version`` is
+        header and offset size, which its readers must use too. ``version`` is
         written to the header, and required when the layout is versioned.
 
         Raises ``TypeError`` if ``version`` is given for a layout without a
@@ -108,7 +108,7 @@ class TableWriter:
         size = layout.offset_size()
         data = bytearray(header_length(fields, layout, version))
 
-        # The width of offsets, lengths and header slots
+        # The offset size, the width of offsets, lengths and header slots
         self.__size = size
         self.__length = _LENGTHS[size]
         self.__max_length = MAX_LENGTHS[size]

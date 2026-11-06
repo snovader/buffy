@@ -6,6 +6,6 @@ message Versioned (version: 1, version: 2) {
     x: float64;
 }
 
-message Narrow (offset_size: 8, offset_size: 16) {
+message Narrow (offset_type: uint8, offset_type: uint16) {
     x: float64;
 }

@@ -19,17 +19,17 @@ from .structs import (
     uint32,
     uint64,
 )
-from .types import AddressableSpace, FloatTypeCode, IntTypeCode, TypeCode
+from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
 
 # The unsigned integer of each offset size, which lengths, offsets and header
 # slots are written as
-_SIZES: dict[AddressableSpace, Struct] = {
+_SIZES: dict[OffsetSize, Struct] = {
     SIZEOF_8: uint8,
     SIZEOF_16: uint16,
     SIZEOF_32: uint32,
 }
 # Their array type codes, which the ends of a vector's items are read as
-_SIZE_CODES: dict[AddressableSpace, IntTypeCode] = {
+_SIZE_CODES: dict[OffsetSize, IntTypeCode] = {
     SIZEOF_8: "B",
     SIZEOF_16: "H",
     SIZEOF_32: "I",
@@ -66,7 +66,7 @@ class ByteBuffer:
         "__view",
     ]
 
-    __size: AddressableSpace
+    __size: OffsetSize
 
     def __init__(
         self, bytes: Buffer, layout: TableLayout = TableLayout.DEFAULT
@@ -89,7 +89,7 @@ class ByteBuffer:
 
         self.__sized = layout.sized()
         self.__versioned = layout.versioned()
-        # The width of offsets, lengths and header slots
+        # The offset size, the width of offsets, lengths and header slots
         self.__size = layout.offset_size()
         self.__size_struct = _SIZES[self.__size]
         # The largest count, length or item end that a slot holds

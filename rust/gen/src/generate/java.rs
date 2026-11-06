@@ -243,13 +243,12 @@ fn imports(
     };
     let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
 
-    let mut names = Vec::new();
-    if layout.is_some_and(|layout| layout.offset_size != OffsetSize::U32) {
-        names.push("AddressableSpace");
-    }
-    names.push("ByteBuffer");
+    let mut names = vec!["ByteBuffer"];
     if layout.is_some_and(|layout| layout.version.is_some()) {
         names.push("DecodeException");
+    }
+    if layout.is_some_and(|layout| layout.offset_size != OffsetSize::Uint32) {
+        names.push("OffsetSize");
     }
     // Messages make a sizer, and tables take a sizer and a writer
     if layout.is_some() {
@@ -282,7 +281,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
                 .to_owned(),
         ]));
         // A long, as the runtime reads and writes versions, since a version
-        // of 32-bit offsets may not fit in an int
+        // of the offset type `uint32` may not fit in an int
         let suffix = if i32::try_from(version).is_ok() {
             ""
         } else {
@@ -361,10 +360,10 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout) {
     if layout.version.is_some() {
         options.push(".versioned(true)".to_owned());
     }
-    if layout.offset_size != OffsetSize::U32 {
+    if layout.offset_size != OffsetSize::Uint32 {
         options.push(format!(
-            ".offsetSize(AddressableSpace.SIZEOF_{})",
-            layout.offset_size.bytes() * 8
+            ".offsetSize(OffsetSize.{})",
+            layout.offset_size.type_name().to_ascii_uppercase()
         ));
     }
 

@@ -44,7 +44,7 @@ public final class ByteBuffer {
 
         this.sized = layout.sized();
         this.versioned = layout.versioned();
-        this.offsetSize = layout.offsetSize().valueOf();
+        this.offsetSize = layout.offsetSize().bytes();
         this.maxOffset = layout.offsetSize().maxValue();
         this.headerSize = layout.headerSize();
     }

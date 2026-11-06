@@ -1,9 +1,11 @@
 import type { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 
-export type AddressableSpace =
-    | typeof SIZEOF_8
-    | typeof SIZEOF_16
-    | typeof SIZEOF_32;
+/**
+ * A table's offset size: the width in bytes of its offset type, `uint8`,
+ * `uint16` or `uint32`, the unsigned integer type of its header slots, field
+ * offsets, counts, lengths and item ends.
+ */
+export type OffsetSize = 1 | 2 | 4;
 
 export type ElementSize =
     | typeof SIZEOF_8

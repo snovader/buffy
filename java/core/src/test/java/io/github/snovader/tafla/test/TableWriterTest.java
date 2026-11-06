@@ -29,14 +29,14 @@ public class TableWriterTest {
     void a_struct_array_a_nested_table_and_a_vector_are_padded_as_TableBuilder_pads_them() {
         // A uint8 leaves the uint32[] 3 bytes short of its alignment, the array leaves the structs
         // 2 bytes short of theirs, and the structs leave the nested table of float64s 6 bytes short
-        var layout = new LayoutDescription(true, true, AddressableSpace.SIZEOF_16);
+        var layout = new LayoutDescription(true, true, OffsetSize.UINT16);
         var nested = new TableDescription(
-            LayoutDescription.headerless(AddressableSpace.SIZEOF_16),
+            LayoutDescription.headerless(OffsetSize.UINT16),
             OptionalLong.empty(),
             List.of(new ArrayField(ScalarType.FLOAT64, new long[] {Double.doubleToLongBits(6)}))
         );
         var item = new TableDescription(
-            LayoutDescription.headerless(AddressableSpace.SIZEOF_16),
+            LayoutDescription.headerless(OffsetSize.UINT16),
             OptionalLong.empty(),
             List.of(new StringField("🦀"))
         );
@@ -65,7 +65,7 @@ public class TableWriterTest {
         @ForAll("utf16Strings") String string
     ) {
         var table = new TableDescription(
-            LayoutDescription.headerless(AddressableSpace.SIZEOF_32),
+            LayoutDescription.headerless(OffsetSize.UINT32),
             OptionalLong.empty(),
             List.of(new StringField(string))
         );
@@ -79,7 +79,7 @@ public class TableWriterTest {
         @ForAll("utf16Strings") String nested,
         @ForAll @Size(max = 3) List<@From("utf16Strings") String> items
     ) {
-        var layout = LayoutDescription.headerless(AddressableSpace.SIZEOF_32);
+        var layout = LayoutDescription.headerless(OffsetSize.UINT32);
         Function<String, TableDescription> tableOf = string ->
             new TableDescription(layout, OptionalLong.empty(), List.of(new StringField(string)));
         var vector = items.stream().map(item -> new NestedTable(Source.BUILDER, tableOf.apply(item))).toList();
@@ -158,7 +158,7 @@ public class TableWriterTest {
             String.format(
                 "The table's fields make it %d bytes, too long for %d-byte offsets",
                 max + 1,
-                offsetSize.valueOf()
+                offsetSize.bytes()
             ),
             exception.getMessage()
         );
@@ -181,7 +181,7 @@ public class TableWriterTest {
             exception.getMessage()
         );
 
-        // Past the 4 GiB that 32-bit offsets address, in a count that an int can't hold
+        // Past the 4 GiB that uint32 offsets address, in a count that an int can't hold
         var past4GiB = new TableSizer(3);
         for (int i = 0; i < 3; i++) {
             past4GiB.addFloat64Array(Integer.MAX_VALUE);
@@ -193,19 +193,19 @@ public class TableWriterTest {
 
     @Property
     void a_header_longer_than_the_offsets_address_is_rejected_as_TableBuilder_rejects_it(
-        @ForAll("narrowSizes") AddressableSpace size,
+        @ForAll("narrowSizes") OffsetSize size,
         @ForAll boolean sized
     ) {
         var layout = TableLayout.builder().sized(sized).offsetSize(size).build();
-        var fields = (int) (size.maxValue() / size.valueOf()) - (sized ? 1 : 0);
+        var fields = (int) (size.maxValue() / size.bytes()) - (sized ? 1 : 0);
 
-        assertEquals(layout.headerSize() + fields * size.valueOf(), new TableSizer(fields, layout).byteLength());
+        assertEquals(layout.headerSize() + fields * size.bytes(), new TableSizer(fields, layout).byteLength());
         assertRejectedAlike(() -> new TableBuilder(fields + 1, layout), () -> new TableSizer(fields + 1, layout));
     }
 
     @Example
     void versions_and_field_counts_are_checked_as_TableBuilder_checks_them() {
-        var versioned = TableLayout.builder().versioned(true).offsetSize(AddressableSpace.SIZEOF_8).build();
+        var versioned = TableLayout.builder().versioned(true).offsetSize(OffsetSize.UINT8).build();
 
         assertRejectedAlike(
             () -> new TableBuilder(0, TableLayout.DEFAULT, 1),
@@ -313,8 +313,8 @@ public class TableWriterTest {
     }
 
     @Provide
-    Arbitrary<AddressableSpace> narrowSizes() {
-        return Arbitraries.of(AddressableSpace.SIZEOF_8, AddressableSpace.SIZEOF_16);
+    Arbitrary<OffsetSize> narrowSizes() {
+        return Arbitraries.of(OffsetSize.UINT8, OffsetSize.UINT16);
     }
 
     /**

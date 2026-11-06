@@ -1,5 +1,5 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
-import type { AddressableSpace } from './types.ts';
+import type { OffsetSize } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
     /** Whether the header starts with the table's total byte length */
@@ -10,15 +10,16 @@ export interface TableLayoutOptions<Versioned extends boolean = boolean> {
      */
     versioned?: Versioned;
     /**
-     * The width in bytes of the header slots, field offsets and length
-     * prefixes, which limits the table's size: 1 for up to 255 bytes, 2 for
-     * 65,535 and 4, the default, for 4 GiB.
+     * The offset size, the width in bytes of the header slots, field offsets,
+     * counts, lengths and item ends, which limits the table's length: 1, of
+     * `uint8` offsets, for up to 255 bytes, 2, of `uint16`, for 65,535 and 4,
+     * of `uint32`, the default, for 4 GiB.
      */
-    offsetSize?: AddressableSpace;
+    offsetSize?: OffsetSize;
 }
 
 /**
- * The header and offset width of a table. A format creates its layout once
+ * The header and offset size of a table. A format creates its layout once
  * and passes it to both the `TableBuilder` that writes the table and the
  * `ByteBuffer` that reads it, so that the two can't disagree. Nested tables
  * use {@link TableLayout.DEFAULT}.
@@ -27,7 +28,7 @@ export interface TableLayoutOptions<Versioned extends boolean = boolean> {
  * built.
  */
 export class TableLayout<Versioned extends boolean = boolean> {
-    /** No header slots, and 32-bit offsets and lengths */
+    /** No header slots, and offsets and lengths of the offset type `uint32` */
     static readonly DEFAULT: TableLayout<false> = new TableLayout(
         false,
         false,
@@ -36,12 +37,12 @@ export class TableLayout<Versioned extends boolean = boolean> {
 
     readonly #sized: boolean;
     readonly #versioned: Versioned;
-    readonly #offsetSize: AddressableSpace;
+    readonly #offsetSize: OffsetSize;
 
     private constructor(
         sized: boolean,
         versioned: Versioned,
-        offsetSize: AddressableSpace
+        offsetSize: OffsetSize
     ) {
         this.#sized = sized;
         this.#versioned = versioned;
@@ -64,7 +65,7 @@ export class TableLayout<Versioned extends boolean = boolean> {
         return this.#versioned;
     }
 
-    offsetSize(): AddressableSpace {
+    offsetSize(): OffsetSize {
         return this.#offsetSize;
     }
 
@@ -123,7 +124,7 @@ export function headerLength(
  * The longest table that offsets of `size` bytes address, which is also the
  * largest number that they hold unsigned, without a power
  */
-export function maxLength(size: AddressableSpace): number {
+export function maxLength(size: OffsetSize): number {
     switch (size) {
         case SIZEOF_8:
             return 0xff;
@@ -151,6 +152,6 @@ export function assertCount(count: number): void {
 }
 
 /** Whether `value` is a whole number that `size` bytes hold unsigned */
-function fitsIn(value: number, size: AddressableSpace): boolean {
+function fitsIn(value: number, size: OffsetSize): boolean {
     return Number.isInteger(value) && value >= 0 && value <= maxLength(size);
 }

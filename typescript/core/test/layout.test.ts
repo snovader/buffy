@@ -1,15 +1,15 @@
 import { describe, expect } from 'vitest';
 import { it } from '@fast-check/vitest';
-import { SIZEOF_32, TableLayout } from 'tafla';
+import { TableLayout } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf } from './conformance/format.ts';
 
 describe('TableLayout', () => {
-    it('should default to no header slots and 32-bit offsets', () => {
+    it('should default to no header slots and uint32 offsets', () => {
         for (const layout of [TableLayout.DEFAULT, TableLayout.create()]) {
             expect(layout.sized()).toBe(false);
             expect(layout.versioned()).toBe(false);
-            expect(layout.offsetSize()).toBe(SIZEOF_32);
+            expect(layout.offsetSize()).toBe(4);
             expect(layout.headerSize()).toBe(0);
         }
     });

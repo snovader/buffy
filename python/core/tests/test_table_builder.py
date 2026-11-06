@@ -8,9 +8,6 @@ from hypothesis import given
 from hypothesis.strategies import integers
 
 from tafla import (
-    SIZEOF_8,
-    SIZEOF_16,
-    SIZEOF_32,
     ByteBuffer,
     TableBuilder,
     TableLayout,
@@ -19,8 +16,8 @@ from tests.descriptions import tables
 from tests.tables import Description, OffsetSize, alignment_of, build_table
 
 MAX_LENGTHS: list[tuple[OffsetSize, int]] = [
-    (SIZEOF_8, 2**8 - 1),
-    (SIZEOF_16, 2**16 - 1),
+    (1, 2**8 - 1),
+    (2, 2**16 - 1),
 ]
 
 
@@ -282,10 +279,10 @@ class TestChangedLengths(unittest.TestCase):
 class TestVersions(unittest.TestCase):
     def test_rejects_a_version_that_its_slot_cannot_hold(self) -> None:
         cases: list[tuple[OffsetSize, int]] = [
-            (SIZEOF_8, 2**8),
-            (SIZEOF_16, 2**16),
-            (SIZEOF_32, 2**32),
-            (SIZEOF_32, -1),
+            (1, 2**8),
+            (2, 2**16),
+            (4, 2**32),
+            (4, -1),
         ]
 
         for size, version in cases:

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { SIZEOF_8, SIZEOF_16, TableBuilder, TableLayout } from 'tafla';
+import { TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { alignmentOf, buildTable } from './conformance/tables.ts';
@@ -81,7 +81,7 @@ describe('arrays of structs', () => {
 });
 
 describe('tables longer than the offsets address', () => {
-    it.each([SIZEOF_8, SIZEOF_16] as const)(
+    it.each([1, 2] as const)(
         'should reject a header longer than %s-byte offsets address',
         offsetSize => {
             const max = MAX_VALUES[offsetSize];
@@ -98,7 +98,7 @@ describe('tables longer than the offsets address', () => {
         }
     );
 
-    it('should reject a table of 32-bit offsets past 4 GiB before allocating it', () => {
+    it('should reject a table of uint32 offsets past 4 GiB before allocating it', () => {
         // An array-like stands in for a 4 GiB array, whose elements aren't read.
         // The table would hold its offset, its length and 2^32 elements.
         const builder = new TableBuilder(1);

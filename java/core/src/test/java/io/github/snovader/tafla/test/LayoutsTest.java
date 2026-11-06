@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The code generated from {@code schemas/layouts.tafla}, a message of the same fields in each of
- * the twelve layouts, writes and reads tables of each layout with tafla: 8-, 16- and 32-bit offsets,
- * each with and without the table's length and a version in its header.
+ * the twelve layouts, writes and reads tables of each layout with tafla: each offset type, uint8,
+ * uint16 and uint32, with and without the table's length and a version in its header.
  */
 public class LayoutsTest {
     /** The fields of every message of the schema, which a test writes with any of them */
@@ -68,7 +68,7 @@ public class LayoutsTest {
     private static final List<LayoutMessage<?>> MESSAGES = List.of(
         new LayoutMessage<>(
             "Offset8",
-            new LayoutDescription(false, false, AddressableSpace.SIZEOF_8),
+            new LayoutDescription(false, false, OffsetSize.UINT8),
             OptionalLong.empty(),
             fields -> Offset8.serialize(new Offset8.Fields(fields.id(), fields.name(), fields.values())),
             Offset8::new,
@@ -76,7 +76,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset8Sized",
-            new LayoutDescription(true, false, AddressableSpace.SIZEOF_8),
+            new LayoutDescription(true, false, OffsetSize.UINT8),
             OptionalLong.empty(),
             fields -> Offset8Sized.serialize(new Offset8Sized.Fields(fields.id(), fields.name(), fields.values())),
             Offset8Sized::new,
@@ -84,7 +84,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset8Versioned",
-            new LayoutDescription(false, true, AddressableSpace.SIZEOF_8),
+            new LayoutDescription(false, true, OffsetSize.UINT8),
             OptionalLong.of(255),
             fields -> Offset8Versioned.serialize(
                 new Offset8Versioned.Fields(fields.id(), fields.name(), fields.values())
@@ -94,7 +94,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset8SizedVersioned",
-            new LayoutDescription(true, true, AddressableSpace.SIZEOF_8),
+            new LayoutDescription(true, true, OffsetSize.UINT8),
             OptionalLong.of(0),
             fields -> Offset8SizedVersioned.serialize(
                 new Offset8SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
@@ -104,7 +104,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset16",
-            new LayoutDescription(false, false, AddressableSpace.SIZEOF_16),
+            new LayoutDescription(false, false, OffsetSize.UINT16),
             OptionalLong.empty(),
             fields -> Offset16.serialize(new Offset16.Fields(fields.id(), fields.name(), fields.values())),
             Offset16::new,
@@ -112,7 +112,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset16Sized",
-            new LayoutDescription(true, false, AddressableSpace.SIZEOF_16),
+            new LayoutDescription(true, false, OffsetSize.UINT16),
             OptionalLong.empty(),
             fields -> Offset16Sized.serialize(new Offset16Sized.Fields(fields.id(), fields.name(), fields.values())),
             Offset16Sized::new,
@@ -120,7 +120,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset16Versioned",
-            new LayoutDescription(false, true, AddressableSpace.SIZEOF_16),
+            new LayoutDescription(false, true, OffsetSize.UINT16),
             OptionalLong.of(65_535),
             fields -> Offset16Versioned.serialize(
                 new Offset16Versioned.Fields(fields.id(), fields.name(), fields.values())
@@ -130,7 +130,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset16SizedVersioned",
-            new LayoutDescription(true, true, AddressableSpace.SIZEOF_16),
+            new LayoutDescription(true, true, OffsetSize.UINT16),
             OptionalLong.of(1),
             fields -> Offset16SizedVersioned.serialize(
                 new Offset16SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
@@ -140,7 +140,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset32",
-            new LayoutDescription(false, false, AddressableSpace.SIZEOF_32),
+            new LayoutDescription(false, false, OffsetSize.UINT32),
             OptionalLong.empty(),
             fields -> Offset32.serialize(new Offset32.Fields(fields.id(), fields.name(), fields.values())),
             Offset32::new,
@@ -148,7 +148,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset32Sized",
-            new LayoutDescription(true, false, AddressableSpace.SIZEOF_32),
+            new LayoutDescription(true, false, OffsetSize.UINT32),
             OptionalLong.empty(),
             fields -> Offset32Sized.serialize(new Offset32Sized.Fields(fields.id(), fields.name(), fields.values())),
             Offset32Sized::new,
@@ -156,7 +156,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset32Versioned",
-            new LayoutDescription(false, true, AddressableSpace.SIZEOF_32),
+            new LayoutDescription(false, true, OffsetSize.UINT32),
             OptionalLong.of(4_294_967_295L),
             fields -> Offset32Versioned.serialize(
                 new Offset32Versioned.Fields(fields.id(), fields.name(), fields.values())
@@ -166,7 +166,7 @@ public class LayoutsTest {
         ),
         new LayoutMessage<>(
             "Offset32SizedVersioned",
-            new LayoutDescription(true, true, AddressableSpace.SIZEOF_32),
+            new LayoutDescription(true, true, OffsetSize.UINT32),
             OptionalLong.of(2),
             fields -> Offset32SizedVersioned.serialize(
                 new Offset32SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
@@ -176,10 +176,10 @@ public class LayoutsTest {
         )
     );
 
-    /** {@return the messages of 8- and 16-bit offsets, whose limits a test can reach} */
+    /** {@return the messages of uint8 and uint16 offsets, whose limits a test can reach} */
     private static List<LayoutMessage<?>> narrowMessages() {
         return MESSAGES.stream()
-            .filter(message -> message.layout().offsetSize() != AddressableSpace.SIZEOF_32)
+            .filter(message -> message.layout().offsetSize() != OffsetSize.UINT32)
             .toList();
     }
 

@@ -310,7 +310,7 @@ impl TableSizer {
         self.root_fields = self.root_fields.saturating_add(1);
     }
 
-    /// The width of offsets, lengths and header slots
+    /// The offset size, the width of offsets, lengths and header slots
     const fn width(&self) -> u64 {
         self.offset_size.bytes() as u64
     }
@@ -695,9 +695,9 @@ impl TableWriter {
     #[allow(clippy::cast_possible_truncation)]
     fn push_slot(&mut self, value: usize) {
         match self.offset_size {
-            OffsetSize::U8 => self.push(&[value as u8]),
-            OffsetSize::U16 => self.push(&(value as u16).to_le_bytes()),
-            OffsetSize::U32 => self.push(&(value as u32).to_le_bytes()),
+            OffsetSize::Uint8 => self.push(&[value as u8]),
+            OffsetSize::Uint16 => self.push(&(value as u16).to_le_bytes()),
+            OffsetSize::Uint32 => self.push(&(value as u32).to_le_bytes()),
         }
     }
 
@@ -711,9 +711,9 @@ impl TableWriter {
         };
 
         let set = match self.offset_size {
-            OffsetSize::U8 => set_le(slot, [value as u8]),
-            OffsetSize::U16 => set_le(slot, (value as u16).to_le_bytes()),
-            OffsetSize::U32 => set_le(slot, (value as u32).to_le_bytes()),
+            OffsetSize::Uint8 => set_le(slot, [value as u8]),
+            OffsetSize::Uint16 => set_le(slot, (value as u16).to_le_bytes()),
+            OffsetSize::Uint32 => set_le(slot, (value as u32).to_le_bytes()),
         };
         if !set {
             self.fail();

@@ -96,9 +96,9 @@ fn test_reads_invalid_tables_up_to_the_field_that_fails() {
 fn table_of(value: &Value) -> Table {
     let layout = &value["layout"];
     let offset_size = match layout["offsetSize"].as_u64() {
-        Some(1) => OffsetSize::U8,
-        Some(2) => OffsetSize::U16,
-        Some(4) => OffsetSize::U32,
+        Some(1) => OffsetSize::Uint8,
+        Some(2) => OffsetSize::Uint16,
+        Some(4) => OffsetSize::Uint32,
         other => panic!("Offsets can't be {other:?} bytes wide"),
     };
 

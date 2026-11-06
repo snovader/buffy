@@ -60,8 +60,10 @@ then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is ``sized``, and
   then its version when it's ``versioned``.
-- Header slots, offsets, counts and vector item ends are all ``offset_size``
-  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
+- Header slots, offsets, counts and vector item ends are all of the layout's
+  offset type, ``uint8``, ``uint16`` or ``uint32``, whose offset size,
+  ``offset_size``, is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB
+  or 4 GiB.
 - Offsets count from the table's start. A table nested with ``set_table()`` has
   no header, and its offsets count from its own start.
 - Arrays and strings start with their element count. Typed arrays are padded so
@@ -166,10 +168,12 @@ from .errors import DecodeError
 from .layout import TableLayout
 from .table_builder import TableBuilder
 from .table_writer import TableWriter
+from .types import OffsetSize
 
 __all__ = [
     "ByteBuffer",
     "DecodeError",
+    "OffsetSize",
     "TableBuilder",
     "TableLayout",
     "TableWriter",

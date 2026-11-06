@@ -6,7 +6,7 @@ import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** 32-bit offsets, after the largest version they hold */
+/** {@code uint32} offsets, after the largest version they hold */
 public final class Offset32Versioned {
     /** The version of the format, which the header carries and the constructor checks */
     public static final long FORMAT_VERSION = 4294967295L;

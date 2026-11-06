@@ -32,9 +32,9 @@ final class DescriptionJson {
 
     private static LayoutDescription readLayout(JsonObject layout) {
         var offsetSize = switch (layout.getInt("offsetSize")) {
-            case 1 -> AddressableSpace.SIZEOF_8;
-            case 2 -> AddressableSpace.SIZEOF_16;
-            case 4 -> AddressableSpace.SIZEOF_32;
+            case 1 -> OffsetSize.UINT8;
+            case 2 -> OffsetSize.UINT16;
+            case 4 -> OffsetSize.UINT32;
             default -> throw new IllegalArgumentException("Offsets can't be " + layout.get("offsetSize") + " bytes wide");
         };
 

@@ -70,7 +70,7 @@ impl PointFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(4, Point::LAYOUT)?;
         sizer.add_f64();
@@ -171,7 +171,7 @@ impl DocumentFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::versioned(4, Document::LAYOUT, Document::FORMAT_VERSION)?;
         sizer.add_f64();
@@ -333,7 +333,7 @@ impl ItemListFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(1, ItemList::LAYOUT)?;
         sizer.add_vector(self.items.len());

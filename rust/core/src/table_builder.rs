@@ -27,7 +27,7 @@ pub struct TableBuilder<'a> {
     // Narrow fields, since the builder is inline in a field that nests it,
     // and every field is as large as the largest kind
     values: Vec<Field<'a>>,
-    /// The number of fields that the table holds, which a header of 32-bit
+    /// The number of fields that the table holds, which a header of `uint32`
     /// offsets limits to fewer than 2^30
     fields: u32,
     /// The table's length so far, which is where the next field goes
@@ -224,9 +224,9 @@ impl<'a> TableBuilder<'a> {
 
     /// Embeds a table, from its builder or its bytes, without a length prefix.
     /// Readers find its fields with `ByteBuffer::field_offset()` from the
-    /// field's position, which reads offsets as wide as the parent's, so the
-    /// table should have no header and the parent's offset size: that's
-    /// [`TableLayout::DEFAULT`] in a parent of 32-bit offsets.
+    /// field's position, which reads offsets of the parent's offset type, so
+    /// the table should have no header and the parent's offset size: that's
+    /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.
     ///
     /// A builder, borrowed or owned, is written straight into this table
     /// when it's written, without bytes of its own. It must have all its
@@ -662,9 +662,9 @@ fn push_slot(bytes: &mut Vec<u8>, offset_size: OffsetSize, value: usize) {
     debug_assert!(value <= offset_size.max_value() as usize);
 
     match offset_size {
-        OffsetSize::U8 => bytes.push(value as u8),
-        OffsetSize::U16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
-        OffsetSize::U32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
+        OffsetSize::Uint8 => bytes.push(value as u8),
+        OffsetSize::Uint16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
+        OffsetSize::Uint32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
     }
 }
 
@@ -674,11 +674,11 @@ fn set_slot(bytes: &mut [u8], position: usize, offset_size: OffsetSize, value: u
     debug_assert!(value <= offset_size.max_value() as usize);
 
     match offset_size {
-        OffsetSize::U8 => bytes[position] = value as u8,
-        OffsetSize::U16 => {
+        OffsetSize::Uint8 => bytes[position] = value as u8,
+        OffsetSize::Uint16 => {
             bytes[position..position + 2].copy_from_slice(&(value as u16).to_le_bytes());
         }
-        OffsetSize::U32 => {
+        OffsetSize::Uint32 => {
             bytes[position..position + 4].copy_from_slice(&(value as u32).to_le_bytes());
         }
     }

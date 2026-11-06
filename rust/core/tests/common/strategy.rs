@@ -18,7 +18,7 @@ use super::description::{
 /// hold tables
 const DEPTH: u32 = 2;
 
-const OFFSET_SIZES: [OffsetSize; 3] = [OffsetSize::U8, OffsetSize::U16, OffsetSize::U32];
+const OFFSET_SIZES: [OffsetSize; 3] = [OffsetSize::Uint8, OffsetSize::Uint16, OffsetSize::Uint32];
 
 /// Tables of any layout
 pub fn table() -> BoxedStrategy<Table> {
@@ -116,7 +116,7 @@ fn tables_of(
 ) -> BoxedStrategy<Table> {
     // The fields of each offset size, created once rather than for each table
     let fields_of_size = OFFSET_SIZES.map(|offset_size| {
-        let small = small || offset_size == OffsetSize::U8;
+        let small = small || offset_size == OffsetSize::Uint8;
         vec(
             field(offset_size, depth, small, values),
             0..=Limits::of(small).fields,

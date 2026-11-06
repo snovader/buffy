@@ -168,7 +168,7 @@ fn test_versioned_document_with_nested_tables() {
 fn test_8_bit_offsets_with_table_nested_as_bytes() {
     let layout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::U8);
+        .with_offset_size(OffsetSize::Uint8);
 
     let mut small = TableBuilder::new(3, layout).unwrap();
     small.set_str("hi").unwrap();
@@ -195,9 +195,9 @@ fn test_8_bit_offsets_with_table_nested_as_bytes() {
 fn test_16_bit_offsets_with_vector_items_of_other_widths() {
     let layout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::U16)
+        .with_offset_size(OffsetSize::Uint16)
         .versioned();
-    let narrow_layout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
+    let narrow_layout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint8);
 
     let mut narrow = TableBuilder::new(1, narrow_layout).unwrap();
     narrow.set_u8(42).unwrap();

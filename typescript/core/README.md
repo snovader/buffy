@@ -53,9 +53,10 @@ and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
-- Header slots, offsets, counts, lengths and item ends are all `offsetSize`
-  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or
-  4 GiB.
+- Header slots, offsets, counts, lengths and item ends are all of the
+  layout's offset type, `uint8`, `uint16` or `uint32`, whose offset size,
+  `offsetSize`, is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB
+  or 4 GiB.
 - Offsets count from the table's start. A table nested with `setTable()` has
   no header, and its offsets count from its own start.
 - A struct is its scalars one after another, without padding, and
@@ -142,12 +143,12 @@ Using the API wrongly throws other errors, whatever the bytes:
   nothing.
 - `TableBuilder` throws a `RangeError` for more or fewer fields than it was
   created with, or a version that doesn't fit. A field that would make the
-  table too long for its `offsetSize` throws a `RangeError` from its setter
+  table too long for its offset type throws a `RangeError` from its setter
   and isn't added. A version missing from or given for a layout, or a field
   set after `finalize()`, throws a `TypeError`.
 - `TableSizer` throws as `TableBuilder`'s constructor does for its header and
   version, and its `byteLength()` and `writer()` throw a `RangeError` for a
-  table too long for its `offsetSize`. A `TableWriter` throws a `RangeError`
+  table too long for its offset type. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
   counted, and from `setString()` for a string longer than the one counted.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.

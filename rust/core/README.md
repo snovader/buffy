@@ -62,9 +62,10 @@ and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
-- Header slots, offsets, counts and vector item ends are all `offset_size`
-  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or
-  4 GiB.
+- Header slots, offsets, counts and vector item ends are all of the
+  layout's offset type, `uint8`, `uint16` or `uint32`, whose offset size,
+  `OffsetSize`, is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB
+  or 4 GiB.
 - Offsets count from the table's start. A table nested with `set_table()` has
   no header, and its offsets count from its own start.
 - A struct is its scalars, one after another without padding, which
@@ -162,11 +163,11 @@ Validation is always on:
 than panicking, since WebAssembly builds abort on panic:
 
 - A setter returns an error for a field beyond the number the table was
-  created with, or one that would make the table too long for its
-  `offset_size`, and leaves the builder as it was, as `set_struct_array()`
+  created with, or one that would make the table too long for its offset
+  type, and leaves the builder as it was, as `set_struct_array()`
   does for bytes that aren't a whole number of structs. `to_bytes()`, and
   nesting a builder, return an error while fields are left to set. A version
-  that doesn't fit, or a header too long for its `offset_size`, is an error
+  that doesn't fit, or a header too long for its offset type, is an error
   from the constructor.
 - The compiler requires a version exactly for a versioned layout, and offers
   `ByteBuffer::version()` only for one, through `TableLayout`'s `VERSIONED`

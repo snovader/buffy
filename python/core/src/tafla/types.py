@@ -1,6 +1,9 @@
 from typing import Literal
 
-type AddressableSpace = Literal[1, 2, 4]
+# A table's offset size: the width in bytes of its offset type, uint8, uint16 or
+# uint32, the unsigned integer type of its header slots, field offsets, counts,
+# lengths and item ends
+type OffsetSize = Literal[1, 2, 4]
 
 type ElementSize = Literal[1, 2, 4, 8]
 
