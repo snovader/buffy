@@ -12,13 +12,13 @@
   ],
   "license": "MIT",
   "author": "snovader",
-  "homepage": "https://github.com/snovader/buffy/tree/main/typescript/core#readme",
+  "homepage": "https://github.com/snovader/tafla/tree/main/typescript/core#readme",
   "bugs": {
-    "url": "https://github.com/snovader/buffy/issues"
+    "url": "https://github.com/snovader/tafla/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snovader/buffy.git",
+    "url": "git+https://github.com/snovader/tafla.git",
     "directory": "typescript/core"
   },
   "type": "module",
@@ -41,6 +41,20 @@
       "tafla-source": "./source/*.ts",
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "imports": {
+      "#*": {
+        "types": "./dist/*.d.ts",
+        "default": "./dist/*.js"
+      }
     }
   },
   "scripts": {

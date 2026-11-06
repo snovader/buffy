@@ -40,5 +40,8 @@ TypeScript configs set it in `customConditions`. Without it, as for the
 package's users, they resolve to the build in `dist`.
 
 `yarn workspace tafla build` compiles the package to `dist`, and packing
-it builds it first. `yarn package:check` packs it, checks the archive with Are
+it builds it first. The package holds only `dist`, so its `publishConfig`
+replaces `exports` and `imports` with copies without the condition, which
+Yarn writes into the packed manifest. Pack and publish it with Yarn, since npm
+doesn't apply them. `yarn package:check` packs it, checks the archive with Are
 the Types Wrong and publint, and imports the build to read back a table.

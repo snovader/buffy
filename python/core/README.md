@@ -8,5 +8,5 @@ bytes. Every read checks that it stays within the bytes it was given.
 code that tafla-gen generates writes its tables, without recording them first
 as `TableBuilder` does.
 
-The package's docstring, `help(tafla)`, has an example, which
-`tests/test_docs.py` runs.
+The package's docstring, `help(tafla)`, has an example, which the tests run
+as a doctest.

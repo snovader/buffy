@@ -6,7 +6,7 @@ resolver = "3"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-repository = "https://github.com/snovader/buffy"
+repository = "https://github.com/snovader/tafla"
 
 [profile.release]
 codegen-units = 1

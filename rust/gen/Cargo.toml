@@ -1,11 +1,15 @@
 [package]
 name = "tafla-gen"
 version = "0.0.0"
+description = "Compiles tafla schemas into code that writes and reads tables in TypeScript, Python, Java and Rust"
+readme = "README.md"
+documentation = "https://docs.rs/tafla-gen"
+keywords = ["codegen", "schema", "serialization", "tafla", "wasm"]
+categories = ["encoding", "development-tools::build-utils", "compilers"]
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [lib]
 name = "tafla_gen"
