@@ -1,4 +1,7 @@
+import mmap
+import os
 import sys
+import tempfile
 import unittest
 from array import array
 from collections.abc import Callable
@@ -241,6 +244,45 @@ class TestByteBuffer(unittest.TestCase):
             [bytes(item) for item in buffer.get_vector(vector)],
             [b"\x01", b"", b"\x02\x03"],
         )
+
+    @unittest.skipUnless(
+        os.environ.get("TAFLA_LARGE_BUFFER_TESTS"),
+        "Maps 4 GiB of address space; set TAFLA_LARGE_BUFFER_TESTS=1 to run",
+    )
+    def test_finds_vector_items_past_4_gib_in_a_larger_buffer(self) -> None:
+        """A memory map of many tables can hold a table past 4 GiB, whose
+        positions don't fit in 32 bits, though its own offsets do"""
+        builder = TableBuilder(1)
+        builder.set_vector([b"\x01", b"\x02\x03"])
+        table = builder.bytes()
+        position = 2**32
+
+        with tempfile.TemporaryFile() as file:
+            # A sparse file, which takes no disk space for the bytes before
+            # the table
+            file.truncate(position + len(table))
+            file.seek(position)
+            file.write(table)
+            file.flush()
+
+            with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+                buffer = ByteBuffer(mapped)
+                vector = position + buffer.get_uint32(position)
+                # The table's offset, then the vector's count and two ends
+                expected = [position + 16, position + 17]
+
+                self.assertEqual(buffer.get_vector_offsets(vector).tolist(), expected)
+                self.assertEqual(
+                    [buffer.get_vector_offset(vector, index) for index in range(2)],
+                    expected,
+                )
+                self.assertEqual(
+                    [bytes(item) for item in buffer.get_vector(vector)],
+                    [b"\x01", b"\x02\x03"],
+                )
+
+                # Release the views of the map, so that it can close
+                del buffer
 
     def test_rejects_an_index_outside_a_vector_with_index_error(self) -> None:
         builder = TableBuilder(1)
