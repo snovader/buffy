@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest';
+import { describe, expect, inject, test } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, SIZEOF_8, SIZEOF_16, SIZEOF_32, TableBuilder, TableLayout } from 'tafla';
 import { growing } from './arrayLikes.ts';
@@ -48,7 +48,7 @@ it('should find each vector item from its ends, as reading every item finds it',
     const vector = buffer.rootOffset(0);
 
     // The count and the three ends, at 4, then the items from 20
-    expect(Array.from(buffer.getVectorOffsets(vector))).toStrictEqual([20, 21, 21]);
+    expect(buffer.getVectorOffsets(vector)).toStrictEqual([20, 21, 21]);
     expect([0, 1, 2].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual([
         20, 21, 21
     ]);
@@ -59,6 +59,35 @@ it('should find each vector item from its ends, as reading every item finds it',
         new Uint8Array([2, 3])
     ]);
 });
+
+// A buffer of many tables can hold a table past 4 GiB, whose positions don't
+// fit in 32 bits, though its own offsets do
+test.runIf(inject('largeBufferTests'))(
+    'should find vector items past 4 GiB in a larger buffer',
+    () => {
+        const builder = new TableBuilder(1);
+        builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
+        const table = builder.finalize();
+        const position = 2 ** 32;
+
+        // Allocated zeroed, so the bytes before the table take no memory
+        // until they're written
+        const bytes = new Uint8Array(position + table.bytes().length);
+        bytes.set(table.bytes(), position);
+
+        const buffer = new ByteBuffer(bytes);
+        const vector = position + table.rootOffset(0);
+        // The count and the two ends, after the vector at 4
+        const expected = [position + 16, position + 17];
+
+        expect(buffer.getVectorOffsets(vector)).toStrictEqual(expected);
+        expect([0, 1].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual(expected);
+        expect(buffer.getVector(vector)).toStrictEqual([
+            new Uint8Array([1]),
+            new Uint8Array([2, 3])
+        ]);
+    }
+);
 
 describe('versioned tables', () => {
     it.each([

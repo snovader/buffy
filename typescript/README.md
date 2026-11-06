@@ -18,6 +18,8 @@ yarn test
 ```
 
 `yarn format:write` and `yarn lint:write` fix what they can.
+`TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
+buffers of more than 4 GiB, which are skipped by default.
 `yarn conformance:generate` regenerates the conformance suite at the root of the
 repository from `core/test/conformance/cases.ts`, and the tables of the
 generated code in its `generated` directory from
