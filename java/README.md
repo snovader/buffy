@@ -10,9 +10,9 @@ in JMH benchmarks, on the same workloads as the TypeScript comparison. Its
 
 ## Development
 
-This is a Gradle build. It compiles for Java 21 with an Oracle JDK 25, which
-Gradle downloads when it isn't installed, and checks the code with Error Prone
-and NullAway. Run the commands below from this directory.
+This is a Gradle build. It compiles for Java 21 with a JDK 25, which Gradle
+downloads when none is installed, and checks the code with Error Prone and
+NullAway. Run the commands below from this directory.
 
 ```sh
 ./gradlew build
@@ -20,6 +20,9 @@ and NullAway. Run the commands below from this directory.
 ```
 
 `./gradlew test -PtestJavaVersion=21` runs the tests in Java 21 rather than 25.
+`./gradlew :core:publishToMavenLocal` publishes the runtime's jar, sources,
+javadoc and POM to the local Maven repository. Given an ASCII-armored key in
+the `signingKey` and `signingPassword` Gradle properties, it signs them too.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
 

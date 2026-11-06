@@ -2,10 +2,18 @@ import net.ltgt.gradle.errorprone.errorprone
 
 plugins {
     `java-library`
+    `maven-publish`
+    signing
     alias(libs.plugins.errorprone)
 }
 
 group = "io.github.snovader.tafla"
+version = "0.0.0"
+
+// The project is core, after its directory, and the artifact is tafla, as README.md names it
+base {
+    archivesName = "tafla"
+}
 
 dependencies {
     api(libs.jspecify)
@@ -24,7 +32,16 @@ dependencies {
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
-        vendor = JvmVendorSpec.ORACLE
+    }
+
+    withSourcesJar()
+    withJavadocJar()
+}
+
+// The license at the root of the repository, in every jar
+tasks.withType<Jar>().configureEach {
+    from(rootProject.layout.projectDirectory.file("../LICENSE")) {
+        into("META-INF")
     }
 }
 
@@ -55,4 +72,52 @@ tasks.named<Test>("test") {
     val conformance = rootProject.layout.projectDirectory.dir("../conformance")
     inputs.dir(conformance)
     systemProperty("tafla.conformance", conformance.asFile.absolutePath)
+}
+
+publishing {
+    publications {
+        register<MavenPublication>("maven") {
+            artifactId = base.archivesName.get()
+            from(components["java"])
+
+            pom {
+                name = "tafla"
+                description = "Binary tables of scalars, strings, arrays and structs, read with bounds checks"
+                url = "https://github.com/snovader/tafla"
+                licenses {
+                    license {
+                        name = "MIT"
+                        url = "https://opensource.org/license/mit"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "snovader"
+                        name = "snovader"
+                        url = "https://github.com/snovader"
+                    }
+                }
+                scm {
+                    connection = "scm:git:https://github.com/snovader/tafla.git"
+                    developerConnection = "scm:git:ssh://git@github.com/snovader/tafla.git"
+                    url = "https://github.com/snovader/tafla"
+                }
+                issueManagement {
+                    system = "GitHub"
+                    url = "https://github.com/snovader/tafla/issues"
+                }
+            }
+        }
+    }
+}
+
+// Signs the publication with an ASCII-armored key from the signingKey and signingPassword
+// properties, such as ORG_GRADLE_PROJECT_signingKey in the environment. Without them, as in
+// development and CI, the publication isn't signed.
+val signingKey = providers.gradleProperty("signingKey")
+if (signingKey.isPresent) {
+    signing {
+        useInMemoryPgpKeys(signingKey.get(), providers.gradleProperty("signingPassword").orNull)
+        sign(publishing.publications["maven"])
+    }
 }

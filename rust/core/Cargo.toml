@@ -1,11 +1,15 @@
 [package]
 name = "tafla"
 version = "0.0.0"
+description = "Binary tables of scalars, strings, arrays and structs, read with bounds checks and borrowed views"
+readme = "README.md"
+documentation = "https://docs.rs/tafla"
+keywords = ["binary", "serialization", "zero-copy", "table", "tafla"]
+categories = ["encoding", "data-structures"]
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [dev-dependencies]
 # Without forking test cases into processes or timing them out, which the

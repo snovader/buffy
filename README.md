@@ -15,12 +15,12 @@ tafla hasn't been released yet.
 
 ## Packages
 
-| Language   | Runtime                          | Code generator                       |
-| ---------- | -------------------------------- | ------------------------------------ |
-| TypeScript | `tafla` on npm                   | `tafla-gen` on npm                   |
-| Python     | `tafla` on PyPI                  | `tafla-gen` on PyPI                  |
-| Java       | `io.github.snovader.tafla:tafla` | `io.github.snovader.tafla:tafla-gen` |
-| Rust       | `tafla` on crates.io             | `tafla-gen` on crates.io             |
+| Language   | Runtime                                           | Code generator                                        |
+| ---------- | ------------------------------------------------- | ----------------------------------------------------- |
+| TypeScript | `tafla` on npm                                    | `tafla-gen` on npm                                    |
+| Python     | `tafla` on PyPI                                   | `tafla-gen` on PyPI                                   |
+| Java       | `io.github.snovader.tafla:tafla` on Maven Central | `io.github.snovader.tafla:tafla-gen` on Maven Central |
+| Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io                              |
 
 A runtime writes and reads tables. The code generator compiles a schema of
 messages and tables into code that writes and reads them with a language's
@@ -29,14 +29,14 @@ as WebAssembly.
 
 ## Repository
 
-| Directory      | Contents                                                                                       |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| `conformance/` | Golden tables that every implementation reads and rebuilds byte for byte                       |
-| `typescript/`  | The reference implementation, which writes the conformance tables, and the generator's package |
-| `python/`      | The Python runtime and the generator's package                                                 |
-| `java/`        | The Java runtime and the generator's package                                                   |
-| `rust/`        | The Rust runtime and the generator                                                             |
-| `schemas/`     | Example schemas, which the generator's tests compile                                           |
+| Directory      | Contents                                                                 |
+| -------------- | ------------------------------------------------------------------------ |
+| `conformance/` | Golden tables that every implementation reads and rebuilds byte for byte |
+| `typescript/`  | The reference implementation, which writes the conformance tables        |
+| `python/`      | The Python runtime                                                       |
+| `java/`        | The Java runtime                                                         |
+| `rust/`        | The Rust runtime and the generator                                       |
+| `schemas/`     | Example schemas, which the generator's tests compile                     |
 
 Each language's directory is the root of its own toolchain, and its README
 lists the commands that check it.
