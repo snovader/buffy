@@ -5,7 +5,6 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableSizer;
 import io.github.snovader.tafla.TableWriter;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -64,7 +63,7 @@ public final class Tree {
     public List<Tree> children() {
         var offsets = buffer.getVectorOffsets(buffer.fieldOffset(position, 1));
 
-        return Arrays.stream(offsets)
+        return java.util.Arrays.stream(offsets)
             .mapToObj(item -> new Tree(buffer, item))
             .toList();
     }

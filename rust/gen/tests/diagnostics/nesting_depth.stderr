@@ -1,0 +1,11 @@
+error: `S65` nests too deeply
+  --> nesting_depth.tafla:71:8
+   |
+71 | struct S65 { value: uint8; inner: S64; }
+   |        ^^^ structs nest at most 64 deep, one within another
+
+error: `Root` nests too deeply
+   --> nesting_depth.tafla:139:9
+    |
+139 | message Root { inner: T64; }
+    |         ^^^^ tables nest in place at most 64 deep, one within another

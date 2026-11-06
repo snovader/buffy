@@ -4,6 +4,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 use crate::diagnostic::Diagnostic;
+use crate::generate::reserved;
 use crate::model::{
     Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema, StructLayout,
 };
@@ -20,6 +21,7 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
         .map(|declaration| check_declaration(declaration, declarations, &indices, &mut errors))
         .collect();
 
+    check_fields_declarations(declarations, &indices, &mut errors);
     check_view_declarations(&definitions, declarations, &indices, &mut errors);
 
     if errors.is_empty() {
@@ -27,9 +29,12 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
         check_nested_offsets(&definitions, declarations, &mut errors);
     }
 
-    // Every struct has a size once none contains itself
+    // Every struct has a size, and every table and struct a depth, once
+    // none contains itself
     if errors.is_empty() {
-        measure_structs(&mut definitions, declarations, &mut errors);
+        let order = nesting_order(&definitions);
+        check_nesting_depth(&definitions, declarations, &order, &mut errors);
+        measure_structs(&mut definitions, declarations, &order, &mut errors);
     }
 
     if errors.is_empty() {
@@ -60,6 +65,7 @@ fn index_names<'a>(
                 name.span,
             ));
         }
+        check_reserved_name(name, errors);
         if indices.insert(name.text.as_str(), index).is_some() {
             errors.push(Diagnostic::new(
                 format!("`{}` is declared twice", name.text),
@@ -69,6 +75,32 @@ fn index_names<'a>(
     }
 
     indices
+}
+
+/// Checks that a declaration doesn't take a name that a target's generated
+/// code imports or relies on, such as `List` in Java, which every target
+/// declares it beside
+fn check_reserved_name(name: &Name, errors: &mut Vec<Diagnostic>) {
+    let targets = reserved::targets_using(&name.text);
+    let Some((last, others)) = targets.split_last() else {
+        return;
+    };
+
+    let targets = if others.is_empty() {
+        (*last).to_owned()
+    } else {
+        format!("{} and {last}", others.join(", "))
+    };
+    errors.push(
+        Diagnostic::new(
+            format!("`{}` clashes with a name of the generated code", name.text),
+            name.span,
+        )
+        .with_help(format!(
+            "the code generated for {targets} uses `{}`",
+            name.text
+        )),
+    );
 }
 
 fn check_declaration(
@@ -269,6 +301,34 @@ const fn java_parameter_slots(field_type: FieldType) -> usize {
     match field_type {
         FieldType::Scalar(Scalar::Uint32 | Scalar::Int64 | Scalar::Uint64 | Scalar::Float64) => 2,
         _ => 1,
+    }
+}
+
+/// Checks that no declaration takes the name of another's fields,
+/// `<Name>Fields`, which the generated code declares beside it to write it
+/// from: TypeScript and JavaScript for every declaration, and Python and Rust
+/// for messages and tables
+fn check_fields_declarations(
+    declarations: &[Declaration],
+    indices: &HashMap<&str, usize>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    for declaration in declarations {
+        let name = &declaration.name.text;
+        let fields = format!("{name}Fields");
+        let Some(&clash) = indices.get(fields.as_str()) else {
+            continue;
+        };
+
+        errors.push(
+            Diagnostic::new(
+                format!("`{fields}` clashes with the fields of `{name}`"),
+                declarations[clash].name.span,
+            )
+            .with_help(format!(
+                "the generated code declares `{fields}` to write `{name}` from"
+            )),
+        );
     }
 }
 
@@ -502,22 +562,110 @@ fn check_cycles(
     }
 }
 
+/// The definitions in an order where each comes after the tables and structs
+/// nested in it in place, so that a pass over them in this order finds those
+/// nested in each one done. Each definition is visited once, from a stack
+/// rather than by recursion, so that long chains of them don't overflow it.
+/// The checker has rejected cycles of them.
+fn nesting_order(definitions: &[Definition]) -> Vec<usize> {
+    let mut order = Vec::with_capacity(definitions.len());
+    let mut visited = vec![false; definitions.len()];
+    // The definitions from the root to the one being visited, each with the
+    // definitions nested in it that are left to visit
+    let mut stack = Vec::new();
+
+    for root in 0..definitions.len() {
+        if std::mem::replace(&mut visited[root], true) {
+            continue;
+        }
+        stack.push((root, nested_in_place(&definitions[root])));
+
+        while let Some((index, nested)) = stack.last_mut() {
+            let index = *index;
+            if let Some(next) = nested.find(|&nested| !visited[nested]) {
+                visited[next] = true;
+                stack.push((next, nested_in_place(&definitions[next])));
+            } else {
+                order.push(index);
+                stack.pop();
+            }
+        }
+    }
+
+    order
+}
+
+/// The most messages and tables that nest in place one within another, and
+/// the most structs, the outermost included. The generated code nests the
+/// reads and writes of a struct in those of the structs that hold it, which
+/// Python's parser takes at most 200 parentheses deep, and repeats a struct's
+/// scalars in each struct that holds it. It writes a table's nested tables by
+/// calling their writers, which Python's stack takes at most 1,000 deep.
+/// The verifier of `FlatBuffers` stops at 64 by default too. Vectors nest
+/// tables without a limit, since the bytes, not the schema, set how deep
+/// they go.
+const MAX_NESTING_DEPTH: usize = 64;
+
+/// Rejects tables and structs that nest more than [`MAX_NESTING_DEPTH`]
+/// deep, from `order`, where each definition comes after those nested in it.
+/// A struct within a table doesn't add to the table's depth, nor the table to
+/// the struct's, since the generated code reads and writes a struct whole.
+fn check_nesting_depth(
+    definitions: &[Definition],
+    declarations: &[Declaration],
+    order: &[usize],
+    errors: &mut Vec<Diagnostic>,
+) {
+    let mut depths = vec![0; definitions.len()];
+    for &index in order {
+        let deepest = nested_alike(&definitions[index])
+            .map(|nested| depths[nested])
+            .max();
+        depths[index] = deepest.unwrap_or(0) + 1;
+    }
+
+    for (index, definition) in definitions.iter().enumerate() {
+        // The error points at the definitions that grow too deep, rather than
+        // at every definition that holds one of them
+        let too_deep = |index: usize| depths[index] > MAX_NESTING_DEPTH;
+        if !too_deep(index) || nested_alike(definition).any(too_deep) {
+            continue;
+        }
+
+        let help = if definition.is_struct() {
+            format!("structs nest at most {MAX_NESTING_DEPTH} deep, one within another")
+        } else {
+            format!("tables nest in place at most {MAX_NESTING_DEPTH} deep, one within another")
+        };
+        errors.push(
+            Diagnostic::new(
+                format!("`{}` nests too deeply", definition.name),
+                declarations[index].name.span,
+            )
+            .with_help(help),
+        );
+    }
+}
+
 /// The most bytes that a struct takes. The generated code reads and writes
 /// each of a struct's scalars in place, and a schema of a few lines could
 /// otherwise declare a struct of any size, by nesting structs in pairs.
 const MAX_STRUCT_SIZE: usize = 65_536;
 
 /// Measures each struct's size and alignment once, from those of the structs
-/// in it, and rejects structs larger than [`MAX_STRUCT_SIZE`]
+/// in it, which come before it in `order`, and rejects structs larger than
+/// [`MAX_STRUCT_SIZE`]. Sizes saturate rather than overflowing, since a few
+/// lines can double a struct's size many times over.
 fn measure_structs(
     definitions: &mut [Definition],
     declarations: &[Declaration],
+    order: &[usize],
     errors: &mut Vec<Diagnostic>,
 ) {
-    let mut layouts = vec![None; definitions.len()];
-    for (index, definition) in definitions.iter().enumerate() {
-        if definition.is_struct() {
-            measure_struct(index, definitions, &mut layouts);
+    let mut layouts: Vec<Option<StructLayout>> = vec![None; definitions.len()];
+    for &index in order {
+        if definitions[index].is_struct() {
+            layouts[index] = Some(measure_struct(&definitions[index], &layouts));
         }
     }
 
@@ -549,28 +697,18 @@ fn measure_structs(
     }
 }
 
-/// The layout of the struct at `index`, kept in `layouts` once measured, so
-/// that a struct nested in several others is measured once. Its size
-/// saturates rather than overflowing, since a few lines can double it many
-/// times over.
-fn measure_struct(
-    index: usize,
-    definitions: &[Definition],
-    layouts: &mut [Option<StructLayout>],
-) -> StructLayout {
-    if let Some(layout) = layouts[index] {
-        return layout;
-    }
-
+/// The layout of a struct, from `layouts` of the structs in it, which are
+/// measured before it
+fn measure_struct(definition: &Definition, layouts: &[Option<StructLayout>]) -> StructLayout {
     let mut layout = StructLayout {
         size: 0,
         alignment: 1,
     };
-    for field in &definitions[index].fields {
+    for field in &definition.fields {
         let (size, alignment) = match field.field_type {
             FieldType::Scalar(scalar) => (usize::from(scalar.size()), scalar.size()),
             FieldType::Struct(inner) => {
-                let inner = measure_struct(inner, definitions, layouts);
+                let inner = layouts[inner].expect("structs are measured after those in them");
                 (inner.size, inner.alignment)
             }
             _ => unreachable!("structs hold scalars and structs only"),
@@ -579,7 +717,6 @@ fn measure_struct(
         layout.alignment = layout.alignment.max(alignment);
     }
 
-    layouts[index] = Some(layout);
     layout
 }
 
@@ -625,6 +762,20 @@ fn nested_in_place(definition: &Definition) -> impl Iterator<Item = usize> + '_ 
         .iter()
         .filter_map(|field| match field.field_type {
             FieldType::Table(index) | FieldType::Struct(index) => Some(index),
+            _ => None,
+        })
+}
+
+/// The definitions nested in place in a definition of the same kind: the
+/// tables in a message or table, and the structs in a struct
+fn nested_alike(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
+    let is_struct = definition.is_struct();
+    definition
+        .fields
+        .iter()
+        .filter_map(move |field| match field.field_type {
+            FieldType::Table(index) if !is_struct => Some(index),
+            FieldType::Struct(index) if is_struct => Some(index),
             _ => None,
         })
 }

@@ -85,6 +85,15 @@ or read its tables, or a target couldn't generate its code:
 
 - Declarations are `PascalCase` and fields `snake_case`, in ASCII. Each name
   is declared once, and a declaration can't take a built-in type's name.
+- A declaration can't take a name that a target's generated code imports or
+  relies on, which it would clash with or hide, in any target, so that a
+  schema generates code for every target. These are the runtime's classes,
+  such as `ByteBuffer` and `TableWriter`, the names of each language's
+  standard library that the code names, such as `Number` in TypeScript,
+  `TypedDict` in Python, `List`, `String` and `Override` in Java and `Option`
+  in Rust, `Fields`, the record of a Java class's fields, and keywords, such
+  as `None` in Python and `Self` in Rust. `src/generate/reserved.rs` lists
+  them.
 - A definition's fields have distinct names in `camelCase` too, which
   TypeScript, JavaScript and Java name them in. It drops the underscores, so
   `a_1` and `a1` are both `a1`.
@@ -106,16 +115,20 @@ or read its tables, or a target couldn't generate its code:
   `double`, and every other field one.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
+- Messages and tables nest in place at most 64 deep, one within another and
+  the outermost included, and structs too, since the generated code writes
+  nested tables by calling their writers, and nests the reads and writes of
+  a struct in those of the structs that hold it, as deep as they nest. A
+  struct in a table adds nothing to the table's depth, and vectors nest
+  tables without a limit.
 - A field can't take the name of the view of a vector or an array of structs
   beside it, `<field>_view`, in `camelCase` too, and a declaration can't take
   the name of a view that the schema's vectors and arrays of structs need,
-  `<Table>Vector` or `<Struct>Array`, which the generated code below
-  declares.
+  `<Table>Vector` or `<Struct>Array`, nor another declaration's
+  `<Name>Fields`, which the generated code below declares.
 
-It doesn't check yet for declarations whose names clash with a target's own,
-such as one named after a class that the generated code imports, like `List`
-in Java, or another's `<Name>Fields`. Fields named after a member of the
-generated code are renamed instead, as the generated code below describes.
+Fields named after a member of the generated code are renamed instead, as
+the generated code below describes.
 
 Errors point at their cause, as compilers print them, and the checker reports
 every error it finds, after the first syntax error if there's one:
@@ -377,12 +390,15 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   suite's `workloads.tafla` matches the files in the suite, and the suites'
   copies of the schema are the same.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
-  with the errors in the `.stderr` file beside it.
+  with the errors in the `.stderr` file beside it, chains of 10,000 tables or
+  structs fail with an error on the WebAssembly module's stack, and no
+  declaration can take a name that the generated code imports.
 - `tests/properties.rs`: any input parses or fails with errors that render,
   any schema that the checker accepts generates code for every target,
-  structs that contain themselves or take more than 65,536 bytes fail with
-  errors that point at them, and the command writes and prints what the
-  library generates and finds.
+  structs that contain themselves or take more than 65,536 bytes and chains
+  of tables or structs more than 64 deep fail with errors that point at
+  them, and the command writes and prints what the library generates and
+  finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command and the library's
   options.
 - `tests/members.rs`: fields named after the generated code's members take a
