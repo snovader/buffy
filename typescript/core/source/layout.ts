@@ -1,5 +1,5 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
-import type { OffsetSize } from './types.ts';
+import type { OffsetSize, OffsetType } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
     /** Whether the header starts with the table's total byte length */
@@ -10,16 +10,23 @@ export interface TableLayoutOptions<Versioned extends boolean = boolean> {
      */
     versioned?: Versioned;
     /**
-     * The offset size, the width in bytes of the header slots, field offsets,
-     * counts, lengths and item ends, which limits the table's length: 1, of
-     * `uint8` offsets, for up to 255 bytes, 2, of `uint16`, for 65,535 and 4,
-     * of `uint32`, the default, for 4 GiB.
+     * The offset type, the unsigned integer type of the header slots, field
+     * offsets, counts, lengths and item ends, which limits the table's length:
+     * `'uint8'` for up to 255 bytes, `'uint16'` for 65,535 and `'uint32'`, the
+     * default, for 4 GiB.
      */
-    offsetSize?: OffsetSize;
+    offsetType?: OffsetType;
 }
 
+/** The offset size of each offset type */
+const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
+    uint8: SIZEOF_8,
+    uint16: SIZEOF_16,
+    uint32: SIZEOF_32
+};
+
 /**
- * The header and offset size of a table. A format creates its layout once
+ * The header and offset type of a table. A format creates its layout once
  * and passes it to both the `TableBuilder` that writes the table and the
  * `ByteBuffer` that reads it, so that the two can't disagree. Nested tables
  * use {@link TableLayout.DEFAULT}.
@@ -32,29 +39,39 @@ export class TableLayout<Versioned extends boolean = boolean> {
     static readonly DEFAULT: TableLayout<false> = new TableLayout(
         false,
         false,
-        SIZEOF_32
+        'uint32'
     );
 
     readonly #sized: boolean;
     readonly #versioned: Versioned;
+    readonly #offsetType: OffsetType;
     readonly #offsetSize: OffsetSize;
 
     private constructor(
         sized: boolean,
         versioned: Versioned,
-        offsetSize: OffsetSize
+        offsetType: OffsetType
     ) {
         this.#sized = sized;
         this.#versioned = versioned;
-        this.#offsetSize = offsetSize;
+        this.#offsetType = offsetType;
+        this.#offsetSize = OFFSET_SIZES[offsetType];
     }
 
+    /**
+     * @throws {RangeError} If `offsetType` isn't `'uint8'`, `'uint16'` or
+     * `'uint32'`.
+     */
     static create<Versioned extends boolean = false>({
         sized = false,
         versioned = false as Versioned,
-        offsetSize = SIZEOF_32
+        offsetType = 'uint32'
     }: TableLayoutOptions<Versioned> = {}): TableLayout<Versioned> {
-        return new TableLayout(sized, versioned, offsetSize);
+        if (!Object.hasOwn(OFFSET_SIZES, offsetType)) {
+            throw new RangeError(`${String(offsetType)} isn't an offset type`);
+        }
+
+        return new TableLayout(sized, versioned, offsetType);
     }
 
     sized(): boolean {
@@ -65,6 +82,11 @@ export class TableLayout<Versioned extends boolean = boolean> {
         return this.#versioned;
     }
 
+    offsetType(): OffsetType {
+        return this.#offsetType;
+    }
+
+    /** The offset size, the width in bytes of the offset type: 1, 2 or 4 */
     offsetSize(): OffsetSize {
         return this.#offsetSize;
     }
@@ -85,7 +107,7 @@ export class TableLayout<Versioned extends boolean = boolean> {
  * @throws {TypeError} If `version` is given for a layout without a version
  * slot, or missing for one with it.
  * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
- * isn't an integer that fits in the layout's offset size, or the header
+ * isn't an integer that fits in the layout's offset type, or the header
  * alone is longer than the layout addresses.
  */
 export function headerLength(
@@ -95,6 +117,7 @@ export function headerLength(
 ): number {
     assertCount(fields);
     const size = layout.offsetSize();
+    const offsetType = layout.offsetType();
 
     if (layout.versioned() !== (version !== undefined)) {
         throw new TypeError(
@@ -106,14 +129,14 @@ export function headerLength(
 
     if (version !== undefined && !fitsIn(version, size)) {
         throw new RangeError(
-            `Version ${version} doesn't fit in a ${size}-byte slot`
+            `Version ${version} doesn't fit in a ${offsetType} slot`
         );
     }
 
     const length = layout.headerSize() + fields * size;
     if (!(length <= maxLength(size))) {
         throw new RangeError(
-            `A header of ${fields} fields doesn't fit in ${size}-byte offsets`
+            `A header of ${fields} fields doesn't fit in ${offsetType} offsets`
         );
     }
 

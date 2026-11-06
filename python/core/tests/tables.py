@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import ByteBuffer, OffsetSize, TableBuilder, TableLayout, TableWriter
+from tafla import ByteBuffer, OffsetType, TableBuilder, TableLayout, TableWriter
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -48,10 +48,18 @@ FLOAT_TYPES = ("float32", "float64")
 INT64_TYPES = ("int64", "uint64")
 
 # TableLayout.DEFAULT, as cases.json describes it
-DEFAULT_LAYOUT: Description = {"sized": False, "versioned": False, "offsetSize": 4}
+DEFAULT_LAYOUT: Description = {
+    "sized": False,
+    "versioned": False,
+    "offsetType": "uint32",
+}
 
-# The longest table that the offsets of each size address
-LONGEST: dict[int, int] = {1: 0xFF, 2: 0xFFFF, 4: 0xFFFF_FFFF}
+# The longest table that the offsets of each offset type address
+LONGEST: dict[OffsetType, int] = {
+    "uint8": 0xFF,
+    "uint16": 0xFFFF,
+    "uint32": 0xFFFF_FFFF,
+}
 
 # The alignment that set_table() gives a table nested as bytes by default
 BYTES_ALIGNMENT: Alignment = 4
@@ -93,11 +101,17 @@ def to_json(kind: str, value: Any) -> Any:
     return value
 
 
+def offset_size_of(offset_type: OffsetType) -> int:
+    """The offset size of an offset type, its width in bytes, which is the size
+    of the unsigned integer type of its name"""
+    return ELEMENT_SIZES[offset_type]
+
+
 def layout_of(layout: Description) -> TableLayout:
     return TableLayout(
         sized=layout["sized"],
         versioned=layout["versioned"],
-        offset_size=layout["offsetSize"],
+        offset_type=layout["offsetType"],
     )
 
 
@@ -117,17 +131,17 @@ def create_builder(table: Description) -> TableBuilder:
     """Returns the builder of a table's description, with none of its fields
     set"""
     layout = table["layout"]
-    sized, offset_size = layout["sized"], layout["offsetSize"]
+    sized, offset_type = layout["sized"], layout["offsetType"]
     fields = len(table["fields"])
 
     if layout["versioned"]:
         return TableBuilder(
             fields,
-            TableLayout(sized=sized, versioned=True, offset_size=offset_size),
+            TableLayout(sized=sized, versioned=True, offset_type=offset_type),
             table["version"],
         )
 
-    return TableBuilder(fields, TableLayout(sized=sized, offset_size=offset_size))
+    return TableBuilder(fields, TableLayout(sized=sized, offset_type=offset_type))
 
 
 def build_table(table: Description) -> TableBuilder:
@@ -190,19 +204,19 @@ def _array_values(element: str, field: Description) -> list[Any]:
 def write_table(table: Description) -> memoryview[int]:
     """Writes a table with a ``TableWriter`` as its description sets it out.
     The writer writes the tables nested in it in place, so they must have no
-    header and its offset size, as ``nested_in_place()`` makes them."""
+    header and its offset type, as ``nested_in_place()`` makes them."""
     layout = table["layout"]
-    sized, offset_size = layout["sized"], layout["offsetSize"]
+    sized, offset_type = layout["sized"], layout["offsetType"]
     fields = len(table["fields"])
 
     if layout["versioned"]:
         writer = TableWriter(
             fields,
-            TableLayout(sized=sized, versioned=True, offset_size=offset_size),
+            TableLayout(sized=sized, versioned=True, offset_type=offset_type),
             table["version"],
         )
     else:
-        writer = TableWriter(fields, TableLayout(sized=sized, offset_size=offset_size))
+        writer = TableWriter(fields, TableLayout(sized=sized, offset_type=offset_type))
 
     for index, field in enumerate(table["fields"]):
         write_field(writer, index, field)
@@ -249,11 +263,11 @@ def _write_nested(writer: TableWriter, table: Description) -> None:
 def nested_in_place(table: Description) -> Description:
     """Returns a table's description with every table nested in it made one
     that a ``TableWriter`` writes in place: from its builder, without a header,
-    and with the root's offset size"""
-    offset_size = table["layout"]["offsetSize"]
+    and with the root's offset type"""
+    offset_type = table["layout"]["offsetType"]
 
     def in_place(nested: Description) -> Description:
-        layout = {"sized": False, "versioned": False, "offsetSize": offset_size}
+        layout = {"sized": False, "versioned": False, "offsetType": offset_type}
         return {"layout": layout, "fields": [field(each) for each in nested["fields"]]}
 
     def field(description: Description) -> Description:
@@ -382,13 +396,13 @@ class MismatchError(AssertionError):
 class Placement:
     """Where a reader found a field: at ``position`` in ``data``, in a table
     that starts at ``table`` in ``data`` and whose offsets, counts and lengths
-    are ``offset_size`` bytes wide"""
+    are of the offset size ``offset_size``"""
 
     field: Description
     data: memoryview[int]
     table: int
     position: int
-    offset_size: OffsetSize
+    offset_size: int
 
 
 type Visit = Callable[[Placement], None]
@@ -401,7 +415,7 @@ class TableReader:
     bytes hold the values.
 
     A nested table, from ``set_table()`` or in a vector, is read in place when
-    it has no header and its offsets are as wide as its parent's. Any other is
+    it has no header and its parent's offset type. Any other is
     read as a table of its own: a vector item from its bytes, and a field from
     its position to the end of its parent, since its length isn't written.
 
@@ -409,15 +423,15 @@ class TableReader:
     nested ones included.
     """
 
-    __slots__ = ["__buffer", "__offset_size", "__visit"]
+    __slots__ = ["__buffer", "__offset_type", "__visit"]
 
-    __offset_size: OffsetSize
+    __offset_type: OffsetType
 
     def __init__(
         self, data: Buffer, layout: Description, visit: Visit | None = None
     ) -> None:
         self.__buffer = ByteBuffer(data, layout_of(layout))
-        self.__offset_size = layout["offsetSize"]
+        self.__offset_type = layout["offsetType"]
         self.__visit = visit
 
     def read_table(self, table: Description) -> Description:
@@ -455,7 +469,11 @@ class TableReader:
     ) -> Description:
         if self.__visit is not None:
             placement = Placement(
-                field, self.__buffer.bytes(), table, position, self.__offset_size
+                field,
+                self.__buffer.bytes(),
+                table,
+                position,
+                offset_size_of(self.__offset_type),
             )
             self.__visit(placement)
 
@@ -557,7 +575,7 @@ class TableReader:
         return (
             not layout["sized"]
             and not layout["versioned"]
-            and layout["offsetSize"] == self.__offset_size
+            and layout["offsetType"] == self.__offset_type
         )
 
     def __read_in_place(self, position: int, table: Description) -> Description:

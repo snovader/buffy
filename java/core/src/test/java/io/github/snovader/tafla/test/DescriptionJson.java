@@ -31,14 +31,19 @@ final class DescriptionJson {
     }
 
     private static LayoutDescription readLayout(JsonObject layout) {
-        var offsetSize = switch (layout.getInt("offsetSize")) {
-            case 1 -> OffsetSize.UINT8;
-            case 2 -> OffsetSize.UINT16;
-            case 4 -> OffsetSize.UINT32;
-            default -> throw new IllegalArgumentException("Offsets can't be " + layout.get("offsetSize") + " bytes wide");
-        };
+        var offsetType = readOffsetType(layout.getString("offsetType"));
 
-        return new LayoutDescription(layout.getBoolean("sized"), layout.getBoolean("versioned"), offsetSize);
+        return new LayoutDescription(layout.getBoolean("sized"), layout.getBoolean("versioned"), offsetType);
+    }
+
+    /** {@return the offset type of the name that SPEC.md gives it}, such as {@code "uint8"} */
+    private static OffsetType readOffsetType(String name) {
+        return switch (name) {
+            case "uint8" -> OffsetType.UINT8;
+            case "uint16" -> OffsetType.UINT16;
+            case "uint32" -> OffsetType.UINT32;
+            default -> throw new IllegalArgumentException(name + " isn't an offset type");
+        };
     }
 
     private static FieldDescription readField(JsonObject field) {
@@ -179,7 +184,7 @@ final class DescriptionJson {
         return Json.createObjectBuilder()
             .add("sized", layout.sized())
             .add("versioned", layout.versioned())
-            .add("offsetSize", layout.width())
+            .add("offsetType", layout.offsetType().toString())
             .build();
     }
 

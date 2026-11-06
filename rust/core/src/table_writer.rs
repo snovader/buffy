@@ -1,6 +1,6 @@
 use std::iter;
 
-use crate::{Alignment, BuildError, Element, OffsetSize, TableLayout, element::extend_elements};
+use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::extend_elements};
 
 /// Counts the bytes of a table, so that a [`TableWriter`] can write it into
 /// bytes of exactly that length.
@@ -45,7 +45,7 @@ pub struct TableSizer {
     /// The version, when the layout is versioned
     version: Option<u32>,
     sized: bool,
-    offset_size: OffsetSize,
+    offset_type: OffsetType,
     /// The table's length so far, which is where the next field goes. It's
     /// in u64, so that it doesn't saturate at the limit itself in a 32-bit
     /// usize, and saturates far past the longest table.
@@ -100,7 +100,7 @@ impl TableSizer {
     /// # Errors
     ///
     /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset size, or [`BuildError::HeaderTooLong`] if the header
+    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
     /// alone is longer than the layout's offsets address, as
     /// `TableBuilder::versioned()` returns.
     pub fn versioned(
@@ -124,7 +124,7 @@ impl TableSizer {
             fields,
             version,
             sized: layout.is_sized(),
-            offset_size: layout.offset_size(),
+            offset_type: layout.offset_type(),
             position: u64::from(header),
             table: 0,
             root_fields: 0,
@@ -147,12 +147,12 @@ impl TableSizer {
 
         u32::try_from(self.position)
             .ok()
-            .filter(|&length| length <= self.offset_size.max_value())
+            .filter(|&length| length <= self.offset_type.max_value())
             .and_then(|length| usize::try_from(length).ok())
             .ok_or_else(|| BuildError::TooLong {
                 index: self.root_fields.saturating_sub(1),
                 length: self.position,
-                offset_size: self.offset_size,
+                offset_type: self.offset_type,
             })
     }
 
@@ -171,7 +171,7 @@ impl TableSizer {
             self.fields,
             self.sized,
             self.version,
-            self.offset_size,
+            self.offset_type,
         ))
     }
 
@@ -300,11 +300,11 @@ impl TableSizer {
             return;
         }
 
-        if self.too_long.is_none() && self.position > u64::from(self.offset_size.max_value()) {
+        if self.too_long.is_none() && self.position > u64::from(self.offset_type.max_value()) {
             self.too_long = Some(BuildError::TooLong {
                 index: self.root_fields.saturating_sub(1),
                 length: self.position,
-                offset_size: self.offset_size,
+                offset_type: self.offset_type,
             });
         }
         self.root_fields = self.root_fields.saturating_add(1);
@@ -312,7 +312,7 @@ impl TableSizer {
 
     /// The offset size, the width of offsets, lengths and header slots
     const fn width(&self) -> u64 {
-        self.offset_size.bytes() as u64
+        self.offset_type.size() as u64
     }
 }
 
@@ -356,7 +356,7 @@ pub struct TableWriter {
     bytes: Vec<u8>,
     /// The table's length, which the sizer counted
     length: usize,
-    offset_size: OffsetSize,
+    offset_type: OffsetType,
     /// The byte length of the root's header slots, which its offsets follow
     header_size: usize,
     /// The start of the table being written, which its offsets count from:
@@ -394,20 +394,20 @@ macro_rules! array_setters {
 impl TableWriter {
     /// Writes the header of the root table of `fields` fields, into new
     /// bytes with `length` reserved, which the sizer checked are at least
-    /// the header and at most what the offset size addresses
+    /// the header and at most what the offset type addresses
     fn new(
         length: usize,
         fields: usize,
         sized: bool,
         version: Option<u32>,
-        offset_size: OffsetSize,
+        offset_type: OffsetType,
     ) -> Self {
         let header_size =
-            (usize::from(sized) + usize::from(version.is_some())) * offset_size.bytes();
+            (usize::from(sized) + usize::from(version.is_some())) * offset_type.size();
         let mut writer = Self {
             bytes: Vec::with_capacity(length),
             length,
-            offset_size,
+            offset_type,
             header_size,
             table: 0,
             slots: header_size,
@@ -424,7 +424,7 @@ impl TableWriter {
         }
 
         // Each field's offset is written as the writer reaches the field
-        writer.push_zeros(fields * offset_size.bytes());
+        writer.push_zeros(fields * offset_type.size());
 
         writer
     }
@@ -468,7 +468,7 @@ impl TableWriter {
         self.slots = start;
         // Without room for its slots, the table has no fields to write, so
         // that no slot is looked for past the bytes
-        let slots = fields.checked_mul(self.offset_size.bytes());
+        let slots = fields.checked_mul(self.offset_type.size());
         if let Some(slots) = slots.filter(|&slots| slots <= self.room()) {
             self.push_zeros(slots);
             self.fields = fields;
@@ -586,7 +586,7 @@ impl TableWriter {
         let position = self.bytes.len();
         // The count, and then the end of each item, which is written after
         // the item. Without room for them, the vector has no items to end.
-        let width = self.offset_size.bytes();
+        let width = self.offset_type.size();
         let slots = count
             .checked_add(1)
             .and_then(|slots| slots.checked_mul(width));
@@ -610,7 +610,7 @@ impl TableWriter {
         }
 
         // Each end counts from the vector's position, which is its count's
-        let slot = vector.position + (item + 1) * self.offset_size.bytes();
+        let slot = vector.position + (item + 1) * self.offset_type.size();
         let end = self.bytes.len().saturating_sub(vector.position);
         self.set_slot(slot, end);
     }
@@ -631,7 +631,7 @@ impl TableWriter {
     #[inline]
     fn start_array(&mut self, index: usize, count: usize, alignment: Alignment) {
         // Wrapping, since only the remainder matters
-        let offset = (self.bytes.len() + self.offset_size.bytes()).wrapping_sub(self.table);
+        let offset = (self.bytes.len() + self.offset_type.size()).wrapping_sub(self.table);
         self.push_zeros(alignment.padding(offset));
         self.set_offset(index);
         self.push_slot(count);
@@ -650,7 +650,7 @@ impl TableWriter {
 
         // The table's slots were written when it started, so the slot lies
         // within the bytes, and the offset within the table's length
-        let slot = self.slots + index * self.offset_size.bytes();
+        let slot = self.slots + index * self.offset_type.size();
         let offset = self.bytes.len().saturating_sub(self.table);
         self.set_slot(slot, offset);
     }
@@ -694,10 +694,10 @@ impl TableWriter {
     #[inline]
     #[allow(clippy::cast_possible_truncation)]
     fn push_slot(&mut self, value: usize) {
-        match self.offset_size {
-            OffsetSize::Uint8 => self.push(&[value as u8]),
-            OffsetSize::Uint16 => self.push(&(value as u16).to_le_bytes()),
-            OffsetSize::Uint32 => self.push(&(value as u32).to_le_bytes()),
+        match self.offset_type {
+            OffsetType::Uint8 => self.push(&[value as u8]),
+            OffsetType::Uint16 => self.push(&(value as u16).to_le_bytes()),
+            OffsetType::Uint32 => self.push(&(value as u32).to_le_bytes()),
         }
     }
 
@@ -710,10 +710,10 @@ impl TableWriter {
             return;
         };
 
-        let set = match self.offset_size {
-            OffsetSize::Uint8 => set_le(slot, [value as u8]),
-            OffsetSize::Uint16 => set_le(slot, (value as u16).to_le_bytes()),
-            OffsetSize::Uint32 => set_le(slot, (value as u32).to_le_bytes()),
+        let set = match self.offset_type {
+            OffsetType::Uint8 => set_le(slot, [value as u8]),
+            OffsetType::Uint16 => set_le(slot, (value as u16).to_le_bytes()),
+            OffsetType::Uint32 => set_le(slot, (value as u32).to_le_bytes()),
         };
         if !set {
             self.fail();

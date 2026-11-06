@@ -14,19 +14,19 @@ public class TableBuilderTest {
 
     // Tables of up to 64 KiB, so fewer of them
     @Property(tries = 250)
-    void a_field_too_long_for_the_offset_size_throws_from_its_setter_and_leaves_the_builder_as_it_was(
+    void a_field_too_long_for_the_offset_type_throws_from_its_setter_and_leaves_the_builder_as_it_was(
         @ForAll("narrowTables") TableDescription table,
         @ForAll GrowingField growing,
         @ForAll Source from,
         @ForAll @IntRange(min = 1, max = 100) int excess
     ) {
-        var offsetSize = table.layout().offsetSize();
-        var max = offsetSize.maxValue();
+        var offsetType = table.layout().offsetType();
+        var max = offsetType.maxValue();
         Assume.that(Descriptions.maxLength(table.withField(growing.ofLength(0, from))) <= max);
 
         // The longest field that fits, and one longer by `excess` elements
         var empty = Tables.build(table.withField(growing.ofLength(0, from))).bytes();
-        var longest = (int) (max - empty.length) / growing.unit(offsetSize);
+        var longest = (int) (max - empty.length) / growing.unit(offsetType);
         var fits = growing.ofLength(longest, from);
         var tooLong = growing.ofLength(longest + excess, from);
 
@@ -35,7 +35,9 @@ public class TableBuilderTest {
             Tables.setField(builder, field);
         }
 
-        assertThrows(IllegalArgumentException.class, () -> Tables.setField(builder, tooLong));
+        var exception = assertThrows(IllegalArgumentException.class, () -> Tables.setField(builder, tooLong));
+        var message = String.valueOf(exception.getMessage());
+        assertTrue(message.endsWith(String.format(" bytes, too long for %s offsets", offsetType)), message);
         Tables.setField(builder, fits);
 
         // The longest table reads back, and the rejected field left no trace in it
@@ -65,18 +67,18 @@ public class TableBuilderTest {
 
         /** An empty table, which takes no bytes and is read in place */
         private static final TableDescription EMPTY = new TableDescription(
-            LayoutDescription.headerless(OffsetSize.UINT32),
+            LayoutDescription.headerless(OffsetType.UINT32),
             OptionalLong.empty(),
             List.of()
         );
 
-        /** {@return the bytes that each element adds in a table of offsets {@code offsetSize} wide} */
-        int unit(OffsetSize offsetSize) {
+        /** {@return the bytes that each element adds in a table of offsets of {@code offsetType}} */
+        int unit(OffsetType offsetType) {
             return switch (this) {
                 case FLOAT64_ARRAY -> Double.BYTES;
                 case STRUCT_ARRAY -> StructBytes.size(STRUCT);
                 // Each item's end
-                case VECTOR_ITEMS -> offsetSize.bytes();
+                case VECTOR_ITEMS -> offsetType.size();
                 default -> Byte.BYTES;
             };
         }
@@ -131,15 +133,16 @@ public class TableBuilderTest {
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void a_version_is_written_up_to_the_largest_that_its_slot_holds_and_rejected_beyond(
-        @ForAll OffsetSize offsetSize
+        @ForAll OffsetType offsetType
     ) {
-        var layout = versioned(offsetSize);
-        var max = offsetSize.maxValue();
+        var layout = versioned(offsetType);
+        var max = offsetType.maxValue();
 
         var buffer = new ByteBuffer(new TableBuilder(0, layout, max).bytes(), layout);
         assertEquals(max, buffer.getVersion());
 
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
+        var exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
+        assertEquals(String.format("Version %d doesn't fit in a %s slot", max + 1, offsetType), exception.getMessage());
         assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, -1));
     }
 
@@ -259,7 +262,7 @@ public class TableBuilderTest {
     void should_need_a_version_exactly_when_the_layout_has_a_slot_for_it() {
         var exception = assertThrows(
             IllegalArgumentException.class,
-            () -> new TableBuilder(1, versioned(OffsetSize.UINT32))
+            () -> new TableBuilder(1, versioned(OffsetType.UINT32))
         );
         assertEquals("A versioned layout needs a version", exception.getMessage());
 
@@ -278,23 +281,27 @@ public class TableBuilderTest {
 
     @Property
     void should_reject_a_header_longer_than_the_offsets_address(
-        @ForAll("limitedSizes") OffsetSize size,
+        @ForAll("limitedTypes") OffsetType offsetType,
         @ForAll boolean sized
     ) {
-        var layout = TableLayout.builder().sized(sized).offsetSize(size).build();
-        var fields = (int) (size.maxValue() / size.bytes()) - (sized ? 1 : 0);
+        var layout = TableLayout.builder().sized(sized).offsetType(offsetType).build();
+        var fields = (int) (offsetType.maxValue() / offsetType.size()) - (sized ? 1 : 0);
 
         assertDoesNotThrow(() -> new TableBuilder(fields, layout));
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(fields + 1, layout));
+        var exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(fields + 1, layout));
+        assertEquals(
+            String.format("A header of %d fields doesn't fit in %s offsets", fields + 1, offsetType),
+            exception.getMessage()
+        );
     }
 
     @Provide
-    Arbitrary<OffsetSize> limitedSizes() {
-        return Arbitraries.of(OffsetSize.UINT8, OffsetSize.UINT16);
+    Arbitrary<OffsetType> limitedTypes() {
+        return Arbitraries.of(OffsetType.UINT8, OffsetType.UINT16);
     }
 
     @Example
-    void should_reject_a_table_of_32_bit_offsets_longer_than_a_java_array_before_allocating_it() {
+    void should_reject_a_table_of_uint32_offsets_longer_than_a_java_array_before_allocating_it() {
         // One mebibyte, repeated past 2 GiB
         var item = new byte[1 << 20];
         var vector = new byte[2048][];
@@ -368,7 +375,7 @@ public class TableBuilderTest {
         assertEquals(1, buffer.getVectorOffsets(buffer.rootOffset(0)).length);
     }
 
-    private static TableLayout versioned(OffsetSize size) {
-        return TableLayout.builder().versioned(true).offsetSize(size).build();
+    private static TableLayout versioned(OffsetType offsetType) {
+        return TableLayout.builder().versioned(true).offsetType(offsetType).build();
     }
 }

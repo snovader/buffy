@@ -18,7 +18,7 @@ use proptest::{
     sample::{Index, select},
 };
 use tafla::{
-    Alignment, BuildError, OffsetSize, TableBuilder, TableLayout, TableSizer, TableWriter,
+    Alignment, BuildError, OffsetType, TableBuilder, TableLayout, TableSizer, TableWriter,
     VectorPosition, WriterParent,
 };
 
@@ -40,7 +40,7 @@ proptest! {
     /// errors' variants are the same, and the field of the root that fails
     #[test]
     fn test_fails_as_table_builder_fails_for_any_table_too_long_for_its_offsets(
-        table in in_place_tables(strategy::layouts(select(SHORT_OFFSET_SIZES.to_vec()))),
+        table in in_place_tables(strategy::layouts(select(SHORT_OFFSET_TYPES.to_vec()))),
         length in 0..=300_usize,
     ) {
         let mut longer = table;
@@ -66,8 +66,8 @@ proptest! {
         table in in_place_tables(short_layouts()),
         last in unpadded_field(),
     ) {
-        let offset_size = table.layout.offset_size;
-        let max = offset_size.max_value() as usize;
+        let offset_type = table.layout.offset_type;
+        let max = offset_type.max_value() as usize;
         let with_bytes = |length: usize| {
             let mut table = table.clone();
             table.fields.extend([Field::U8Array(vec![0; length]), last.clone()]);
@@ -87,7 +87,7 @@ proptest! {
         let error = BuildError::TooLong {
             index: table.fields.len() + 1,
             length: max as u64 + 1,
-            offset_size,
+            offset_type,
         };
         let too_long = with_bytes(room + 1);
         prop_assert_eq!(too_long.write(), Err(error));
@@ -148,7 +148,7 @@ proptest! {
     }
 }
 
-const SHORT_OFFSET_SIZES: [OffsetSize; 2] = [OffsetSize::Uint8, OffsetSize::Uint16];
+const SHORT_OFFSET_TYPES: [OffsetType; 2] = [OffsetType::Uint8, OffsetType::Uint16];
 
 /// Tables of the layouts that `layouts` generates whose nested tables a
 /// `TableWriter` writes in place
@@ -158,27 +158,27 @@ fn in_place_tables(
     strategy::tables(layouts).prop_map(|table| table.nested_in_place())
 }
 
-/// Layouts of 1- and 2-byte offsets, whose limits a test can reach. Under
-/// Miri, only of 1-byte offsets, since writing 64 KiB takes it minutes.
+/// Layouts of `uint8` and `uint16` offsets, whose limits a test can reach.
+/// Under Miri, only of `uint8` offsets, since writing 64 KiB takes it minutes.
 fn short_layouts() -> impl Strategy<Value = Layout> {
-    let offset_sizes = if cfg!(miri) {
-        vec![OffsetSize::Uint8]
+    let offset_types = if cfg!(miri) {
+        vec![OffsetType::Uint8]
     } else {
-        SHORT_OFFSET_SIZES.to_vec()
+        SHORT_OFFSET_TYPES.to_vec()
     };
 
-    strategy::layouts(select(offset_sizes))
+    strategy::layouts(select(offset_types))
 }
 
 /// Fields after which a table's length doesn't depend on where they start:
-/// those that aren't padded, from tables of 1-byte offsets, which hold
+/// those that aren't padded, from tables of `uint8` offsets, which hold
 /// few enough values to fit after others more often than not
 fn unpadded_field() -> impl Strategy<Value = Field> {
     let unpadded = |field: &Field| {
         field.alignment() == Alignment::One && !matches!(field, Field::Table { .. })
     };
 
-    strategy::tables(strategy::layouts(Just(OffsetSize::Uint8)))
+    strategy::tables(strategy::layouts(Just(OffsetType::Uint8)))
         .prop_filter_map("a table of padded fields", move |table| {
             table.fields.into_iter().find(unpadded)
         })
@@ -307,7 +307,7 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
     let nested = |fields| Nested {
         from: Source::Builder,
         table: Table {
-            layout: Layout::headerless(OffsetSize::Uint16),
+            layout: Layout::headerless(OffsetType::Uint16),
             version: None,
             fields,
         },
@@ -316,7 +316,7 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
         layout: Layout {
             sized: true,
             versioned: true,
-            offset_size: OffsetSize::Uint16,
+            offset_type: OffsetType::Uint16,
         },
         version: Some(7),
         fields: vec![
@@ -341,18 +341,18 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
 
 #[test]
 fn test_names_the_root_field_that_makes_the_table_too_long_with_the_length_after_it() {
-    // A vector of three items of 102 bytes, which is too long for 1-byte
+    // A vector of three items of 102 bytes, which is too long for `uint8`
     // offsets after its second item, and makes the table 314 bytes
     let item = Nested {
         from: Source::Builder,
         table: Table {
-            layout: Layout::headerless(OffsetSize::Uint8),
+            layout: Layout::headerless(OffsetType::Uint8),
             version: None,
             fields: vec![Field::U8Array(vec![0; 100])],
         },
     };
     let table = Table {
-        layout: Layout::headerless(OffsetSize::Uint8),
+        layout: Layout::headerless(OffsetType::Uint8),
         version: None,
         fields: vec![Field::U8(1), Field::Vector(vec![item; 3]), Field::U8(2)],
     };
@@ -360,14 +360,14 @@ fn test_names_the_root_field_that_makes_the_table_too_long_with_the_length_after
     let error = BuildError::TooLong {
         index: 1,
         length: 314,
-        offset_size: OffsetSize::Uint8,
+        offset_type: OffsetType::Uint8,
     };
     assert_eq!(table.write(), Err(error));
     assert_eq!(table.to_bytes(), Err(error));
 }
 
 #[test]
-fn test_rejects_a_table_of_32_bit_offsets_past_4_gib_before_allocating_it() {
+fn test_rejects_a_table_of_uint32_offsets_past_4_gib_before_allocating_it() {
     // The table would hold its offset, its count and 2^30 uint32s
     let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
     sizer.add_u32_array(1 << 30);
@@ -375,13 +375,13 @@ fn test_rejects_a_table_of_32_bit_offsets_past_4_gib_before_allocating_it() {
     let error = BuildError::TooLong {
         index: 0,
         length: 4_294_967_304,
-        offset_size: OffsetSize::Uint32,
+        offset_type: OffsetType::Uint32,
     };
     assert_eq!(sizer.byte_length(), Err(error));
     assert_eq!(sizer.writer().unwrap_err(), error);
     assert_eq!(
         error.to_string(),
-        "Field 1 makes the table 4294967304 bytes, too long for 4-byte offsets"
+        "Field 1 makes the table 4294967304 bytes, too long for uint32 offsets"
     );
 }
 
@@ -402,7 +402,7 @@ fn test_counts_lengths_past_any_usize_without_overflowing() {
         sizer.writer(),
         Err(BuildError::TooLong {
             index: 1,
-            offset_size: OffsetSize::Uint32,
+            offset_type: OffsetType::Uint32,
             ..
         })
     ));
@@ -410,11 +410,11 @@ fn test_counts_lengths_past_any_usize_without_overflowing() {
 
 #[test]
 fn test_rejects_a_header_too_long_for_its_offsets_as_table_builder_does() {
-    for (offset_size, max) in [(OffsetSize::Uint8, 0xff), (OffsetSize::Uint16, 0xffff)] {
-        let width = offset_size.bytes();
+    for (offset_type, max) in [(OffsetType::Uint8, 0xff), (OffsetType::Uint16, 0xffff)] {
+        let width = offset_type.size();
 
         for sized in [false, true] {
-            let layout = TableLayout::DEFAULT.with_offset_size(offset_size);
+            let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
             let layout = if sized { layout.sized() } else { layout };
             let fields = max / width - usize::from(sized);
 
@@ -441,14 +441,14 @@ fn test_rejects_a_header_too_long_for_its_offsets_as_table_builder_does() {
 
 #[test]
 fn test_rejects_a_version_too_large_for_its_slot_as_table_builder_does() {
-    for (offset_size, version) in [(OffsetSize::Uint8, 0x100), (OffsetSize::Uint16, 0x1_0000)] {
+    for (offset_type, version) in [(OffsetType::Uint8, 0x100), (OffsetType::Uint16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
-            .with_offset_size(offset_size)
+            .with_offset_type(offset_type)
             .versioned();
 
         let error = BuildError::VersionTooLarge {
             version,
-            offset_size,
+            offset_type,
         };
         assert_eq!(
             TableSizer::versioned(1, layout, version).unwrap_err(),

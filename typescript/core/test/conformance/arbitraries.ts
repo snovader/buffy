@@ -7,7 +7,7 @@ import {
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
-    type OffsetSize,
+    type OffsetType,
     type ScalarType,
     type TableDescription,
     type TableField,
@@ -20,16 +20,20 @@ import { buildTable } from './tables.ts';
 // They cover every layout, value and nesting that the format allows, in tables
 // small enough to keep the tests fast.
 
-export const OFFSET_SIZES: readonly OffsetSize[] = [1, 2, 4];
+export const OFFSET_TYPES: readonly OffsetType[] = [
+    'uint8',
+    'uint16',
+    'uint32'
+];
 
 /**
- * The largest value of a header slot, offset or length of each offset size,
- * which is also the longest table that it addresses
+ * The largest value of each offset type, which is also the longest table that
+ * its offsets address
  */
-export const MAX_VALUES: Readonly<Record<OffsetSize, number>> = {
-    1: 0xff,
-    2: 0xffff,
-    4: 0xffff_ffff
+export const MAX_VALUES: Readonly<Record<OffsetType, number>> = {
+    uint8: 0xff,
+    uint16: 0xffff,
+    uint32: 0xffff_ffff
 };
 
 export const SCALAR_TYPES: readonly ScalarType[] = [
@@ -196,17 +200,17 @@ export const STRUCT_ARRAY_FIELDS: fc.Arbitrary<FieldDescription> =
 type Header = Pick<TableDescription, 'layout' | 'version'>;
 
 /** Every layout of the offset sizes, with versions that fit their slots */
-function headers(offsetSizes: readonly OffsetSize[]): fc.Arbitrary<Header> {
+function headers(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
     return fc.oneof(
-        ...offsetSizes.map(offsetSize =>
+        ...offsetTypes.map(offsetType =>
             fc
                 .record({
                     sized: fc.boolean(),
                     versioned: fc.boolean(),
-                    version: integers(0, MAX_VALUES[offsetSize])
+                    version: integers(0, MAX_VALUES[offsetType])
                 })
                 .map(({ sized, versioned, version }) =>
-                    headerOf({ sized, versioned, offsetSize }, version)
+                    headerOf({ sized, versioned, offsetType }, version)
                 )
         )
     );
@@ -221,17 +225,17 @@ function headerOf(layout: LayoutDescription, version: number): Header {
  * with its parent's offset size is read in place, and any other from its
  * position, as the conformance suite reads them.
  */
-function headerless(offsetSizes: readonly OffsetSize[]): fc.Arbitrary<Header> {
-    return fc.constantFrom(...offsetSizes).map(
-        (offsetSize): Header => ({
-            layout: { sized: false, versioned: false, offsetSize }
+function headerless(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
+    return fc.constantFrom(...offsetTypes).map(
+        (offsetType): Header => ({
+            layout: { sized: false, versioned: false, offsetType }
         })
     );
 }
 
 /** Layouts of every header and offset size */
 export const LAYOUTS: fc.Arbitrary<LayoutDescription> = headers(
-    OFFSET_SIZES
+    OFFSET_TYPES
 ).map(({ layout }) => layout);
 
 /**
@@ -260,8 +264,8 @@ export const FIELDS: fc.Arbitrary<FieldDescription> = fc.letrec<{
         { arbitrary: tableFields(tie('nestedTable')), weight: 1 },
         { arbitrary: vectorFields(tie('item')), weight: 1 }
     ),
-    nestedTable: tablesOf(headerless(OFFSET_SIZES), tie('field')),
-    item: tablesOf(headers(OFFSET_SIZES), tie('field'))
+    nestedTable: tablesOf(headerless(OFFSET_TYPES), tie('field')),
+    item: tablesOf(headers(OFFSET_TYPES), tie('field'))
 })).field;
 
 function tableFields(
@@ -338,7 +342,7 @@ export function fitsItsLayout(table: TableDescription): boolean {
 
 export interface TableOptions {
     /** The offset sizes of the table, and not of the tables nested in it */
-    offsetSizes?: readonly OffsetSize[];
+    offsetTypes?: readonly OffsetType[];
     /** Whether the table has no header, as `setTable()` requires */
     headerless?: boolean;
     minFields?: number;
@@ -346,13 +350,13 @@ export interface TableOptions {
 
 /** Descriptions of tables that fit their layouts */
 export function tables({
-    offsetSizes = OFFSET_SIZES,
+    offsetTypes = OFFSET_TYPES,
     headerless: withoutHeader = false,
     minFields = 0
 }: TableOptions = {}): fc.Arbitrary<TableDescription> {
     const layouts = withoutHeader
-        ? headerless(offsetSizes)
-        : headers(offsetSizes);
+        ? headerless(offsetTypes)
+        : headers(offsetTypes);
 
     return tablesOf(layouts, FIELDS, minFields);
 }

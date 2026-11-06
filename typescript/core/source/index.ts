@@ -5,7 +5,7 @@ export { TableBuilder } from './tableBuilder.ts';
 export { TableSizer, TableWriter } from './tableWriter.ts';
 export { StructWriter } from './structWriter.ts';
 export { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
-export type { OffsetSize } from './types.ts';
+export type { OffsetSize, OffsetType } from './types.ts';
 export {
     readFloat32,
     readFloat64,

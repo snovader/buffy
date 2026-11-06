@@ -10,39 +10,39 @@ from hypothesis.strategies import SearchStrategy, builds, integers, lists
 from tests.descriptions import STRINGS, scalar_values
 from tests.generated.descriptions import layout, message, scalar, string, typed_array
 from tests.generated.layouts.layouts import (
-    Offset8,
-    Offset8Sized,
-    Offset8SizedVersioned,
-    Offset8Versioned,
-    Offset16,
-    Offset16Sized,
-    Offset16SizedVersioned,
-    Offset16Versioned,
-    Offset32,
-    Offset32Fields,
-    Offset32Sized,
-    Offset32SizedVersioned,
-    Offset32Versioned,
+    Uint8Offsets,
+    Uint8OffsetsSized,
+    Uint8OffsetsSizedVersioned,
+    Uint8OffsetsVersioned,
+    Uint16Offsets,
+    Uint16OffsetsSized,
+    Uint16OffsetsSizedVersioned,
+    Uint16OffsetsVersioned,
+    Uint32Offsets,
+    Uint32OffsetsFields,
+    Uint32OffsetsSized,
+    Uint32OffsetsSizedVersioned,
+    Uint32OffsetsVersioned,
 )
-from tests.tables import Description
+from tests.tables import LONGEST, Description, OffsetType
 
 type LayoutsMessage = (
-    Offset8
-    | Offset8Sized
-    | Offset8Versioned
-    | Offset8SizedVersioned
-    | Offset16
-    | Offset16Sized
-    | Offset16Versioned
-    | Offset16SizedVersioned
-    | Offset32
-    | Offset32Sized
-    | Offset32Versioned
-    | Offset32SizedVersioned
+    Uint8Offsets
+    | Uint8OffsetsSized
+    | Uint8OffsetsVersioned
+    | Uint8OffsetsSizedVersioned
+    | Uint16Offsets
+    | Uint16OffsetsSized
+    | Uint16OffsetsVersioned
+    | Uint16OffsetsSizedVersioned
+    | Uint32Offsets
+    | Uint32OffsetsSized
+    | Uint32OffsetsVersioned
+    | Uint32OffsetsSizedVersioned
 )
 
 # The fields of every message, whose own ``Fields`` types are the same
-type Fields = Offset32Fields
+type Fields = Uint32OffsetsFields
 
 
 @dataclass(frozen=True)
@@ -53,13 +53,13 @@ class MessageLayout:
     layout: Description
     version: int | None = None
 
-    def offset_size(self) -> int:
-        return self.layout["offsetSize"]
+    def offset_type(self) -> OffsetType:
+        return self.layout["offsetType"]
 
     def max_value(self) -> int:
         """The largest version, offset or length that its offsets hold, which
         is also the longest table that they address"""
-        return 2 ** (8 * self.offset_size()) - 1
+        return LONGEST[self.offset_type()]
 
     def other_versions(self) -> SearchStrategy[int]:
         """The versions that its offsets hold but its own"""
@@ -93,30 +93,38 @@ class MessageLayout:
 
 
 MESSAGES: list[MessageLayout] = [
-    MessageLayout(Offset8, layout(offset_size=1)),
-    MessageLayout(Offset8Sized, layout(sized=True, offset_size=1)),
-    MessageLayout(Offset8Versioned, layout(versioned=True, offset_size=1), 255),
+    MessageLayout(Uint8Offsets, layout(offset_type="uint8")),
+    MessageLayout(Uint8OffsetsSized, layout(sized=True, offset_type="uint8")),
     MessageLayout(
-        Offset8SizedVersioned, layout(sized=True, versioned=True, offset_size=1), 0
+        Uint8OffsetsVersioned, layout(versioned=True, offset_type="uint8"), 255
     ),
-    MessageLayout(Offset16, layout(offset_size=2)),
-    MessageLayout(Offset16Sized, layout(sized=True, offset_size=2)),
-    MessageLayout(Offset16Versioned, layout(versioned=True, offset_size=2), 65535),
     MessageLayout(
-        Offset16SizedVersioned, layout(sized=True, versioned=True, offset_size=2), 1
+        Uint8OffsetsSizedVersioned,
+        layout(sized=True, versioned=True, offset_type="uint8"),
+        0,
     ),
-    MessageLayout(Offset32, layout()),
-    MessageLayout(Offset32Sized, layout(sized=True)),
-    MessageLayout(Offset32Versioned, layout(versioned=True), 4294967295),
-    MessageLayout(Offset32SizedVersioned, layout(sized=True, versioned=True), 2),
+    MessageLayout(Uint16Offsets, layout(offset_type="uint16")),
+    MessageLayout(Uint16OffsetsSized, layout(sized=True, offset_type="uint16")),
+    MessageLayout(
+        Uint16OffsetsVersioned, layout(versioned=True, offset_type="uint16"), 65535
+    ),
+    MessageLayout(
+        Uint16OffsetsSizedVersioned,
+        layout(sized=True, versioned=True, offset_type="uint16"),
+        1,
+    ),
+    MessageLayout(Uint32Offsets, layout()),
+    MessageLayout(Uint32OffsetsSized, layout(sized=True)),
+    MessageLayout(Uint32OffsetsVersioned, layout(versioned=True), 4294967295),
+    MessageLayout(Uint32OffsetsSizedVersioned, layout(sized=True, versioned=True), 2),
 ]
 """Every message of layouts.tafla, with the layouts and versions that its
 attributes give"""
 
 
-# Values of the fields, which fit tables of 8-bit offsets
+# Values of the fields, which fit tables of uint8 offsets
 fields_of_every_message: SearchStrategy[Fields] = builds(
-    Offset32Fields,
+    Uint32OffsetsFields,
     id=scalar_values("uint32"),
     name=STRINGS,
     values=lists(scalar_values("uint16"), max_size=8),

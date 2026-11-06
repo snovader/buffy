@@ -20,7 +20,7 @@ import { array, message, scalar, string } from './descriptions.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
 import * as javascript from './layouts/javascript/layouts.js';
 import * as typescript from './layouts/typescript/layouts.ts';
-import type { Offset8Fields } from './layouts/typescript/layouts.ts';
+import type { Uint8OffsetsFields } from './layouts/typescript/layouts.ts';
 
 // The code generated from schemas/layouts.tafla, in TypeScript and in
 // JavaScript, writes and reads messages of every layout with tafla. The
@@ -34,7 +34,7 @@ const LAYOUTS: ReadonlyArray<readonly [string, Layouts]> = [
     ['JavaScript', javascript]
 ];
 
-type Fields = Offset8Fields;
+type Fields = Uint8OffsetsFields;
 
 interface LayoutMessage {
     name: keyof Layouts;
@@ -43,46 +43,54 @@ interface LayoutMessage {
 }
 
 const MESSAGES: readonly LayoutMessage[] = [
-    { name: 'Offset8', layout: layoutOf(1) },
-    { name: 'Offset8Sized', layout: layoutOf(1, { sized: true }) },
-    { name: 'Offset8Versioned', layout: layoutOf(1, { versioned: true }), version: 255 },
+    { name: 'Uint8Offsets', layout: layoutOf('uint8') },
+    { name: 'Uint8OffsetsSized', layout: layoutOf('uint8', { sized: true }) },
+    { name: 'Uint8OffsetsVersioned', layout: layoutOf('uint8', { versioned: true }), version: 255 },
     {
-        name: 'Offset8SizedVersioned',
-        layout: layoutOf(1, { sized: true, versioned: true }),
+        name: 'Uint8OffsetsSizedVersioned',
+        layout: layoutOf('uint8', { sized: true, versioned: true }),
         version: 0
     },
-    { name: 'Offset16', layout: layoutOf(2) },
-    { name: 'Offset16Sized', layout: layoutOf(2, { sized: true }) },
-    { name: 'Offset16Versioned', layout: layoutOf(2, { versioned: true }), version: 65535 },
+    { name: 'Uint16Offsets', layout: layoutOf('uint16') },
+    { name: 'Uint16OffsetsSized', layout: layoutOf('uint16', { sized: true }) },
     {
-        name: 'Offset16SizedVersioned',
-        layout: layoutOf(2, { sized: true, versioned: true }),
+        name: 'Uint16OffsetsVersioned',
+        layout: layoutOf('uint16', { versioned: true }),
+        version: 65535
+    },
+    {
+        name: 'Uint16OffsetsSizedVersioned',
+        layout: layoutOf('uint16', { sized: true, versioned: true }),
         version: 1
     },
-    { name: 'Offset32', layout: layoutOf(4) },
-    { name: 'Offset32Sized', layout: layoutOf(4, { sized: true }) },
-    { name: 'Offset32Versioned', layout: layoutOf(4, { versioned: true }), version: 4294967295 },
+    { name: 'Uint32Offsets', layout: layoutOf('uint32') },
+    { name: 'Uint32OffsetsSized', layout: layoutOf('uint32', { sized: true }) },
     {
-        name: 'Offset32SizedVersioned',
-        layout: layoutOf(4, { sized: true, versioned: true }),
+        name: 'Uint32OffsetsVersioned',
+        layout: layoutOf('uint32', { versioned: true }),
+        version: 4294967295
+    },
+    {
+        name: 'Uint32OffsetsSizedVersioned',
+        layout: layoutOf('uint32', { sized: true, versioned: true }),
         version: 2
     }
 ];
 
 const VERSIONED = MESSAGES.filter(({ version }) => version !== undefined);
-const OFFSET16 = MESSAGES.find(({ name }) => name === 'Offset16')!;
+const UINT16_OFFSETS = MESSAGES.find(({ name }) => name === 'Uint16Offsets')!;
 
 function layoutOf(
-    offsetSize: LayoutDescription['offsetSize'],
+    offsetType: LayoutDescription['offsetType'],
     header: Partial<LayoutDescription> = {}
 ): LayoutDescription {
-    return { sized: false, versioned: false, offsetSize, ...header };
+    return { sized: false, versioned: false, offsetType, ...header };
 }
 
 const ENCODER = new TextEncoder();
 
 /**
- * Fields of tables short enough for 8-bit offsets in every layout: a name of
+ * Fields of tables short enough for uint8 offsets in every layout: a name of
  * up to 120 bytes of UTF-8 and up to 8 values take at most 150 bytes
  */
 const FIELDS: fc.Arbitrary<Fields> = fc.record({
@@ -91,7 +99,7 @@ const FIELDS: fc.Arbitrary<Fields> = fc.record({
     values: fc.array(SCALAR_VALUES.uint16, { maxLength: 8 })
 });
 
-/** Fields of tables that are too long for 8-bit offsets about half the time */
+/** Fields of tables that are too long for uint8 offsets about half the time */
 const LONGER_FIELDS: fc.Arbitrary<Fields> = fc.record({
     id: SCALAR_VALUES.uint32,
     name: fc.string({ unit: 'binary', maxLength: 100 }),
@@ -166,7 +174,7 @@ describe.each(LAYOUTS)('%s', (_, layouts) => {
     describe.each(VERSIONED)('$name', layoutMessage => {
         const { layout, version } = layoutMessage;
         const otherVersions = fc
-            .integer({ min: 0, max: MAX_VALUES[layout.offsetSize] })
+            .integer({ min: 0, max: MAX_VALUES[layout.offsetType] })
             .filter(other => other !== version);
 
         it.prop([FIELDS, otherVersions])(
@@ -181,15 +189,15 @@ describe.each(LAYOUTS)('%s', (_, layouts) => {
         );
     });
 
-    it('should write the longest table that 16-bit offsets address, and throw RangeError for a longer one', () => {
+    it('should write the longest table that uint16 offsets address, and throw RangeError for a longer one', () => {
         // 3 offsets, the id, an empty string's length and the array's count
         // take 14 bytes, which leave 65,521 for 32,760 elements
         const longest = { id: 0, name: '', values: new Array<number>(32_760).fill(0xffff) };
         const tooLong = { ...longest, values: [...longest.values, 0] };
 
-        const bytes = layouts.Offset16.serialize(longest);
+        const bytes = layouts.Uint16Offsets.serialize(longest);
         expect(bytes.length).toBe(65_534);
-        expect(read(layouts, OFFSET16, bytes)).toEqual(longest);
-        expect(() => layouts.Offset16.serialize(tooLong)).toThrow(RangeError);
+        expect(read(layouts, UINT16_OFFSETS, bytes)).toEqual(longest);
+        expect(() => layouts.Uint16Offsets.serialize(tooLong)).toThrow(RangeError);
     });
 });

@@ -23,7 +23,7 @@ impl Table {
     }
 
     /// Sizes and writes the table. The tables nested in it are written in
-    /// place, so they must have no header and its offset size, as
+    /// place, so they must have no header and its offset type, as
     /// [`Table::nested_in_place()`] makes them.
     pub fn write(&self) -> Result<Vec<u8>, BuildError> {
         self.write_as(self)
@@ -47,9 +47,9 @@ impl Table {
 
     /// The table with every table nested in it made one that a `TableWriter`
     /// writes in place: from its builder, without a header, and with the
-    /// root's offset size
+    /// root's offset type
     pub fn nested_in_place(&self) -> Self {
-        let layout = Layout::headerless(self.layout.offset_size);
+        let layout = Layout::headerless(self.layout.offset_type);
         let fields = self
             .fields
             .iter()

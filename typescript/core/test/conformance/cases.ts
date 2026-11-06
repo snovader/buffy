@@ -8,6 +8,7 @@ import {
     type LayoutDescription,
     type NestedTable,
     type OffsetSize,
+    type OffsetType,
     type ScalarType,
     type Suite,
     type TableDescription,
@@ -86,8 +87,12 @@ const ELEMENT_TYPES: readonly ScalarType[] = [
     'float64'
 ];
 
-// The largest version that the header slot of each offset size holds
-const MAX_VERSIONS = { 1: 0xff, 2: 0xffff, 4: 0xffff_ffff } as const;
+// The largest version that the header slot of each offset type holds
+const MAX_VERSIONS = {
+    uint8: 0xff,
+    uint16: 0xffff,
+    uint32: 0xffff_ffff
+} as const;
 
 const STRINGS = [
     '',
@@ -175,8 +180,8 @@ const VALID_CASES: ValidCase[] = [
     ),
     ...layoutCases(),
     validCase(
-        'offset-size-1-full',
-        'The longest table of 1-byte offsets, 255 bytes: its size, the length 250 of its uint8[] and the offset 254 of its last field are only read correctly unsigned',
+        'offset-type-uint8-full',
+        'The longest table of uint8 offsets, 255 bytes: its size, the length 250 of its uint8[] and the offset 254 of its last field are only read correctly unsigned',
         table(
             [
                 array(
@@ -185,7 +190,7 @@ const VALID_CASES: ValidCase[] = [
                 ),
                 scalar('uint8', 0xff)
             ],
-            layout({ sized: true, offsetSize: 1 })
+            layout({ sized: true, offsetType: 'uint8' })
         )
     ),
     validCase(
@@ -278,7 +283,7 @@ const VALID_CASES: ValidCase[] = [
     ),
     validCase(
         'nested-narrower-offsets',
-        'Tables of 1- and 2-byte offsets nested in a table of 4-byte offsets, from their builders, which are written with their own offsets, and from bytes. Each is read from its position with its own offset size.',
+        'Tables of uint8 and uint16 offsets nested in a table of uint32 offsets, from their builders, which are written with their own offsets, and from bytes. Each is read from its position with its own offset type.',
         table([
             scalar('uint8', 1),
             nested(
@@ -289,7 +294,7 @@ const VALID_CASES: ValidCase[] = [
                             string('one'),
                             array('int16', [-1])
                         ],
-                        layout({ offsetSize: 1 })
+                        layout({ offsetType: 'uint8' })
                     )
                 )
             ),
@@ -297,18 +302,20 @@ const VALID_CASES: ValidCase[] = [
                 fromBuilder(
                     table(
                         [array('int32', [-1]), string('two')],
-                        layout({ offsetSize: 2 })
+                        layout({ offsetType: 'uint16' })
                     )
                 )
             ),
             nested(
-                fromBytes(table([string('bytes')], layout({ offsetSize: 1 })))
+                fromBytes(
+                    table([string('bytes')], layout({ offsetType: 'uint8' }))
+                )
             )
         ])
     ),
     validCase(
         'nested-wider-offsets',
-        'Tables of 4- and 2-byte offsets nested from their builders in a table of 1-byte offsets. Each is read from its position with its own offset size.',
+        'Tables of uint32 and uint16 offsets nested from their builders in a table of uint8 offsets. Each is read from its position with its own offset type.',
         table(
             [
                 scalar('uint8', 1),
@@ -321,12 +328,12 @@ const VALID_CASES: ValidCase[] = [
                     fromBuilder(
                         table(
                             [array('uint16', [0xfedc]), string('two')],
-                            layout({ offsetSize: 2 })
+                            layout({ offsetType: 'uint16' })
                         )
                     )
                 )
             ],
-            layout({ offsetSize: 1 })
+            layout({ offsetType: 'uint8' })
         )
     ),
     validCase(
@@ -342,14 +349,14 @@ const VALID_CASES: ValidCase[] = [
     ),
     validCase(
         'vector-item-layouts',
-        "A vector of a table read in place and then tables of other layouts, which are read from their items' bytes: of 2-byte offsets, which its builder writes and the vector copies; with a size and a version, written straight into the vector; and of 1-byte offsets with both, from bytes",
+        "A vector of a table read in place and then tables of other layouts, which are read from their items' bytes: of uint16 offsets, which its builder writes and the vector copies; with a size and a version, written straight into the vector; and of uint8 offsets with both, from bytes",
         table([
             vector([
                 fromBuilder(table([scalar('uint8', 1)])),
                 fromBuilder(
                     table(
                         [scalar('uint8', 2), string('two')],
-                        layout({ offsetSize: 2 })
+                        layout({ offsetType: 'uint16' })
                     )
                 ),
                 fromBuilder(
@@ -362,7 +369,11 @@ const VALID_CASES: ValidCase[] = [
                 fromBytes(
                     table(
                         [scalar('uint8', 4)],
-                        layout({ sized: true, versioned: true, offsetSize: 1 }),
+                        layout({
+                            sized: true,
+                            versioned: true,
+                            offsetType: 'uint8'
+                        }),
                         4
                     )
                 )
@@ -372,10 +383,10 @@ const VALID_CASES: ValidCase[] = [
     validCase('empty-table', 'A table of no fields, which has no bytes', EMPTY),
     validCase(
         'empty-table-sized-versioned',
-        'A table of no fields with 2-byte size and version slots',
+        'A table of no fields with uint16 size and version slots',
         table(
             [],
-            layout({ sized: true, versioned: true, offsetSize: 2 }),
+            layout({ sized: true, versioned: true, offsetType: 'uint16' }),
             0x0102
         )
     )
@@ -391,8 +402,8 @@ function invalidCases(): InvalidCase[] {
     const integerArrays = inspect('integer-arrays');
     const floatArrays = inspect('float-arrays');
     const strings = inspect('strings');
-    const full = inspect('offset-size-1-full');
-    const offsetSize2 = inspect('offset-size-2');
+    const full = inspect('offset-type-uint8-full');
+    const uint16Offsets = inspect('offset-type-uint16');
     const nestedTables = inspect('nested-tables');
     const vectors = inspect('vectors');
     const itemLayouts = inspect('vector-item-layouts');
@@ -426,8 +437,8 @@ function invalidCases(): InvalidCase[] {
             8
         ),
         invalidCase(
-            'truncated-offset-size-1',
-            'offset-size-1-full without its last byte, its last field',
+            'truncated-offset-type-uint8',
+            'offset-type-uint8-full without its last byte, its last field',
             full,
             truncate(full.bytes.length - 1),
             1
@@ -457,11 +468,11 @@ function invalidCases(): InvalidCase[] {
             0
         ),
         invalidCase(
-            'array-length-max-offset-size-2',
-            'The 2-byte length of the float64[] of offset-size-2 is 2^16 - 1',
-            offsetSize2,
+            'array-length-max-offset-type-uint16',
+            'The uint16 length of the float64[] of offset-type-uint16 is 2^16 - 1',
+            uint16Offsets,
             overwrite(
-                offsetSize2.buffer.rootOffset(3),
+                uint16Offsets.buffer.rootOffset(3),
                 littleEndian(0xffff, 2)
             ),
             3
@@ -590,7 +601,7 @@ function invalidCase(
     };
 }
 
-/** Counts one more element or byte in the 4-byte length at `position` */
+/** Counts one more element or byte in the uint32 length at `position` */
 function lengthenByOne({ buffer }: Inspected, position: number): Corruption {
     return overwrite(position, littleEndian(buffer.getUint32(position) + 1, 4));
 }
@@ -618,7 +629,7 @@ function validCase(
     return { name, description, file: `valid/${name}.bin`, table };
 }
 
-/** Every combination of offset size and header, with the same fields */
+/** Every combination of offset type and header, with the same fields */
 function layoutCases(): ValidCase[] {
     const headers = [
         { suffix: '', sized: false, versioned: false },
@@ -627,15 +638,17 @@ function layoutCases(): ValidCase[] {
         { suffix: '-sized-versioned', sized: true, versioned: true }
     ];
 
-    return ([1, 2, 4] as const).flatMap(offsetSize =>
+    const offsetTypes: readonly OffsetType[] = ['uint8', 'uint16', 'uint32'];
+
+    return offsetTypes.flatMap(offsetType =>
         headers.map(({ suffix, sized, versioned }) =>
             validCase(
-                `offset-size-${offsetSize}${suffix}`,
-                describeLayout(offsetSize, sized, versioned),
+                `offset-type-${offsetType}${suffix}`,
+                describeLayout(offsetType, sized, versioned),
                 table(
-                    layoutFields(offsetSize),
-                    layout({ sized, versioned, offsetSize }),
-                    versioned ? MAX_VERSIONS[offsetSize] : undefined
+                    layoutFields(offsetType),
+                    layout({ sized, versioned, offsetType }),
+                    versioned ? MAX_VERSIONS[offsetType] : undefined
                 )
             )
         )
@@ -643,7 +656,7 @@ function layoutCases(): ValidCase[] {
 }
 
 function describeLayout(
-    offsetSize: OffsetSize,
+    offsetType: OffsetType,
     sized: boolean,
     versioned: boolean
 ): string {
@@ -651,17 +664,17 @@ function describeLayout(
         ...(sized ? ['a size slot'] : []),
         ...(versioned
             ? [
-                  `a version slot of ${MAX_VERSIONS[offsetSize]}, the largest that it holds`
+                  `a version slot of ${MAX_VERSIONS[offsetType]}, the largest that it holds`
               ]
             : [])
     ];
     const header = slots.length > 0 ? slots.join(' and ') : 'no header';
 
-    return `${offsetSize}-byte offsets, lengths, counts and item ends after ${header}, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets`;
+    return `${offsetType} offsets, lengths, counts and item ends after ${header}, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets`;
 }
 
-function layoutFields(offsetSize: OffsetSize): FieldDescription[] {
-    const nestedLayout = layout({ offsetSize });
+function layoutFields(offsetType: OffsetType): FieldDescription[] {
+    const nestedLayout = layout({ offsetType });
 
     return [
         scalar('uint8', 7),
@@ -737,7 +750,7 @@ function nestedTwoDeep(): TableDescription {
 }
 
 function layout(options: Partial<LayoutDescription> = {}): LayoutDescription {
-    return { sized: false, versioned: false, offsetSize: 4, ...options };
+    return { sized: false, versioned: false, offsetType: 'uint32', ...options };
 }
 
 function table(

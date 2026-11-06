@@ -3,84 +3,84 @@
 // are zero or the largest that their offset type holds.
 
 /// `uint8` offsets, for tables of up to 255 bytes
-message Offset8 (offset_type: uint8) {
+message Uint8Offsets (offset_type: uint8) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint8` offsets, after the table's length
-message Offset8Sized (sized, offset_type: uint8) {
+message Uint8OffsetsSized (sized, offset_type: uint8) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint8` offsets, after the largest version they hold
-message Offset8Versioned (offset_type: uint8, version: 255) {
+message Uint8OffsetsVersioned (offset_type: uint8, version: 255) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint8` offsets, after the table's length and version zero
-message Offset8SizedVersioned (version: 0, sized, offset_type: uint8,) {
+message Uint8OffsetsSizedVersioned (version: 0, sized, offset_type: uint8,) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint16` offsets, for tables of up to 65,535 bytes
-message Offset16 (offset_type: uint16) {
+message Uint16Offsets (offset_type: uint16) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint16` offsets, after the table's length
-message Offset16Sized (offset_type: uint16, sized) {
+message Uint16OffsetsSized (offset_type: uint16, sized) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint16` offsets, after the largest version they hold
-message Offset16Versioned (offset_type: uint16, version: 65535) {
+message Uint16OffsetsVersioned (offset_type: uint16, version: 65535) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint16` offsets, after the table's length and a version
-message Offset16SizedVersioned (sized, version: 1, offset_type: uint16) {
+message Uint16OffsetsSizedVersioned (sized, version: 1, offset_type: uint16) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint32` offsets, the default, for tables of up to 4 GiB
-message Offset32 {
+message Uint32Offsets {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint32` offsets, after the table's length
-message Offset32Sized (sized) {
+message Uint32OffsetsSized (sized) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint32` offsets, after the largest version they hold
-message Offset32Versioned (version: 4294967295) {
+message Uint32OffsetsVersioned (version: 4294967295) {
     id: uint32;
     name: string;
     values: [uint16];
 }
 
 /// `uint32` offsets, after the table's length and a version
-message Offset32SizedVersioned (sized, version: 2, offset_type: uint32) {
+message Uint32OffsetsSizedVersioned (sized, version: 2, offset_type: uint32) {
     id: uint32;
     name: string;
     values: [uint16];

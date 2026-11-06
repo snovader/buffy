@@ -2,24 +2,24 @@
 package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.OffsetSize;
+import io.github.snovader.tafla.OffsetType;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** {@code uint8} offsets, after the table's length */
-public final class Offset8Sized {
+/** {@code uint16} offsets, after the table's length */
+public final class Uint16OffsetsSized {
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)
-        .offsetSize(OffsetSize.UINT8)
+        .offsetType(OffsetType.UINT16)
         .build();
 
     private final ByteBuffer buffer;
 
-    public Offset8Sized(byte[] bytes) {
+    public Uint16OffsetsSized(byte[] bytes) {
         this.buffer = new ByteBuffer(bytes, LAYOUT);
     }
 
-    /** Writes an {@code Offset8Sized} with every field */
+    /** Writes a {@code Uint16OffsetsSized} with every field */
     public static byte[] serialize(Fields fields) {
         var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
@@ -46,7 +46,7 @@ public final class Offset8Sized {
         return buffer.getUint16Array(buffer.rootOffset(2));
     }
 
-    /** The fields of an {@code Offset8Sized}, to write */
+    /** The fields of a {@code Uint16OffsetsSized}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(long id, String name, int[] values) {}
 }

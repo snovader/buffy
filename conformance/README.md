@@ -56,7 +56,7 @@ Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
     "description": "A vector of a table read in place and then tables of other layouts, ...",
     "file": "valid/vector-item-layouts.bin",
     "table": {
-        "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+        "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
         "fields": [
             {
                 "type": "vector",
@@ -64,7 +64,7 @@ Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
                     {
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [{ "type": "uint8", "value": 1 }]
                         }
                     },
@@ -78,9 +78,8 @@ Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
 
 `file` is relative to `cases.json`. A table has:
 
-- `layout`: `sized`, `versioned` and `offsetSize`, the offset size in bytes:
-  1, 2 or 4 for the offset types `uint8`, `uint16` and `uint32`, as `SPEC.md`
-  defines them. A `TableLayout` takes these. Every layout is written out in
+- `layout`: `sized`, `versioned` and `offsetType`, the offset type: `uint8`,
+  `uint16` or `uint32`, as `SPEC.md` defines it. A `TableLayout` takes these. Every layout is written out in
   full.
 - `version`: the version in the header, present only when `versioned`.
 - `fields`: in the order that they're set, which is the order of their
@@ -121,8 +120,8 @@ Each field has a `type`:
 
 Reading a field starts from its offset, from `rootOffset(index)` for a field of
 the root and `fieldOffset(position, index)` for a field of a nested table read
-in place. A nested table that has no header and offsets as wide as its
-parent's is read in place, within its parent's bytes, as `SPEC.md` describes:
+in place. A nested table that has no header and its
+parent's offset type is read in place, within its parent's bytes, as `SPEC.md` describes:
 a vector item from its position, from `getVectorOffsets()`. Any other is read
 as a table of its own, with a buffer of its own layout: a vector item from its
 bytes, from `getVector()`, and a table field from its position to the end of
@@ -175,14 +174,14 @@ An implementation's test loads `cases.json` and:
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Every element type as a scalar                             | `integer-scalars`, `float-scalars`                                                                  |
 | Every element type as an array, and empty                  | `integer-arrays`, `float-arrays`, `empty-arrays`                                                    |
-| Offset sizes 1, 2 and 4, without and with each header slot | `offset-size-{1,2,4}`, with `-sized`, `-versioned` and `-sized-versioned`                           |
-| Values of 128 and more in `uint8` offsets and lengths      | `offset-size-1-full`                                                                                |
-| The padding that aligns arrays                             | `padding`, `empty-arrays`, `integer-arrays` and the offset size cases                               |
+| Offset types, without and with each header slot            | `offset-type-{uint8,uint16,uint32}`, with `-sized`, `-versioned` and `-sized-versioned`             |
+| Values of 128 and more in `uint8` offsets and lengths      | `offset-type-uint8-full`                                                                            |
+| The padding that aligns arrays                             | `padding`, `empty-arrays`, `integer-arrays` and the offset type cases                               |
 | Nested tables from builders and bytes, and alignments      | `nested-tables`, `nested-two-deep`                                                                  |
-| Nested builders of other offset sizes than their parent's  | `nested-narrower-offsets`, `nested-wider-offsets`                                                   |
-| Struct fields, unpadded, of every scalar type              | `structs` and the offset size cases                                                                 |
-| Arrays of structs of each alignment, empty too             | `struct-arrays` and the offset size cases                                                           |
-| Vectors of tables, empty, and of other layouts             | `vectors`, `vector-item-layouts` and the offset size cases                                          |
+| Nested builders of other offset types than their parent's  | `nested-narrower-offsets`, `nested-wider-offsets`                                                   |
+| Struct fields, unpadded, of every scalar type              | `structs` and the offset type cases                                                                 |
+| Arrays of structs of each alignment, empty too             | `struct-arrays` and the offset type cases                                                           |
+| Vectors of tables, empty, and of other layouts             | `vectors`, `vector-item-layouts` and the offset type cases                                          |
 | Empty, multi-byte UTF-8 and leading U+FEFF strings         | `strings`                                                                                           |
 | Tables of no fields                                        | `empty-table`, `empty-table-sized-versioned`                                                        |
 | Truncated tables                                           | `truncated-*`, `struct-past-end`                                                                    |
@@ -211,7 +210,7 @@ The tests follow each implementation's API where it differs:
 - Rust's `Vector` returns its items' bytes rather than their positions. The
   Rust test reads an item in place from the bytes that `iter_in_place()`
   returns, which start where the item does and end where its parent's do,
-  with a buffer of its parent's offset size, and any other item from the
+  with a buffer of its parent's offset type, and any other item from the
   bytes that iterating returns.
 - Each test also finds every vector item from its ends alone, with
   `getVectorOffset()` or Rust's `Vector::get()` and `Vector::get_in_place()`,

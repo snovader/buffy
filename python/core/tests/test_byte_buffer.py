@@ -148,7 +148,7 @@ class TestByteBuffer(unittest.TestCase):
         self,
     ) -> None:
         backing = bytearray(b"\xaa" * 600)
-        buffer = ByteBuffer(backing, TableLayout(offset_size=1))
+        buffer = ByteBuffer(backing, TableLayout(offset_type="uint8"))
 
         writes = [
             lambda: buffer.set_uint8_array(bytes(256)),
@@ -162,7 +162,9 @@ class TestByteBuffer(unittest.TestCase):
 
         for write in writes:
             with self.subTest():
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(
+                    ValueError, "a uint8 count, length or item end holds at most 255"
+                ):
                     write()
                 self.assertEqual(backing, b"\xaa" * 600)
 

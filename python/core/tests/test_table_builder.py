@@ -13,11 +13,17 @@ from tafla import (
     TableLayout,
 )
 from tests.descriptions import tables
-from tests.tables import Description, OffsetSize, alignment_of, build_table
+from tests.tables import (
+    Description,
+    OffsetType,
+    alignment_of,
+    build_table,
+    offset_size_of,
+)
 
-MAX_LENGTHS: list[tuple[OffsetSize, int]] = [
-    (1, 2**8 - 1),
-    (2, 2**16 - 1),
+MAX_LENGTHS: list[tuple[OffsetType, int]] = [
+    ("uint8", 2**8 - 1),
+    ("uint16", 2**16 - 1),
 ]
 
 
@@ -278,19 +284,21 @@ class TestChangedLengths(unittest.TestCase):
 
 class TestVersions(unittest.TestCase):
     def test_rejects_a_version_that_its_slot_cannot_hold(self) -> None:
-        cases: list[tuple[OffsetSize, int]] = [
-            (1, 2**8),
-            (2, 2**16),
-            (4, 2**32),
-            (4, -1),
+        cases: list[tuple[OffsetType, int]] = [
+            ("uint8", 2**8),
+            ("uint16", 2**16),
+            ("uint32", 2**32),
+            ("uint32", -1),
         ]
 
-        for size, version in cases:
-            with (
-                self.subTest(size=size, version=version),
-                self.assertRaisesRegex(ValueError, "doesn't fit"),
-            ):
-                TableBuilder(1, TableLayout(versioned=True, offset_size=size), version)
+        for offset_type, version in cases:
+            with self.subTest(offset_type=offset_type, version=version):
+                layout = TableLayout(versioned=True, offset_type=offset_type)
+                message = f"Version {version} doesn't fit in a {offset_type} slot"
+
+                with self.assertRaises(ValueError) as raised:
+                    TableBuilder(1, layout, version)
+                self.assertEqual(str(raised.exception), message)
 
     def test_rejects_a_version_missing_from_or_given_for_a_layout(self) -> None:
         with self.assertRaisesRegex(TypeError, "needs a version"):
@@ -309,15 +317,40 @@ class TestVersions(unittest.TestCase):
 
 class TestTableLength(unittest.TestCase):
     def test_rejects_a_header_longer_than_the_offsets_address(self) -> None:
-        for size, max_length in MAX_LENGTHS:
+        for offset_type, max_length in MAX_LENGTHS:
             for sized in [False, True]:
-                with self.subTest(size=size, sized=sized):
-                    layout = TableLayout(sized=sized, offset_size=size)
+                with self.subTest(offset_type=offset_type, sized=sized):
+                    layout = TableLayout(sized=sized, offset_type=offset_type)
+                    size = offset_size_of(offset_type)
                     count = max_length // size - (1 if sized else 0)
+                    message = (
+                        f"A header of {count + 1} fields doesn't fit in "
+                        f"{offset_type} offsets"
+                    )
 
                     TableBuilder(count, layout)
-                    with self.assertRaisesRegex(ValueError, "doesn't fit"):
+                    with self.assertRaises(ValueError) as raised:
                         TableBuilder(count + 1, layout)
+                    self.assertEqual(str(raised.exception), message)
+
+    def test_rejects_a_field_that_makes_the_table_too_long_for_its_offset_type(
+        self,
+    ) -> None:
+        for offset_type, max_length in MAX_LENGTHS:
+            with self.subTest(offset_type=offset_type):
+                builder = TableBuilder(2, TableLayout(offset_type=offset_type))
+                builder.set_uint8(1)
+                # A struct as long as the longest table but its two offsets
+                # makes it one byte too long, after the uint8
+                length = max_length - 2 * offset_size_of(offset_type)
+                message = (
+                    f"Field 2 makes the table {max_length + 1} bytes, too long "
+                    f"for {offset_type} offsets"
+                )
+
+                with self.assertRaises(ValueError) as raised:
+                    builder.set_struct(bytes(length))
+                self.assertEqual(str(raised.exception), message)
 
 
 class TestNestedBuilders(unittest.TestCase):

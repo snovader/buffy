@@ -5,10 +5,10 @@
 //!
 //! Tables follow the rules of the format and the builder's documentation:
 //! a version fits in its slot, a table nested with `set_table()` has no
-//! header, and a table and the tables in it fit in their offset sizes.
+//! header, and a table and the tables in it fit in their offset types.
 
 use proptest::{char, collection::vec, num, option, prelude::*, sample::select};
-use tafla::{Alignment, OffsetSize};
+use tafla::{Alignment, OffsetType};
 
 use super::description::{
     Field, Layout, Nested, ScalarType, Source, Table, struct_alignment, struct_size, struct_types,
@@ -18,7 +18,7 @@ use super::description::{
 /// hold tables
 const DEPTH: u32 = 2;
 
-const OFFSET_SIZES: [OffsetSize; 3] = [OffsetSize::Uint8, OffsetSize::Uint16, OffsetSize::Uint32];
+const OFFSET_TYPES: [OffsetType; 3] = [OffsetType::Uint8, OffsetType::Uint16, OffsetType::Uint32];
 
 /// Tables of any layout
 pub fn table() -> BoxedStrategy<Table> {
@@ -30,30 +30,30 @@ pub fn tables(layouts: impl Strategy<Value = Layout> + 'static) -> BoxedStrategy
     tables_of(layouts.boxed(), DEPTH, false, &Values::new())
 }
 
-/// Layouts of any header and offset size
+/// Layouts of any header and offset type
 pub fn layout() -> impl Strategy<Value = Layout> {
-    layouts(offset_size())
+    layouts(offset_type())
 }
 
-/// Layouts of any header, of the offset sizes that `offset_sizes` generates
-pub fn layouts(offset_sizes: impl Strategy<Value = OffsetSize>) -> impl Strategy<Value = Layout> {
-    (any::<bool>(), any::<bool>(), offset_sizes).prop_map(|(sized, versioned, offset_size)| {
+/// Layouts of any header, of the offset types that `offset_types` generates
+pub fn layouts(offset_types: impl Strategy<Value = OffsetType>) -> impl Strategy<Value = Layout> {
+    (any::<bool>(), any::<bool>(), offset_types).prop_map(|(sized, versioned, offset_type)| {
         Layout {
             sized,
             versioned,
-            offset_size,
+            offset_type,
         }
     })
 }
 
-pub fn offset_size() -> impl Strategy<Value = OffsetSize> + Clone {
-    select(OFFSET_SIZES.to_vec())
+pub fn offset_type() -> impl Strategy<Value = OffsetType> + Clone {
+    select(OFFSET_TYPES.to_vec())
 }
 
 /// The most fields, array elements, characters, structs in an array and
-/// vector items that a table holds. A table of 1-byte offsets, or nested in
+/// vector items that a table holds. A table of `uint8` offsets, or nested in
 /// one, holds few enough to fit in its 255 bytes more often than not, and
-/// others hold enough for 2-byte lengths and offsets past 255.
+/// others hold enough for `uint16` lengths and offsets past 255.
 #[derive(Clone, Copy)]
 struct Limits {
     fields: usize,
@@ -114,20 +114,20 @@ fn tables_of(
     small: bool,
     values: &Values,
 ) -> BoxedStrategy<Table> {
-    // The fields of each offset size, created once rather than for each table
-    let fields_of_size = OFFSET_SIZES.map(|offset_size| {
-        let small = small || offset_size == OffsetSize::Uint8;
+    // The fields of each offset type, created once rather than for each table
+    let fields_of_size = OFFSET_TYPES.map(|offset_type| {
+        let small = small || offset_type == OffsetType::Uint8;
         vec(
-            field(offset_size, depth, small, values),
+            field(offset_type, depth, small, values),
             0..=Limits::of(small).fields,
         )
         .boxed()
     });
 
     let fields_of = move |layout: Layout| {
-        let index = OFFSET_SIZES
+        let index = OFFSET_TYPES
             .iter()
-            .position(|&size| size == layout.offset_size);
+            .position(|&size| size == layout.offset_type);
         let fields = fields_of_size[index.unwrap()].clone();
 
         (Just(layout), version(layout), fields)
@@ -152,7 +152,7 @@ fn version(layout: Layout) -> BoxedStrategy<Option<u32>> {
         return Just(None).boxed();
     }
 
-    let max = layout.offset_size.max_value();
+    let max = layout.offset_type.max_value();
     prop_oneof![Just(0), Just(max), 0..=max]
         .prop_map(Some)
         .boxed()
@@ -160,7 +160,7 @@ fn version(layout: Layout) -> BoxedStrategy<Option<u32>> {
 
 /// Fields of every type, and tables nested `depth` deep
 fn field(
-    offset_size: OffsetSize,
+    offset_type: OffsetType,
     depth: u32,
     small: bool,
     values: &Values,
@@ -171,7 +171,7 @@ fn field(
 
     prop_oneof![
         8 => values.of(small),
-        1 => nested_table(offset_size, depth - 1, small, values),
+        1 => nested_table(offset_type, depth - 1, small, values),
         1 => vector(depth - 1, small, values),
     ]
     .boxed()
@@ -337,13 +337,13 @@ fn string(characters: usize) -> impl Strategy<Value = String> {
 /// place when their offsets are as wide as their parent's, as they are more
 /// often than not.
 fn nested_table(
-    parent: OffsetSize,
+    parent: OffsetType,
     depth: u32,
     small: bool,
     values: &Values,
 ) -> impl Strategy<Value = Field> + use<> {
-    let offset_sizes = prop_oneof![2 => Just(parent), 1 => offset_size()];
-    let layouts = offset_sizes.prop_map(Layout::headerless).boxed();
+    let offset_types = prop_oneof![2 => Just(parent), 1 => offset_type()];
+    let layouts = offset_types.prop_map(Layout::headerless).boxed();
 
     (
         nested(layouts, depth, small, values),
@@ -381,13 +381,13 @@ fn alignment() -> impl Strategy<Value = Alignment> {
     ])
 }
 
-/// Keeps the table's first fields that surely fit in its offset size, as
+/// Keeps the table's first fields that surely fit in its offset type, as
 /// many as its header and their longest lengths leave room for. The tables
 /// nested in it were fitted to theirs.
 fn fitted(mut table: Table) -> Table {
-    let offset_size = table.layout.offset_size;
-    let width = offset_size.bytes() as u64;
-    let max = u64::from(offset_size.max_value());
+    let offset_type = table.layout.offset_type;
+    let width = offset_type.size() as u64;
+    let max = u64::from(offset_type.max_value());
 
     let mut length = table.layout.header_size() as u64;
     let fits = |field: &&Field| {
@@ -402,7 +402,7 @@ fn fitted(mut table: Table) -> Table {
 }
 
 fn longest_table(table: &Table) -> u64 {
-    let width = table.layout.offset_size.bytes() as u64;
+    let width = table.layout.offset_type.size() as u64;
     let fields = table.fields.iter();
 
     table.layout.header_size() as u64

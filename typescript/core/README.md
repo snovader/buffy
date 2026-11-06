@@ -54,9 +54,9 @@ and then the fields in the order they were set:
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
 - Header slots, offsets, counts, lengths and item ends are all of the
-  layout's offset type, `uint8`, `uint16` or `uint32`, whose offset size,
-  `offsetSize`, is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB
-  or 4 GiB.
+  layout's offset type, `offsetType`: `'uint8'`, `'uint16'` or `'uint32'`,
+  whose offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes,
+  64 KiB or 4 GiB.
 - Offsets count from the table's start. A table nested with `setTable()` has
   no header, and its offsets count from its own start.
 - A struct is its scalars one after another, without padding, and

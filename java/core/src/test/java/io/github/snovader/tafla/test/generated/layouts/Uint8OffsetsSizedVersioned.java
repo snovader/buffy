@@ -3,35 +3,36 @@ package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.DecodeException;
-import io.github.snovader.tafla.OffsetSize;
+import io.github.snovader.tafla.OffsetType;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** {@code uint16} offsets, after the largest version they hold */
-public final class Offset16Versioned {
+/** {@code uint8} offsets, after the table's length and version zero */
+public final class Uint8OffsetsSizedVersioned {
     /** The version of the format, which the header carries and the constructor checks */
-    public static final long FORMAT_VERSION = 65535;
+    public static final long FORMAT_VERSION = 0;
 
     private static final TableLayout LAYOUT = TableLayout.builder()
+        .sized(true)
         .versioned(true)
-        .offsetSize(OffsetSize.UINT16)
+        .offsetType(OffsetType.UINT8)
         .build();
 
     private final ByteBuffer buffer;
 
     /** @throws DecodeException if {@code bytes} are in another format version */
-    public Offset16Versioned(byte[] bytes) {
+    public Uint8OffsetsSizedVersioned(byte[] bytes) {
         this.buffer = new ByteBuffer(bytes, LAYOUT);
 
         long version = buffer.getVersion();
         if (version != FORMAT_VERSION) {
             throw new DecodeException(
-                "Expected format version " + FORMAT_VERSION + " of Offset16Versioned, got " + version
+                "Expected format version " + FORMAT_VERSION + " of Uint8OffsetsSizedVersioned, got " + version
             );
         }
     }
 
-    /** Writes an {@code Offset16Versioned} with every field */
+    /** Writes a {@code Uint8OffsetsSizedVersioned} with every field */
     public static byte[] serialize(Fields fields) {
         var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
         sizer.addUint32();
@@ -58,7 +59,7 @@ public final class Offset16Versioned {
         return buffer.getUint16Array(buffer.rootOffset(2));
     }
 
-    /** The fields of an {@code Offset16Versioned}, to write */
+    /** The fields of a {@code Uint8OffsetsSizedVersioned}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(long id, String name, int[] values) {}
 }

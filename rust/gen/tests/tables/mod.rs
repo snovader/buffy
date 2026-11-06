@@ -184,7 +184,7 @@ impl Header {
             return bytes;
         };
 
-        let width = self.layout.offset_size().bytes();
+        let width = self.layout.offset_type().size();
         let position = if self.layout.is_sized() { width } else { 0 };
         let slot = &version.to_le_bytes()[..width];
         for (byte, &version_byte) in bytes.iter_mut().skip(position).zip(slot) {

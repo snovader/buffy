@@ -2,37 +2,24 @@
 package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** {@code uint32} offsets, after the table's length and a version */
-public final class Offset32SizedVersioned {
-    /** The version of the format, which the header carries and the constructor checks */
-    public static final long FORMAT_VERSION = 2;
-
+/** {@code uint32} offsets, after the table's length */
+public final class Uint32OffsetsSized {
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)
-        .versioned(true)
         .build();
 
     private final ByteBuffer buffer;
 
-    /** @throws DecodeException if {@code bytes} are in another format version */
-    public Offset32SizedVersioned(byte[] bytes) {
+    public Uint32OffsetsSized(byte[] bytes) {
         this.buffer = new ByteBuffer(bytes, LAYOUT);
-
-        long version = buffer.getVersion();
-        if (version != FORMAT_VERSION) {
-            throw new DecodeException(
-                "Expected format version " + FORMAT_VERSION + " of Offset32SizedVersioned, got " + version
-            );
-        }
     }
 
-    /** Writes an {@code Offset32SizedVersioned} with every field */
+    /** Writes a {@code Uint32OffsetsSized} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);
@@ -57,7 +44,7 @@ public final class Offset32SizedVersioned {
         return buffer.getUint16Array(buffer.rootOffset(2));
     }
 
-    /** The fields of an {@code Offset32SizedVersioned}, to write */
+    /** The fields of a {@code Uint32OffsetsSized}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(long id, String name, int[] values) {}
 }

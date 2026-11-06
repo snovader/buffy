@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use crate::diagnostic::Diagnostic;
 use crate::generate::reserved;
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema, StructLayout,
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema, StructLayout,
 };
 use crate::naming::camel_case;
 use crate::parser::{Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Name};
@@ -377,7 +377,7 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
     let mut layout = Layout {
         sized: false,
         version: None,
-        offset_size: OffsetSize::Uint32,
+        offset_type: OffsetType::Uint32,
     };
     let mut version = None;
     let mut given = HashSet::new();
@@ -398,9 +398,9 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
                 version = Some((*value, *span));
             }
             ("offset_type", Some(value)) => {
-                layout.offset_size = offset_type(value).unwrap_or_else(|error| {
+                layout.offset_type = offset_type(value).unwrap_or_else(|error| {
                     errors.push(error);
-                    OffsetSize::Uint32
+                    OffsetType::Uint32
                 });
             }
             ("sized", Some(value)) => {
@@ -431,14 +431,14 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
 
     // Checked once the offset type is known, whichever attribute comes first
     if let Some((value, span)) = version {
-        let max = layout.offset_size.max_value();
+        let max = layout.offset_type.max_value();
         match u32::try_from(value) {
             Ok(value) if u64::from(value) <= max => layout.version = Some(value),
             _ => errors.push(
                 Diagnostic::new(
                     format!(
                         "version {value} doesn't fit in the offset type `{}`",
-                        layout.offset_size.type_name()
+                        layout.offset_type.name()
                     ),
                     span,
                 )
@@ -450,13 +450,12 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
     layout
 }
 
-/// The offset size of an `offset_type` attribute's value, which names one of
-/// the unsigned integer types
-fn offset_type(value: &AttributeValue) -> Result<OffsetSize, Diagnostic> {
+/// The offset type that an `offset_type` attribute's value names
+fn offset_type(value: &AttributeValue) -> Result<OffsetType, Diagnostic> {
     let found = match value {
         AttributeValue::Name(name) => {
-            if let Some(offset_size) = OffsetSize::from_type_name(&name.text) {
-                return Ok(offset_size);
+            if let Some(offset_type) = OffsetType::from_name(&name.text) {
+                return Ok(offset_type);
             }
             name.text.clone()
         }
@@ -469,14 +468,14 @@ fn offset_type(value: &AttributeValue) -> Result<OffsetSize, Diagnostic> {
     )
 }
 
-/// Points `offset_size`, which took the offsets' width in bits, to
+/// Points `offset_size`, which took the offset type's width in bits, to
 /// `offset_type`, with the type of that width when it's one
 fn offset_size_help(value: Option<&AttributeValue>) -> String {
     match value {
         Some(AttributeValue::Integer(bits @ (8 | 16 | 32), _)) => {
-            format!("`offset_type` sets the offsets' width, such as `offset_type: uint{bits}`")
+            format!("`offset_type` names the offset type, such as `offset_type: uint{bits}`")
         }
-        _ => "`offset_type` sets the offsets' width: `uint8`, `uint16` or `uint32`".to_owned(),
+        _ => "`offset_type` names the offset type: `uint8`, `uint16` or `uint32`".to_owned(),
     }
 }
 
@@ -767,7 +766,7 @@ fn check_nested_offsets(
         let Kind::Message(layout) = definition.kind else {
             continue;
         };
-        if layout.offset_size == OffsetSize::Uint32 {
+        if layout.offset_type == OffsetType::Uint32 {
             continue;
         }
 
@@ -778,7 +777,7 @@ fn check_nested_offsets(
                         format!(
                             "`{}` can't nest tables, since its offset type is `{}`",
                             definition.name,
-                            layout.offset_size.type_name()
+                            layout.offset_type.name()
                         ),
                         field_declaration.type_name.span,
                     )

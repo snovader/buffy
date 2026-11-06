@@ -6,20 +6,20 @@ from typing import Final, TypedDict, Unpack
 from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
 
 
-class Offset8:
+class Uint8Offsets:
     """``uint8`` offsets, for tables of up to 255 bytes"""
 
     __slots__ = ("_buffer",)
 
-    _LAYOUT: Final = TableLayout(offset_size=1)
+    _LAYOUT: Final = TableLayout(offset_type="uint8")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset8Fields]) -> memoryview:
-        """Writes an ``Offset8`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint8OffsetsFields]) -> memoryview:
+        """Writes a ``Uint8Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -37,28 +37,28 @@ class Offset8:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset8Fields(TypedDict):
-    """The fields of an ``Offset8``, to write"""
+class Uint8OffsetsFields(TypedDict):
+    """The fields of a ``Uint8Offsets``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset8Sized:
+class Uint8OffsetsSized:
     """``uint8`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
 
-    _LAYOUT: Final = TableLayout(sized=True, offset_size=1)
+    _LAYOUT: Final = TableLayout(sized=True, offset_type="uint8")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset8SizedFields]) -> memoryview:
-        """Writes an ``Offset8Sized`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint8OffsetsSizedFields]) -> memoryview:
+        """Writes a ``Uint8OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -76,15 +76,15 @@ class Offset8Sized:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset8SizedFields(TypedDict):
-    """The fields of an ``Offset8Sized``, to write"""
+class Uint8OffsetsSizedFields(TypedDict):
+    """The fields of a ``Uint8OffsetsSized``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset8Versioned:
+class Uint8OffsetsVersioned:
     """``uint8`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
@@ -94,7 +94,7 @@ class Offset8Versioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True, offset_size=1)
+    _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint8")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -105,12 +105,12 @@ class Offset8Versioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset8Versioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint8OffsetsVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset8VersionedFields]) -> memoryview:
-        """Writes an ``Offset8Versioned`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint8OffsetsVersionedFields]) -> memoryview:
+        """Writes a ``Uint8OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -128,15 +128,15 @@ class Offset8Versioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset8VersionedFields(TypedDict):
-    """The fields of an ``Offset8Versioned``, to write"""
+class Uint8OffsetsVersionedFields(TypedDict):
+    """The fields of a ``Uint8OffsetsVersioned``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset8SizedVersioned:
+class Uint8OffsetsSizedVersioned:
     """``uint8`` offsets, after the table's length and version zero"""
 
     __slots__ = ("_buffer",)
@@ -146,7 +146,7 @@ class Offset8SizedVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_size=1)
+    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint8")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -157,12 +157,14 @@ class Offset8SizedVersioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset8SizedVersioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset8SizedVersionedFields]) -> memoryview:
-        """Writes an ``Offset8SizedVersioned`` with every field"""
+    def serialize(
+        cls, **fields: Unpack[Uint8OffsetsSizedVersionedFields]
+    ) -> memoryview:
+        """Writes a ``Uint8OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -180,28 +182,28 @@ class Offset8SizedVersioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset8SizedVersionedFields(TypedDict):
-    """The fields of an ``Offset8SizedVersioned``, to write"""
+class Uint8OffsetsSizedVersionedFields(TypedDict):
+    """The fields of a ``Uint8OffsetsSizedVersioned``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset16:
+class Uint16Offsets:
     """``uint16`` offsets, for tables of up to 65,535 bytes"""
 
     __slots__ = ("_buffer",)
 
-    _LAYOUT: Final = TableLayout(offset_size=2)
+    _LAYOUT: Final = TableLayout(offset_type="uint16")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset16Fields]) -> memoryview:
-        """Writes an ``Offset16`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint16OffsetsFields]) -> memoryview:
+        """Writes a ``Uint16Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -219,28 +221,28 @@ class Offset16:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset16Fields(TypedDict):
-    """The fields of an ``Offset16``, to write"""
+class Uint16OffsetsFields(TypedDict):
+    """The fields of a ``Uint16Offsets``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset16Sized:
+class Uint16OffsetsSized:
     """``uint16`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
 
-    _LAYOUT: Final = TableLayout(sized=True, offset_size=2)
+    _LAYOUT: Final = TableLayout(sized=True, offset_type="uint16")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset16SizedFields]) -> memoryview:
-        """Writes an ``Offset16Sized`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint16OffsetsSizedFields]) -> memoryview:
+        """Writes a ``Uint16OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -258,15 +260,15 @@ class Offset16Sized:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset16SizedFields(TypedDict):
-    """The fields of an ``Offset16Sized``, to write"""
+class Uint16OffsetsSizedFields(TypedDict):
+    """The fields of a ``Uint16OffsetsSized``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset16Versioned:
+class Uint16OffsetsVersioned:
     """``uint16`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
@@ -276,7 +278,7 @@ class Offset16Versioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True, offset_size=2)
+    _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint16")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -287,12 +289,12 @@ class Offset16Versioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset16Versioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint16OffsetsVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset16VersionedFields]) -> memoryview:
-        """Writes an ``Offset16Versioned`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint16OffsetsVersionedFields]) -> memoryview:
+        """Writes a ``Uint16OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -310,15 +312,15 @@ class Offset16Versioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset16VersionedFields(TypedDict):
-    """The fields of an ``Offset16Versioned``, to write"""
+class Uint16OffsetsVersionedFields(TypedDict):
+    """The fields of a ``Uint16OffsetsVersioned``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset16SizedVersioned:
+class Uint16OffsetsSizedVersioned:
     """``uint16`` offsets, after the table's length and a version"""
 
     __slots__ = ("_buffer",)
@@ -328,7 +330,7 @@ class Offset16SizedVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_size=2)
+    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint16")
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -339,12 +341,14 @@ class Offset16SizedVersioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset16SizedVersioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset16SizedVersionedFields]) -> memoryview:
-        """Writes an ``Offset16SizedVersioned`` with every field"""
+    def serialize(
+        cls, **fields: Unpack[Uint16OffsetsSizedVersionedFields]
+    ) -> memoryview:
+        """Writes a ``Uint16OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -362,15 +366,15 @@ class Offset16SizedVersioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset16SizedVersionedFields(TypedDict):
-    """The fields of an ``Offset16SizedVersioned``, to write"""
+class Uint16OffsetsSizedVersionedFields(TypedDict):
+    """The fields of a ``Uint16OffsetsSizedVersioned``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset32:
+class Uint32Offsets:
     """``uint32`` offsets, the default, for tables of up to 4 GiB"""
 
     __slots__ = ("_buffer",)
@@ -382,8 +386,8 @@ class Offset32:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset32Fields]) -> memoryview:
-        """Writes an ``Offset32`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint32OffsetsFields]) -> memoryview:
+        """Writes a ``Uint32Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -401,15 +405,15 @@ class Offset32:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset32Fields(TypedDict):
-    """The fields of an ``Offset32``, to write"""
+class Uint32OffsetsFields(TypedDict):
+    """The fields of a ``Uint32Offsets``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset32Sized:
+class Uint32OffsetsSized:
     """``uint32`` offsets, after the table's length"""
 
     __slots__ = ("_buffer",)
@@ -421,8 +425,8 @@ class Offset32Sized:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset32SizedFields]) -> memoryview:
-        """Writes an ``Offset32Sized`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint32OffsetsSizedFields]) -> memoryview:
+        """Writes a ``Uint32OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -440,15 +444,15 @@ class Offset32Sized:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset32SizedFields(TypedDict):
-    """The fields of an ``Offset32Sized``, to write"""
+class Uint32OffsetsSizedFields(TypedDict):
+    """The fields of a ``Uint32OffsetsSized``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset32Versioned:
+class Uint32OffsetsVersioned:
     """``uint32`` offsets, after the largest version they hold"""
 
     __slots__ = ("_buffer",)
@@ -469,12 +473,12 @@ class Offset32Versioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset32Versioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint32OffsetsVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset32VersionedFields]) -> memoryview:
-        """Writes an ``Offset32Versioned`` with every field"""
+    def serialize(cls, **fields: Unpack[Uint32OffsetsVersionedFields]) -> memoryview:
+        """Writes a ``Uint32OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -492,15 +496,15 @@ class Offset32Versioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset32VersionedFields(TypedDict):
-    """The fields of an ``Offset32Versioned``, to write"""
+class Uint32OffsetsVersionedFields(TypedDict):
+    """The fields of a ``Uint32OffsetsVersioned``, to write"""
 
     id: int
     name: str
     values: Buffer | Iterable[int]
 
 
-class Offset32SizedVersioned:
+class Uint32OffsetsSizedVersioned:
     """``uint32`` offsets, after the table's length and a version"""
 
     __slots__ = ("_buffer",)
@@ -521,12 +525,14 @@ class Offset32SizedVersioned:
         version = self._buffer.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
-                f"Expected format version {self.FORMAT_VERSION} of Offset32SizedVersioned, got {version}"
+                f"Expected format version {self.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got {version}"
             )
 
     @classmethod
-    def serialize(cls, **fields: Unpack[Offset32SizedVersionedFields]) -> memoryview:
-        """Writes an ``Offset32SizedVersioned`` with every field"""
+    def serialize(
+        cls, **fields: Unpack[Uint32OffsetsSizedVersionedFields]
+    ) -> memoryview:
+        """Writes a ``Uint32OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
         writer.set_uint32(0, fields["id"])
         writer.set_string(1, fields["name"])
@@ -544,8 +550,8 @@ class Offset32SizedVersioned:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
 
-class Offset32SizedVersionedFields(TypedDict):
-    """The fields of an ``Offset32SizedVersioned``, to write"""
+class Uint32OffsetsSizedVersionedFields(TypedDict):
+    """The fields of a ``Uint32OffsetsSizedVersioned``, to write"""
 
     id: int
     name: str

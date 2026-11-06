@@ -223,7 +223,7 @@ impl<const V: bool> Reader<'_, V> {
 
         let read_item = |((bytes, in_place), item): ((&[u8], &[u8]), &Nested)| {
             let table = if self.reads_in_place(&item.table) {
-                // At its start, in a buffer of its offset size, which is its
+                // At its start, in a buffer of its offset type, which is its
                 // parent's
                 let buffer = ByteBuffer::new(in_place, item.table.layout.unversioned());
                 Reader(buffer).read_in_place(0, &item.table)?
@@ -250,7 +250,7 @@ impl<const V: bool> Reader<'_, V> {
     fn reads_in_place(&self, table: &Table) -> bool {
         let layout = &table.layout;
 
-        !layout.sized && !layout.versioned && layout.offset_size == self.0.layout().offset_size()
+        !layout.sized && !layout.versioned && layout.offset_type == self.0.layout().offset_type()
     }
 
     /// Reads the fields of a table nested at `position`, from offsets counted

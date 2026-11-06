@@ -5,7 +5,7 @@
             "description": "The minimum, maximum and a value of distinct bytes of every integer type",
             "file": "valid/integer-scalars.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "int8", "value": -128 },
                     { "type": "int8", "value": 127 },
@@ -39,7 +39,7 @@
             "description": "For each float type: a value that's exact, one that rounds, -0, both infinities, NaN, the largest finite value and the smallest subnormal one",
             "file": "valid/float-scalars.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "float32", "value": 1.5 },
                     { "type": "float32", "value": 0.10000000149011612 },
@@ -65,7 +65,7 @@
             "description": "An array of every integer type, of its extremes, -1, 0, 1 and a value of distinct bytes",
             "file": "valid/integer-arrays.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "int8[]", "value": [-128, -1, 0, 1, 18, 127] },
                     { "type": "uint8[]", "value": [0, 1, 254, 255] },
@@ -83,7 +83,7 @@
             "description": "Arrays of the float values of float-scalars and 0",
             "file": "valid/float-arrays.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "float32[]", "value": [0, 1.5, 0.10000000149011612, "-0", "Infinity", "-Infinity", "NaN", 3.4028234663852886e+38, 1.401298464324817e-45] },
                     { "type": "float64[]", "value": [0, 1.5, 0.1, "-0", "Infinity", "-Infinity", "NaN", 1.7976931348623157e+308, 5e-324] }
@@ -95,7 +95,7 @@
             "description": "An empty array of every element type. Their lengths are padded as they would be for elements, so the int64[] and uint64[] each follow 4 bytes of padding.",
             "file": "valid/empty-arrays.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "int8[]", "value": [] },
                     { "type": "uint8[]", "value": [] },
@@ -115,7 +115,7 @@
             "description": "A uint8[] of 0 to 7 bytes before each of eight float64[], of 0 to 3 bytes before each of four int32[] and of 0 to 1 bytes before each of two uint16[], so that the arrays are padded by every amount that they can be",
             "file": "valid/padding.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8[]", "value": [] },
                     { "type": "float64[]", "value": [0] },
@@ -149,11 +149,11 @@
             }
         },
         {
-            "name": "offset-size-1",
-            "description": "1-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-1.bin",
+            "name": "offset-type-uint8",
+            "description": "uint8 offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint8.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -171,7 +171,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -184,7 +184,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -193,7 +193,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -205,11 +205,11 @@
             }
         },
         {
-            "name": "offset-size-1-sized",
-            "description": "1-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-1-sized.bin",
+            "name": "offset-type-uint8-sized",
+            "description": "uint8 offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint8-sized.bin",
             "table": {
-                "layout": { "sized": true, "versioned": false, "offsetSize": 1 },
+                "layout": { "sized": true, "versioned": false, "offsetType": "uint8" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -227,7 +227,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -240,7 +240,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -249,7 +249,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -261,11 +261,11 @@
             }
         },
         {
-            "name": "offset-size-1-versioned",
-            "description": "1-byte offsets, lengths, counts and item ends after a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-1-versioned.bin",
+            "name": "offset-type-uint8-versioned",
+            "description": "uint8 offsets, lengths, counts and item ends after a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint8-versioned.bin",
             "table": {
-                "layout": { "sized": false, "versioned": true, "offsetSize": 1 },
+                "layout": { "sized": false, "versioned": true, "offsetType": "uint8" },
                 "version": 255,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -284,7 +284,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -297,7 +297,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -306,7 +306,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -318,11 +318,11 @@
             }
         },
         {
-            "name": "offset-size-1-sized-versioned",
-            "description": "1-byte offsets, lengths, counts and item ends after a size slot and a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-1-sized-versioned.bin",
+            "name": "offset-type-uint8-sized-versioned",
+            "description": "uint8 offsets, lengths, counts and item ends after a size slot and a version slot of 255, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint8-sized-versioned.bin",
             "table": {
-                "layout": { "sized": true, "versioned": true, "offsetSize": 1 },
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint8" },
                 "version": 255,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -341,7 +341,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -354,7 +354,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -363,7 +363,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -375,11 +375,11 @@
             }
         },
         {
-            "name": "offset-size-2",
-            "description": "2-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-2.bin",
+            "name": "offset-type-uint16",
+            "description": "uint16 offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint16.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -397,7 +397,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -410,7 +410,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -419,7 +419,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -431,11 +431,11 @@
             }
         },
         {
-            "name": "offset-size-2-sized",
-            "description": "2-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-2-sized.bin",
+            "name": "offset-type-uint16-sized",
+            "description": "uint16 offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint16-sized.bin",
             "table": {
-                "layout": { "sized": true, "versioned": false, "offsetSize": 2 },
+                "layout": { "sized": true, "versioned": false, "offsetType": "uint16" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -453,7 +453,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -466,7 +466,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -475,7 +475,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -487,11 +487,11 @@
             }
         },
         {
-            "name": "offset-size-2-versioned",
-            "description": "2-byte offsets, lengths, counts and item ends after a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-2-versioned.bin",
+            "name": "offset-type-uint16-versioned",
+            "description": "uint16 offsets, lengths, counts and item ends after a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint16-versioned.bin",
             "table": {
-                "layout": { "sized": false, "versioned": true, "offsetSize": 2 },
+                "layout": { "sized": false, "versioned": true, "offsetType": "uint16" },
                 "version": 65535,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -510,7 +510,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -523,7 +523,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -532,7 +532,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -544,11 +544,11 @@
             }
         },
         {
-            "name": "offset-size-2-sized-versioned",
-            "description": "2-byte offsets, lengths, counts and item ends after a size slot and a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-2-sized-versioned.bin",
+            "name": "offset-type-uint16-sized-versioned",
+            "description": "uint16 offsets, lengths, counts and item ends after a size slot and a version slot of 65535, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint16-sized-versioned.bin",
             "table": {
-                "layout": { "sized": true, "versioned": true, "offsetSize": 2 },
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint16" },
                 "version": 65535,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -567,7 +567,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -580,7 +580,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -589,7 +589,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -601,11 +601,11 @@
             }
         },
         {
-            "name": "offset-size-4",
-            "description": "4-byte offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-4.bin",
+            "name": "offset-type-uint32",
+            "description": "uint32 offsets, lengths, counts and item ends after no header, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint32.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -623,7 +623,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -636,7 +636,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -645,7 +645,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -657,11 +657,11 @@
             }
         },
         {
-            "name": "offset-size-4-sized",
-            "description": "4-byte offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-4-sized.bin",
+            "name": "offset-type-uint32-sized",
+            "description": "uint32 offsets, lengths, counts and item ends after a size slot, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint32-sized.bin",
             "table": {
-                "layout": { "sized": true, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": true, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 7 },
                     { "type": "int16[]", "value": [-2, 3] },
@@ -679,7 +679,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -692,7 +692,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -701,7 +701,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -713,11 +713,11 @@
             }
         },
         {
-            "name": "offset-size-4-versioned",
-            "description": "4-byte offsets, lengths, counts and item ends after a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-4-versioned.bin",
+            "name": "offset-type-uint32-versioned",
+            "description": "uint32 offsets, lengths, counts and item ends after a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint32-versioned.bin",
             "table": {
-                "layout": { "sized": false, "versioned": true, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": true, "offsetType": "uint32" },
                 "version": 4294967295,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -736,7 +736,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -749,7 +749,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -758,7 +758,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -770,11 +770,11 @@
             }
         },
         {
-            "name": "offset-size-4-sized-versioned",
-            "description": "4-byte offsets, lengths, counts and item ends after a size slot and a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
-            "file": "valid/offset-size-4-sized-versioned.bin",
+            "name": "offset-type-uint32-sized-versioned",
+            "description": "uint32 offsets, lengths, counts and item ends after a size slot and a version slot of 4294967295, the largest that it holds, with a field of each kind: a scalar, arrays, a string, a struct, an array of structs, and a nested table and a vector of tables of the same offsets",
+            "file": "valid/offset-type-uint32-sized-versioned.bin",
             "table": {
-                "layout": { "sized": true, "versioned": true, "offsetSize": 4 },
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint32" },
                 "version": 4294967295,
                 "fields": [
                     { "type": "uint8", "value": 7 },
@@ -793,7 +793,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint16", "value": 513 },
                                 { "type": "int32[]", "value": [-1] }
@@ -806,7 +806,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -815,7 +815,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "string", "value": "two" }
                                     ]
@@ -827,11 +827,11 @@
             }
         },
         {
-            "name": "offset-size-1-full",
-            "description": "The longest table of 1-byte offsets, 255 bytes: its size, the length 250 of its uint8[] and the offset 254 of its last field are only read correctly unsigned",
-            "file": "valid/offset-size-1-full.bin",
+            "name": "offset-type-uint8-full",
+            "description": "The longest table of uint8 offsets, 255 bytes: its size, the length 250 of its uint8[] and the offset 254 of its last field are only read correctly unsigned",
+            "file": "valid/offset-type-uint8-full.bin",
             "table": {
-                "layout": { "sized": true, "versioned": false, "offsetSize": 1 },
+                "layout": { "sized": true, "versioned": false, "offsetType": "uint8" },
                 "fields": [
                     { "type": "uint8[]", "value": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249] },
                     { "type": "uint8", "value": 255 }
@@ -843,7 +843,7 @@
             "description": "Strings: empty, ASCII, with 2-, 3- and 4-byte UTF-8 sequences, with a leading U+FEFF, which is part of the string rather than a byte order mark, U+FEFF alone, with a NUL inside and mixing every sequence length",
             "file": "valid/strings.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "string", "value": "" },
                     { "type": "string", "value": "a" },
@@ -862,7 +862,7 @@
             "description": "Struct fields, which are unpadded like scalars: of one uint8 after a uint8; of every scalar type, each a value of distinct bytes, so that the order of the scalars and of their bytes shows; and of a float32, a float64 and an int16 of -0, NaN and -2",
             "file": "valid/structs.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 1 },
                     {
@@ -900,7 +900,7 @@
             "description": "Arrays of structs, each padded so that its structs start at a multiple of their largest scalar's size: an empty array of structs of a uint8 and a float64, padded to 8; after a uint8 each, arrays of structs of two uint8s, aligned to 1; of a uint16 and a uint8, of 3 bytes aligned to 2; of three float32s, aligned to 4, with -0 and NaN; and of a uint8 and a float64, of 9 bytes aligned to 8, whose float64s aren't aligned in the structs after the first; then an array of a struct of every integer type",
             "file": "valid/struct-arrays.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "struct[]", "fields": ["uint8", "float64"], "items": [] },
                     { "type": "uint8", "value": 1 },
@@ -920,14 +920,14 @@
             "description": "The same table nested from its builder, padded to 8 for its float64[]; from its bytes, padded to the default of 4 and then to 8; and from its builder with an alignment of 1, unpadded. Then an empty table from its builder, unpadded, and from its bytes, padded to 4.",
             "file": "valid/nested-tables.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 1 },
                     {
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "int16", "value": -2 },
                                 { "type": "float64[]", "value": [0.5, -0.25] },
@@ -940,7 +940,7 @@
                         "type": "table",
                         "from": "bytes",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "int16", "value": -2 },
                                 { "type": "float64[]", "value": [0.5, -0.25] },
@@ -954,7 +954,7 @@
                         "from": "bytes",
                         "alignment": 8,
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "int16", "value": -2 },
                                 { "type": "float64[]", "value": [0.5, -0.25] },
@@ -968,7 +968,7 @@
                         "from": "builder",
                         "alignment": 1,
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "int16", "value": -2 },
                                 { "type": "float64[]", "value": [0.5, -0.25] },
@@ -980,7 +980,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": []
                         }
                     },
@@ -988,7 +988,7 @@
                         "type": "table",
                         "from": "bytes",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": []
                         }
                     }
@@ -1000,7 +1000,7 @@
             "description": "A table nested in a table nested in a sized and versioned table, from the middle table's builder and from its bytes. The int64[] at the bottom pads both nested tables to 8.",
             "file": "valid/nested-two-deep.bin",
             "table": {
-                "layout": { "sized": true, "versioned": true, "offsetSize": 4 },
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint32" },
                 "version": 1,
                 "fields": [
                     { "type": "string", "value": "outer" },
@@ -1008,14 +1008,14 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint32", "value": 7 },
                                 {
                                     "type": "table",
                                     "from": "builder",
                                     "table": {
-                                        "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                        "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                         "fields": [
                                             { "type": "int64[]", "value": ["-1", "1099511627776"] },
                                             { "type": "string", "value": "deepest" }
@@ -1030,14 +1030,14 @@
                         "from": "bytes",
                         "alignment": 8,
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint32", "value": 7 },
                                 {
                                     "type": "table",
                                     "from": "builder",
                                     "table": {
-                                        "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                        "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                         "fields": [
                                             { "type": "int64[]", "value": ["-1", "1099511627776"] },
                                             { "type": "string", "value": "deepest" }
@@ -1053,17 +1053,17 @@
         },
         {
             "name": "nested-narrower-offsets",
-            "description": "Tables of 1- and 2-byte offsets nested in a table of 4-byte offsets, from their builders, which are written with their own offsets, and from bytes. Each is read from its position with its own offset size.",
+            "description": "Tables of uint8 and uint16 offsets nested in a table of uint32 offsets, from their builders, which are written with their own offsets, and from bytes. Each is read from its position with its own offset type.",
             "file": "valid/nested-narrower-offsets.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 1 },
                     {
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "uint8[]", "value": [1, 2, 3] },
                                 { "type": "string", "value": "one" },
@@ -1075,7 +1075,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "int32[]", "value": [-1] },
                                 { "type": "string", "value": "two" }
@@ -1086,7 +1086,7 @@
                         "type": "table",
                         "from": "bytes",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                             "fields": [
                                 { "type": "string", "value": "bytes" }
                             ]
@@ -1097,17 +1097,17 @@
         },
         {
             "name": "nested-wider-offsets",
-            "description": "Tables of 4- and 2-byte offsets nested from their builders in a table of 1-byte offsets. Each is read from its position with its own offset size.",
+            "description": "Tables of uint32 and uint16 offsets nested from their builders in a table of uint8 offsets. Each is read from its position with its own offset type.",
             "file": "valid/nested-wider-offsets.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 1 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
                 "fields": [
                     { "type": "uint8", "value": 1 },
                     {
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                             "fields": [
                                 { "type": "uint32", "value": 4275878552 },
                                 { "type": "string", "value": "four" }
@@ -1118,7 +1118,7 @@
                         "type": "table",
                         "from": "builder",
                         "table": {
-                            "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                             "fields": [
                                 { "type": "uint16[]", "value": [65244] },
                                 { "type": "string", "value": "two" }
@@ -1133,7 +1133,7 @@
             "description": "Vectors of rows from their builders and of the same rows from their bytes, after the end of each row, whose float64[]s are aligned within each row, but mostly not in the table, since items aren't padded; an empty vector, which is its count alone; and a vector of an empty table from its builder and from its bytes, whose ends are equal",
             "file": "valid/vectors.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     { "type": "uint8", "value": 1 },
                     {
@@ -1142,7 +1142,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 1 },
                                         { "type": "float64[]", "value": [0.5] },
@@ -1153,7 +1153,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 2 },
                                         { "type": "float64[]", "value": [] },
@@ -1164,7 +1164,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 3 },
                                         { "type": "float64[]", "value": [-1.5, 2.25, 1e+300] },
@@ -1180,7 +1180,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 1 },
                                         { "type": "float64[]", "value": [0.5] },
@@ -1191,7 +1191,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 2 },
                                         { "type": "float64[]", "value": [] },
@@ -1202,7 +1202,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint32", "value": 3 },
                                         { "type": "float64[]", "value": [-1.5, 2.25, 1e+300] },
@@ -1219,14 +1219,14 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": []
                                 }
                             },
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": []
                                 }
                             }
@@ -1237,10 +1237,10 @@
         },
         {
             "name": "vector-item-layouts",
-            "description": "A vector of a table read in place and then tables of other layouts, which are read from their items' bytes: of 2-byte offsets, which its builder writes and the vector copies; with a size and a version, written straight into the vector; and of 1-byte offsets with both, from bytes",
+            "description": "A vector of a table read in place and then tables of other layouts, which are read from their items' bytes: of uint16 offsets, which its builder writes and the vector copies; with a size and a version, written straight into the vector; and of uint8 offsets with both, from bytes",
             "file": "valid/vector-item-layouts.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": [
                     {
                         "type": "vector",
@@ -1248,7 +1248,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                                     "fields": [
                                         { "type": "uint8", "value": 1 }
                                     ]
@@ -1257,7 +1257,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": false, "versioned": false, "offsetSize": 2 },
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
                                     "fields": [
                                         { "type": "uint8", "value": 2 },
                                         { "type": "string", "value": "two" }
@@ -1267,7 +1267,7 @@
                             {
                                 "from": "builder",
                                 "table": {
-                                    "layout": { "sized": true, "versioned": true, "offsetSize": 4 },
+                                    "layout": { "sized": true, "versioned": true, "offsetType": "uint32" },
                                     "version": 3,
                                     "fields": [
                                         { "type": "uint8", "value": 3 }
@@ -1277,7 +1277,7 @@
                             {
                                 "from": "bytes",
                                 "table": {
-                                    "layout": { "sized": true, "versioned": true, "offsetSize": 1 },
+                                    "layout": { "sized": true, "versioned": true, "offsetType": "uint8" },
                                     "version": 4,
                                     "fields": [
                                         { "type": "uint8", "value": 4 }
@@ -1294,16 +1294,16 @@
             "description": "A table of no fields, which has no bytes",
             "file": "valid/empty-table.bin",
             "table": {
-                "layout": { "sized": false, "versioned": false, "offsetSize": 4 },
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
                 "fields": []
             }
         },
         {
             "name": "empty-table-sized-versioned",
-            "description": "A table of no fields with 2-byte size and version slots",
+            "description": "A table of no fields with uint16 size and version slots",
             "file": "valid/empty-table-sized-versioned.bin",
             "table": {
-                "layout": { "sized": true, "versioned": true, "offsetSize": 2 },
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint16" },
                 "version": 258,
                 "fields": []
             }
@@ -1335,10 +1335,10 @@
             "field": 8
         },
         {
-            "name": "truncated-offset-size-1",
-            "description": "offset-size-1-full without its last byte, its last field",
-            "file": "invalid/truncated-offset-size-1.bin",
-            "case": "offset-size-1-full",
+            "name": "truncated-offset-type-uint8",
+            "description": "offset-type-uint8-full without its last byte, its last field",
+            "file": "invalid/truncated-offset-type-uint8.bin",
+            "case": "offset-type-uint8-full",
             "corruption": { "kind": "truncate", "length": 254 },
             "field": 1
         },
@@ -1367,10 +1367,10 @@
             "field": 0
         },
         {
-            "name": "array-length-max-offset-size-2",
-            "description": "The 2-byte length of the float64[] of offset-size-2 is 2^16 - 1",
-            "file": "invalid/array-length-max-offset-size-2.bin",
-            "case": "offset-size-2",
+            "name": "array-length-max-offset-type-uint16",
+            "description": "The uint16 length of the float64[] of offset-type-uint16 is 2^16 - 1",
+            "file": "invalid/array-length-max-offset-type-uint16.bin",
+            "case": "offset-type-uint16",
             "corruption": { "kind": "overwrite", "at": 30, "bytes": [255, 255] },
             "field": 3
         },

@@ -4,6 +4,7 @@ import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { LAYOUTS, MAX_VALUES, SLICES, sliceOf } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
+import { OFFSET_SIZES } from './conformance/format.ts';
 import { layoutOf } from './conformance/tables.ts';
 
 const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
@@ -91,18 +92,18 @@ test.runIf(inject('largeBufferTests'))(
 
 describe('versioned tables', () => {
     it.each([
-        [1, MAX_VALUES[1] + 1],
-        [2, MAX_VALUES[2] + 1],
-        [4, MAX_VALUES[4] + 1],
-        [4, -1],
-        [4, 1.5]
+        ['uint8', MAX_VALUES.uint8 + 1],
+        ['uint16', MAX_VALUES.uint16 + 1],
+        ['uint32', MAX_VALUES.uint32 + 1],
+        ['uint32', -1],
+        ['uint32', 1.5]
     ] as const)(
-        'should reject a version that a slot of %s bytes cannot hold (%s)',
-        (size, version) => {
-            const layout = TableLayout.create({ versioned: true, offsetSize: size });
+        'should reject a version that a %s slot cannot hold (%s)',
+        (offsetType, version) => {
+            const layout = TableLayout.create({ versioned: true, offsetType });
 
             expect(() => new TableBuilder(1, layout, version)).toThrow(
-                new RangeError(`Version ${version} doesn't fit in a ${size}-byte slot`)
+                new RangeError(`Version ${version} doesn't fit in a ${offsetType} slot`)
             );
         }
     );
@@ -212,12 +213,12 @@ describe('writes past the end of the bytes', () => {
             examples: [
                 [
                     1,
-                    { sized: false, versioned: false, offsetSize: 1 },
+                    { sized: false, versioned: false, offsetType: 'uint8' },
                     [{ setter: 'setString', value: new Uint8Array(1) }]
                 ],
                 [
                     1,
-                    { sized: false, versioned: false, offsetSize: 1 },
+                    { sized: false, versioned: false, offsetType: 'uint8' },
                     [{ setter: 'setVector', value: [new Uint8Array(0)] }]
                 ]
             ]
@@ -289,7 +290,7 @@ function expectWritesWithin(length: number, layout: LayoutDescription, writes: W
 
     let position = 0;
     for (const next of writes) {
-        const end = position + byteLengthOf(next, layout.offsetSize);
+        const end = position + byteLengthOf(next, OFFSET_SIZES[layout.offsetType]);
 
         if (end <= length) {
             write(next);

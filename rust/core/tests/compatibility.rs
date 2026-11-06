@@ -3,7 +3,7 @@
 //! TypeScript `TableBuilder` with the same calls, field for field, as the
 //! builders here.
 
-use tafla::{Alignment, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
+use tafla::{Alignment, ByteBuffer, OffsetType, TableBuilder, TableLayout};
 
 const KINDS: [u8; 290] = [
     96, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 100, 0, 0, 0, 102, 0, 0, 0, 106, 0, 0, 0, 110, 0, 0, 0,
@@ -165,10 +165,10 @@ fn test_versioned_document_with_nested_tables() {
 }
 
 #[test]
-fn test_8_bit_offsets_with_table_nested_as_bytes() {
+fn test_uint8_offsets_with_table_nested_as_bytes() {
     let layout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::Uint8);
+        .with_offset_type(OffsetType::Uint8);
 
     let mut small = TableBuilder::new(3, layout).unwrap();
     small.set_str("hi").unwrap();
@@ -192,12 +192,12 @@ fn test_8_bit_offsets_with_table_nested_as_bytes() {
 }
 
 #[test]
-fn test_16_bit_offsets_with_vector_items_of_other_widths() {
+fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
     let layout = TableLayout::DEFAULT
         .sized()
-        .with_offset_size(OffsetSize::Uint16)
+        .with_offset_type(OffsetType::Uint16)
         .versioned();
-    let narrow_layout = TableLayout::DEFAULT.with_offset_size(OffsetSize::Uint8);
+    let narrow_layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
 
     let mut narrow = TableBuilder::new(1, narrow_layout).unwrap();
     narrow.set_u8(42).unwrap();

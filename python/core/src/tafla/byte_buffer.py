@@ -6,7 +6,7 @@ from typing import Any, overload
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, from_little_endian, little_endian_bytes
 from .errors import DecodeError, describe_int
-from .layout import TableLayout
+from .layout import OFFSET_TYPES, TableLayout
 from .structs import (
     float32,
     float64,
@@ -47,7 +47,7 @@ class ByteBuffer:
     given as bytes, must be C-contiguous, and one that isn't raises
     ``TypeError``. A write that doesn't fit in the bytes raises ``ValueError`` and
     writes nothing. So does an array, string or vector whose count, length or
-    item ends are too large for the layout's ``offset_size``, which
+    item ends are too large for the layout's ``offset_type``, which
     ``TableBuilder`` rejects before it writes a table. A scalar, offset or
     version that doesn't fit its slot raises ``ValueError`` and leaves the
     position where it was, but CPython's struct zeroes the slot before it
@@ -647,8 +647,9 @@ class ByteBuffer:
         """Raises ``ValueError`` if a count, length or vector item end doesn't
         fit in a slot, before anything is written."""
         if count > self.__max_size:
+            offset_type = OFFSET_TYPES[self.__size]
             raise ValueError(
-                f"Can't write {count} at {self.__position}: a {self.__size}-byte "
+                f"Can't write {count} at {self.__position}: a {offset_type} "
                 f"count, length or item end holds at most {self.__max_size}"
             )
 

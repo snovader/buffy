@@ -1,6 +1,6 @@
 use std::str;
 
-use crate::{ArrayView, DecodeError, Element, OffsetSize, TableLayout, Vector};
+use crate::{ArrayView, DecodeError, Element, OffsetType, TableLayout, Vector};
 
 /// Reads a table from the supplied bytes, in the layout it was written with.
 ///
@@ -84,7 +84,7 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// the bytes.
     pub fn root_offset(&self, index: usize) -> Result<usize, DecodeError> {
         let slot = index
-            .saturating_mul(self.offset_size().bytes())
+            .saturating_mul(self.offset_type().size())
             .saturating_add(self.layout.header_size());
 
         self.get_size(slot)
@@ -102,7 +102,7 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// the bytes.
     pub fn field_offset(&self, table_position: usize, index: usize) -> Result<usize, DecodeError> {
         let slot = index
-            .saturating_mul(self.offset_size().bytes())
+            .saturating_mul(self.offset_type().size())
             .saturating_add(table_position);
         let offset = self.get_size(slot)?;
 
@@ -182,7 +182,7 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// [`DecodeError::OutOfRange`] if the count or the ends don't lie within
     /// the bytes.
     pub fn get_vector(&self, position: usize) -> Result<Vector<'a>, DecodeError> {
-        let width = self.offset_size().bytes();
+        let width = self.offset_type().size();
         let count = self.get_size(position)?;
 
         // Every item has an end, so this rejects an impossible count before
@@ -193,12 +193,12 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
             &self.bytes[position..],
             position,
             count,
-            self.offset_size(),
+            self.offset_type(),
         ))
     }
 
-    const fn offset_size(&self) -> OffsetSize {
-        self.layout.offset_size()
+    const fn offset_type(&self) -> OffsetType {
+        self.layout.offset_type()
     }
 
     #[inline]
@@ -227,13 +227,13 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// Reads a length, offset or header slot at `position`
     #[inline]
     fn get_slot(&self, position: usize) -> Result<u32, DecodeError> {
-        let size = self.offset_size();
+        let offset_type = self.offset_type();
 
         self.bytes
             .get(position..)
-            .and_then(|bytes| read_slot(bytes, size))
+            .and_then(|bytes| read_slot(bytes, offset_type))
             .ok_or_else(|| {
-                DecodeError::out_of_range(position, size.bytes() as u64, self.bytes.len())
+                DecodeError::out_of_range(position, offset_type.size() as u64, self.bytes.len())
             })
     }
 
@@ -246,7 +246,7 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
         // The length prefix lies within the bytes, so this doesn't overflow.
         // A struct can be as large as a usize, and a byte length past u64
         // lies past any bytes, so the product saturates.
-        let start = position + self.offset_size().bytes();
+        let start = position + self.offset_type().size();
         self.range(start, (length as u64).saturating_mul(element_size as u64))
     }
 
@@ -269,7 +269,7 @@ impl ByteBuffer<'_, true> {
     /// bytes.
     pub fn version(&self) -> Result<u32, DecodeError> {
         let position = if self.layout.is_sized() {
-            self.offset_size().bytes()
+            self.offset_type().size()
         } else {
             0
         };
@@ -278,15 +278,15 @@ impl ByteBuffer<'_, true> {
     }
 }
 
-/// Reads a length, offset or header slot as wide as `offset_size` from the
+/// Reads a length, offset or header slot as wide as `offset_type` from the
 /// start of `bytes`
 #[inline]
-pub fn read_slot(bytes: &[u8], offset_size: OffsetSize) -> Option<u32> {
-    match offset_size {
-        OffsetSize::Uint8 => bytes.first().map(|&byte| u32::from(byte)),
-        OffsetSize::Uint16 => bytes
+pub fn read_slot(bytes: &[u8], offset_type: OffsetType) -> Option<u32> {
+    match offset_type {
+        OffsetType::Uint8 => bytes.first().map(|&byte| u32::from(byte)),
+        OffsetType::Uint16 => bytes
             .first_chunk()
             .map(|&bytes| u32::from(u16::from_le_bytes(bytes))),
-        OffsetSize::Uint32 => bytes.first_chunk().map(|&bytes| u32::from_le_bytes(bytes)),
+        OffsetType::Uint32 => bytes.first_chunk().map(|&bytes| u32::from_le_bytes(bytes)),
     }
 }

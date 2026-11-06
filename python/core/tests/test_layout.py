@@ -1,7 +1,7 @@
 import unittest
 from typing import Any, cast
 
-from tafla import OffsetSize, TableLayout
+from tafla import OffsetSize, OffsetType, TableLayout
 
 
 class TestTableLayout(unittest.TestCase):
@@ -10,30 +10,60 @@ class TestTableLayout(unittest.TestCase):
             with self.subTest(layout=layout):
                 self.assertFalse(layout.sized())
                 self.assertFalse(layout.versioned())
+                self.assertEqual(layout.offset_type(), "uint32")
                 self.assertEqual(layout.offset_size(), 4)
                 self.assertEqual(layout.header_size(), 0)
 
-    def test_has_a_header_slot_for_the_length_and_the_version(self) -> None:
-        cases: list[tuple[bool, bool, OffsetSize, int]] = [
-            (False, False, 1, 0),
-            (True, False, 1, 1),
-            (False, True, 2, 2),
-            (True, True, 2, 4),
-            (True, True, 4, 8),
+    def test_has_the_offset_type_it_was_given_and_its_size_in_bytes(self) -> None:
+        cases: list[tuple[OffsetType, OffsetSize]] = [
+            ("uint8", 1),
+            ("uint16", 2),
+            ("uint32", 4),
         ]
 
-        for sized, versioned, offset_size, header_size in cases:
-            with self.subTest(sized=sized, versioned=versioned, size=offset_size):
+        for offset_type, offset_size in cases:
+            with self.subTest(offset_type=offset_type):
+                layout = TableLayout(offset_type=offset_type)
+
+                self.assertEqual(layout.offset_type(), offset_type)
+                self.assertEqual(layout.offset_size(), offset_size)
+
+    def test_has_a_header_slot_for_the_length_and_the_version(self) -> None:
+        cases: list[tuple[bool, bool, OffsetType, int]] = [
+            (False, False, "uint8", 0),
+            (True, False, "uint8", 1),
+            (False, True, "uint16", 2),
+            (True, True, "uint16", 4),
+            (True, True, "uint32", 8),
+        ]
+
+        for sized, versioned, offset_type, header_size in cases:
+            with self.subTest(sized=sized, versioned=versioned, type=offset_type):
                 layout = TableLayout(
-                    sized=sized, versioned=versioned, offset_size=offset_size
+                    sized=sized, versioned=versioned, offset_type=offset_type
                 )
 
                 self.assertEqual(layout.header_size(), header_size)
 
-    def test_rejects_an_offset_size_other_than_1_2_or_4(self) -> None:
-        for offset_size in [0, 3, 8]:
-            with self.subTest(offset_size=offset_size), self.assertRaises(ValueError):
-                TableLayout(offset_size=cast(Any, offset_size))
+    def test_rejects_anything_but_an_offset_type(self) -> None:
+        """Signed types, other widths, offset sizes in bytes and values that
+        aren't strings, unhashable ones included"""
+        for offset_type in ["int16", "uint64", "UINT8", "", 2, 4, None, ["uint8"]]:
+            with self.subTest(offset_type=offset_type):
+                with self.assertRaises(ValueError) as raised:
+                    TableLayout(offset_type=cast(Any, offset_type))
+
+                self.assertEqual(
+                    str(raised.exception), f"{offset_type!r} isn't an offset type"
+                )
+
+    def test_shows_its_offset_type_in_its_repr(self) -> None:
+        layout = TableLayout(sized=True, offset_type="uint16")
+
+        self.assertEqual(
+            repr(layout),
+            "TableLayout(sized=True, versioned=False, offset_type='uint16')",
+        )
 
 
 if __name__ == "__main__":

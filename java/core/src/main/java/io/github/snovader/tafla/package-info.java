@@ -47,9 +47,10 @@
  * <ul>
  *   <li>The header holds the table's byte length when the layout is sized, and then its version
  *     when it's versioned.</li>
- *   <li>Header slots, offsets, counts and vector item ends are all as wide as the layout's offset
- *     size: 1, 2 or 4 bytes, which limits the table to 255 bytes, 64 KiB or 4 GiB. A Java array
- *     holds about 2 GiB, so that's as long as a table that Java writes or reads can be.</li>
+ *   <li>Header slots, offsets, counts and vector item ends are all of the layout's offset type,
+ *     {@code uint8}, {@code uint16} or {@code uint32}, whose offset size of 1, 2 or 4 bytes limits
+ *     the table to 255 bytes, 64 KiB or 4 GiB. A Java array holds about 2 GiB, so that's as long
+ *     as a table that Java writes or reads can be.</li>
  *   <li>Offsets count from the table's start. A table nested with {@code setTable()} has no
  *     header, and its offsets count from its own start.</li>
  *   <li>Arrays and strings start with their element count. Arrays are padded so that their

@@ -14,9 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * throws its {@link DecodeException}.
  *
  * <p>A nested table, from {@link TableBuilder#setTable} or in a vector, is read in place when it
- * has no header and its offsets are as wide as its parent's. Any other is read as a table of its
- * own: a vector item from its bytes, and a field from its position to the end of its parent, since
- * its length isn't written.</p>
+ * has no header and its parent's offset type. Any other is read as a table of its own: a vector
+ * item from its bytes, and a field from its position to the end of its parent, since its length
+ * isn't written.</p>
  *
  * <p>Descriptions don't hold a vector's item count or a table's size, so a strict reader checks
  * them: every vector must hold as many items as its description, and every sized table read from
@@ -133,7 +133,7 @@ final class TableReader {
     }
 
     private boolean readsInPlace(LayoutDescription nested) {
-        return !nested.sized() && !nested.versioned() && nested.offsetSize() == layout.offsetSize();
+        return !nested.sized() && !nested.versioned() && nested.offsetType() == layout.offsetType();
     }
 
     private TableDescription readInPlace(int position, TableDescription table) {

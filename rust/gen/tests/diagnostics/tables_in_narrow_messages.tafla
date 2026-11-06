@@ -1,11 +1,11 @@
 // Readers read a nested table's offsets as of its message's offset type,
 // while tables are written with uint32 offsets
 
-message Offset8 (offset_type: uint8) {
+message Uint8Offsets (offset_type: uint8) {
     pair: Pair;
 }
 
-message Offset16 (offset_type: uint16, sized) {
+message Uint16Offsets (offset_type: uint16, sized) {
     label: string;
     pairs: [Pair];
 }

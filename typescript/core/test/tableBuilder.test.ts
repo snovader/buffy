@@ -3,6 +3,7 @@ import { fc, it } from '@fast-check/vitest';
 import { TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
+import { OFFSET_SIZES } from './conformance/format.ts';
 import { alignmentOf, buildTable } from './conformance/tables.ts';
 
 it('should reject a field beyond the number the table holds', () => {
@@ -81,18 +82,19 @@ describe('arrays of structs', () => {
 });
 
 describe('tables longer than the offsets address', () => {
-    it.each([1, 2] as const)(
-        'should reject a header longer than %s-byte offsets address',
-        offsetSize => {
-            const max = MAX_VALUES[offsetSize];
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject a header longer than %s offsets address',
+        offsetType => {
+            const max = MAX_VALUES[offsetType];
+            const offsetSize = OFFSET_SIZES[offsetType];
 
             for (const sized of [false, true]) {
-                const layout = TableLayout.create({ sized, offsetSize });
+                const layout = TableLayout.create({ sized, offsetType });
                 const fields = Math.floor(max / offsetSize) - (sized ? 1 : 0);
 
                 expect(() => new TableBuilder(fields, layout)).not.toThrow();
                 expect(() => new TableBuilder(fields + 1, layout)).toThrow(
-                    `A header of ${fields + 1} fields doesn't fit in ${offsetSize}-byte offsets`
+                    `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`
                 );
             }
         }
@@ -102,8 +104,8 @@ describe('tables longer than the offsets address', () => {
         // An array-like stands in for a 4 GiB array, whose elements aren't read.
         // The table would hold its offset, its length and 2^32 elements.
         const builder = new TableBuilder(1);
-        expect(() => builder.setInt8Array({ length: MAX_VALUES[4] + 1 })).toThrow(
-            new RangeError('Field 1 makes the table 4294967304 bytes, too long for 4-byte offsets')
+        expect(() => builder.setInt8Array({ length: MAX_VALUES.uint32 + 1 })).toThrow(
+            new RangeError('Field 1 makes the table 4294967304 bytes, too long for uint32 offsets')
         );
 
         builder.setInt8Array([1]);
@@ -119,7 +121,7 @@ describe('tables nested from their builders', () => {
         'should write the same bytes as nesting the bytes that the builder writes, at the same alignment',
         (table, length) => {
             const parent: TableDescription = {
-                layout: { sized: false, versioned: false, offsetSize: 4 },
+                layout: { sized: false, versioned: false, offsetType: 'uint32' },
                 fields: [
                     { type: 'uint8[]', value: new Array<number>(length).fill(0) },
                     { type: 'table', from: 'builder', table }

@@ -7,6 +7,7 @@ import {
     FIELDS,
     fitsItsLayout,
     MAX_VALUES,
+    OFFSET_TYPES,
     SLICES,
     sliceOf,
     tables
@@ -17,9 +18,10 @@ import {
     fromJsonNumber,
     type FieldDescription,
     isArrayField,
-    type OffsetSize,
+    type OffsetType,
     type TableDescription
 } from './conformance/description.ts';
+import { OFFSET_SIZES } from './conformance/format.ts';
 import {
     buildTable,
     ELEMENT_SIZES,
@@ -31,8 +33,8 @@ import {
 } from './conformance/tables.ts';
 
 /** Tables whose nested tables a TableWriter writes in place */
-function inPlaceTables(offsetSizes?: readonly OffsetSize[]): fc.Arbitrary<TableDescription> {
-    return tables({ offsetSizes }).map(nestedInPlace).filter(fitsItsLayout);
+function inPlaceTables(offsetTypes?: readonly OffsetType[]): fc.Arbitrary<TableDescription> {
+    return tables({ offsetTypes }).map(nestedInPlace).filter(fitsItsLayout);
 }
 
 /** The bytes that `write` returns, or the class of the error that it throws */
@@ -55,7 +57,7 @@ it('should write a struct array, a nested table and a vector as TableBuilder pad
     // A uint8 leaves a uint32[] 3 bytes short of its alignment, and a uint16
     // a nested table of float64s 1 byte short of its own
     const table: TableDescription = {
-        layout: { sized: true, versioned: true, offsetSize: 2 },
+        layout: { sized: true, versioned: true, offsetType: 'uint16' },
         version: 7,
         fields: [
             { type: 'uint8', value: 1 },
@@ -65,7 +67,7 @@ it('should write a struct array, a nested table and a vector as TableBuilder pad
                 type: 'table',
                 from: 'builder',
                 table: {
-                    layout: { sized: false, versioned: false, offsetSize: 2 },
+                    layout: { sized: false, versioned: false, offsetType: 'uint16' },
                     fields: [{ type: 'float64[]', value: [6] }]
                 }
             },
@@ -75,7 +77,7 @@ it('should write a struct array, a nested table and a vector as TableBuilder pad
                     {
                         from: 'builder',
                         table: {
-                            layout: { sized: false, versioned: false, offsetSize: 2 },
+                            layout: { sized: false, versioned: false, offsetType: 'uint16' },
                             fields: [{ type: 'string', value: '🦀' }]
                         }
                     }
@@ -99,11 +101,11 @@ describe('strings', () => {
         fc.string({ unit: 'binary', maxLength: 40 })
     );
 
-    it.prop([strings, fc.constantFrom(...([1, 2, 4] as const))])(
+    it.prop([strings, fc.constantFrom(...OFFSET_TYPES)])(
         'should write any string as TableBuilder does, with lone surrogates as U+FFFD',
-        (value, offsetSize) => {
+        (value, offsetType) => {
             const table: TableDescription = {
-                layout: { sized: false, versioned: false, offsetSize },
+                layout: { sized: false, versioned: false, offsetType },
                 fields: [{ type: 'string', value }]
             };
             fc.pre(fitsItsLayout(table));
@@ -114,7 +116,7 @@ describe('strings', () => {
 });
 
 describe('tables longer than the offsets address', () => {
-    const NARROW_OFFSET_SIZES = [1, 2] as const;
+    const NARROW_OFFSET_TYPES = ['uint8', 'uint16'] as const;
 
     // Fields after which a table's length doesn't depend on where they start
     const unpaddedFields = FIELDS.filter(
@@ -122,19 +124,19 @@ describe('tables longer than the offsets address', () => {
             field.type !== 'table' &&
             !(isArrayField(field) && ELEMENT_SIZES[elementTypeOf(field.type)] > 1) &&
             !(field.type === 'struct[]' && structAlignment(field.fields) > 1)
-    ).map(field => nestedInPlace({ layout: LAYOUT_8, fields: [field] }).fields[0]);
+    ).map(field => nestedInPlace({ layout: UINT8_LAYOUT, fields: [field] }).fields[0]);
 
     const tablesWithLastFields = fc.oneof(
-        ...NARROW_OFFSET_SIZES.map(offsetSize =>
-            fc.record({ table: inPlaceTables([offsetSize]), last: unpaddedFields })
+        ...NARROW_OFFSET_TYPES.map(offsetType =>
+            fc.record({ table: inPlaceTables([offsetType]), last: unpaddedFields })
         )
     );
 
     // Each run writes and builds tables of up to 64 KiB
     it.prop([tablesWithLastFields], { numRuns: 30 })(
-        'should write a table as long as its offset size addresses, and throw RangeError for one a byte longer',
+        'should write a table as long as its offset type addresses, and throw RangeError for one a byte longer',
         ({ table, last }) => {
-            const max = MAX_VALUES[table.layout.offsetSize];
+            const max = MAX_VALUES[table.layout.offsetType];
             const withBytes = (length: number): TableDescription =>
                 nestedInPlace({ ...table, fields: [...table.fields, bytesField(length), last] });
 
@@ -151,13 +153,13 @@ describe('tables longer than the offsets address', () => {
             const tooLong = withBytes(room + 1);
             expect(() => writeTable(tooLong)).toThrow(
                 new RangeError(
-                    `The table's fields make it ${max + 1} bytes, too long for ${table.layout.offsetSize}-byte offsets`
+                    `The table's fields make it ${max + 1} bytes, too long for ${table.layout.offsetType} offsets`
                 )
             );
         }
     );
 
-    it.prop([inPlaceTables(NARROW_OFFSET_SIZES), fc.nat({ max: 300 })])(
+    it.prop([inPlaceTables(NARROW_OFFSET_TYPES), fc.nat({ max: 300 })])(
         'should throw RangeError for any table that TableBuilder rejects as too long',
         (table, length) => {
             const longer = { ...table, fields: [...table.fields, bytesField(length)] };
@@ -171,27 +173,27 @@ describe('tables longer than the offsets address', () => {
     it('should reject a table of uint32 offsets past 4 GiB before allocating it', () => {
         // The table would hold its offset, its length and 2^32 elements
         const sizer = new TableSizer(1);
-        sizer.addInt8Array(MAX_VALUES[4] + 1);
+        sizer.addInt8Array(MAX_VALUES.uint32 + 1);
 
         expect(() => sizer.writer()).toThrow(
             new RangeError(
-                "The table's fields make it 4294967304 bytes, too long for 4-byte offsets"
+                "The table's fields make it 4294967304 bytes, too long for uint32 offsets"
             )
         );
     });
 
-    it.each([1, 2] as const)(
-        'should reject a header longer than %s-byte offsets address, as TableBuilder does',
-        offsetSize => {
-            const max = MAX_VALUES[offsetSize];
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject a header longer than %s offsets address, as TableBuilder does',
+        offsetType => {
+            const max = MAX_VALUES[offsetType];
 
             for (const sized of [false, true]) {
-                const layout = TableLayout.create({ sized, offsetSize });
-                const fields = Math.floor(max / offsetSize) - (sized ? 1 : 0);
+                const layout = TableLayout.create({ sized, offsetType });
+                const fields = Math.floor(max / OFFSET_SIZES[offsetType]) - (sized ? 1 : 0);
 
                 expect(() => new TableSizer(fields, layout)).not.toThrow();
                 expect(() => new TableSizer(fields + 1, layout)).toThrow(
-                    `A header of ${fields + 1} fields doesn't fit in ${offsetSize}-byte offsets`
+                    `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`
                 );
             }
         }
@@ -199,7 +201,7 @@ describe('tables longer than the offsets address', () => {
 });
 
 describe('versions', () => {
-    const versioned = TableLayout.create({ versioned: true, offsetSize: 1 });
+    const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });
 
     it.each([
         ['a version that the layout has no slot for', TableLayout.DEFAULT, 1, TypeError],
@@ -286,12 +288,12 @@ describe('bytes that are part of a larger buffer', () => {
                     type: 'table',
                     from: 'builder',
                     table: {
-                        layout: { sized: false, versioned: false, offsetSize: 4 },
+                        layout: { sized: false, versioned: false, offsetType: 'uint32' },
                         fields: [{ type: 'float64[]', value: [4] }]
                     }
                 }
             ],
-            layout: { sized: false, versioned: false, offsetSize: 4 }
+            layout: { sized: false, versioned: false, offsetType: 'uint32' }
         };
         const expected = buildTable(table).bytes();
 
@@ -336,20 +338,20 @@ describe('bytes that are part of a larger buffer', () => {
 
 describe('arrays that grow after they are counted', () => {
     // Bytes whose offset in their buffer covers aligned and unaligned arrays
-    it.prop([ARRAY_FIELDS, fc.nat(), fc.constantFrom(...([1, 2, 4] as const)), SLICES])(
+    it.prop([ARRAY_FIELDS, fc.nat(), fc.constantFrom(...OFFSET_TYPES), SLICES])(
         'should throw RangeError and write nothing in or past the bytes, leaving the writer where it was',
-        (field, cut, offsetSize, slice) => {
+        (field, cut, offsetType, slice) => {
             fc.pre(field.value.length > 0);
             const counted = { ...field, value: field.value.slice(0, cut % field.value.length) };
             const table: TableDescription = {
-                layout: { sized: false, versioned: false, offsetSize },
+                layout: { sized: false, versioned: false, offsetType },
                 fields: [counted]
             };
             fc.pre(fitsItsLayout(table));
 
             const expected = writeTable(table);
             const bytes = sliceOf(new Uint8Array(expected.length), slice);
-            const writer = new TableWriter(bytes, 1, TableLayout.create({ offsetSize }));
+            const writer = new TableWriter(bytes, 1, TableLayout.create({ offsetType }));
             const before = new Uint8Array(bytes.buffer.slice(0));
 
             const grown = growing(valuesOf(field), counted.value.length);
@@ -410,7 +412,7 @@ describe('fields that differ from those sized', () => {
     });
 });
 
-const LAYOUT_8 = { sized: false, versioned: false, offsetSize: 1 } as const;
+const UINT8_LAYOUT = { sized: false, versioned: false, offsetType: 'uint8' } as const;
 
 /** A uint8[] of `length` bytes */
 function bytesField(length: number): FieldDescription {

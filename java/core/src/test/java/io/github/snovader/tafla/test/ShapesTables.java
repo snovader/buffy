@@ -17,7 +17,7 @@ import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
  */
 final class ShapesTables {
     /** The layout of a {@code Document}, from its attributes: sized, and of version 1 */
-    static final LayoutDescription DOCUMENT_LAYOUT = new LayoutDescription(true, true, OffsetSize.UINT32);
+    static final LayoutDescription DOCUMENT_LAYOUT = new LayoutDescription(true, true, OffsetType.UINT32);
     static final long DOCUMENT_VERSION = 1;
 
     private ShapesTables() {}

@@ -11,7 +11,7 @@ import java.util.*;
  *
  * <p>Every read checks that it stays within the bytes, and throws a {@link DecodeException}
  * otherwise. Writes past the end throw an {@link IndexOutOfBoundsException}, and lengths, offsets
- * and versions too large for the layout's offset size an {@link IllegalArgumentException}; either
+ * and versions too large for the layout's offset type an {@link IllegalArgumentException}; either
  * writes nothing.</p>
  *
  * <p>Unsigned values are read into the next wider type, such as a {@code uint32} into a
@@ -25,9 +25,11 @@ public final class ByteBuffer {
 
     private final boolean sized;
     private final boolean versioned;
-    /** The width in bytes of offsets, lengths and header slots */
+    /** The type of offsets, lengths and header slots */
+    private final OffsetType offsetType;
+    /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
-    /** The largest offset, length or version that the width holds */
+    /** The largest offset, length or version that the offset type holds */
     private final long maxOffset;
     /** The byte length of the header slots before the root's field offsets */
     private final int headerSize;
@@ -44,8 +46,9 @@ public final class ByteBuffer {
 
         this.sized = layout.sized();
         this.versioned = layout.versioned();
-        this.offsetSize = layout.offsetSize().bytes();
-        this.maxOffset = layout.offsetSize().maxValue();
+        this.offsetType = layout.offsetType();
+        this.offsetSize = layout.offsetSize();
+        this.maxOffset = offsetType.maxValue();
         this.headerSize = layout.headerSize();
     }
 
@@ -779,7 +782,7 @@ public final class ByteBuffer {
     private void assertFits(long value) {
         if (value < 0 || value > maxOffset) {
             throw new IllegalArgumentException(
-                String.format("%d doesn't fit in %d-byte offsets", value, offsetSize)
+                String.format("%d doesn't fit in %s offsets", value, offsetType)
             );
         }
     }

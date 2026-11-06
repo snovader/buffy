@@ -3,25 +3,25 @@
 import { ByteBuffer, DecodeError, TableLayout, TableSizer } from 'tafla';
 
 /** `uint8` offsets, for tables of up to 255 bytes */
-export class Offset8 {
-    static #LAYOUT = TableLayout.create({ offsetSize: 1 });
+export class Uint8Offsets {
+    static #LAYOUT = TableLayout.create({ offsetType: 'uint8' });
 
     /** @type {ByteBuffer} */
     #buffer;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset8.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint8Offsets.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset8` with every field
+     * Writes a `Uint8Offsets` with every field
      *
-     * @param {Offset8Fields} fields
+     * @param {Uint8OffsetsFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset8.#LAYOUT);
+        const sizer = new TableSizer(3, Uint8Offsets.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -51,34 +51,34 @@ export class Offset8 {
 }
 
 /**
- * The fields of a `Offset8`, to write
+ * The fields of a `Uint8Offsets`, to write
  *
- * @typedef {object} Offset8Fields
+ * @typedef {object} Uint8OffsetsFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint8` offsets, after the table's length */
-export class Offset8Sized {
-    static #LAYOUT = TableLayout.create({ sized: true, offsetSize: 1 });
+export class Uint8OffsetsSized {
+    static #LAYOUT = TableLayout.create({ sized: true, offsetType: 'uint8' });
 
     /** @type {ByteBuffer} */
     #buffer;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset8Sized.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint8OffsetsSized.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset8Sized` with every field
+     * Writes a `Uint8OffsetsSized` with every field
      *
-     * @param {Offset8SizedFields} fields
+     * @param {Uint8OffsetsSizedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset8Sized.#LAYOUT);
+        const sizer = new TableSizer(3, Uint8OffsetsSized.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -108,23 +108,26 @@ export class Offset8Sized {
 }
 
 /**
- * The fields of a `Offset8Sized`, to write
+ * The fields of a `Uint8OffsetsSized`, to write
  *
- * @typedef {object} Offset8SizedFields
+ * @typedef {object} Uint8OffsetsSizedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint8` offsets, after the largest version they hold */
-export class Offset8Versioned {
+export class Uint8OffsetsVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
      */
     static FORMAT_VERSION = 255;
 
-    static #LAYOUT = TableLayout.create({ versioned: true, offsetSize: 1 });
+    static #LAYOUT = TableLayout.create({
+        versioned: true,
+        offsetType: 'uint8'
+    });
 
     /** @type {ByteBuffer} */
     #buffer;
@@ -134,27 +137,27 @@ export class Offset8Versioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset8Versioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint8OffsetsVersioned.#LAYOUT);
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset8Versioned.FORMAT_VERSION) {
+        if (version !== Uint8OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset8Versioned.FORMAT_VERSION} of Offset8Versioned, got ${version}`
+                `Expected format version ${Uint8OffsetsVersioned.FORMAT_VERSION} of Uint8OffsetsVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset8Versioned` with every field
+     * Writes a `Uint8OffsetsVersioned` with every field
      *
-     * @param {Offset8VersionedFields} fields
+     * @param {Uint8OffsetsVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset8Versioned.#LAYOUT,
-            Offset8Versioned.FORMAT_VERSION
+            Uint8OffsetsVersioned.#LAYOUT,
+            Uint8OffsetsVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -185,16 +188,16 @@ export class Offset8Versioned {
 }
 
 /**
- * The fields of a `Offset8Versioned`, to write
+ * The fields of a `Uint8OffsetsVersioned`, to write
  *
- * @typedef {object} Offset8VersionedFields
+ * @typedef {object} Uint8OffsetsVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint8` offsets, after the table's length and version zero */
-export class Offset8SizedVersioned {
+export class Uint8OffsetsSizedVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
@@ -204,7 +207,7 @@ export class Offset8SizedVersioned {
     static #LAYOUT = TableLayout.create({
         sized: true,
         versioned: true,
-        offsetSize: 1
+        offsetType: 'uint8'
     });
 
     /** @type {ByteBuffer} */
@@ -215,27 +218,30 @@ export class Offset8SizedVersioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset8SizedVersioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(
+            bytes,
+            Uint8OffsetsSizedVersioned.#LAYOUT
+        );
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset8SizedVersioned.FORMAT_VERSION) {
+        if (version !== Uint8OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset8SizedVersioned.FORMAT_VERSION} of Offset8SizedVersioned, got ${version}`
+                `Expected format version ${Uint8OffsetsSizedVersioned.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset8SizedVersioned` with every field
+     * Writes a `Uint8OffsetsSizedVersioned` with every field
      *
-     * @param {Offset8SizedVersionedFields} fields
+     * @param {Uint8OffsetsSizedVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset8SizedVersioned.#LAYOUT,
-            Offset8SizedVersioned.FORMAT_VERSION
+            Uint8OffsetsSizedVersioned.#LAYOUT,
+            Uint8OffsetsSizedVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -266,34 +272,34 @@ export class Offset8SizedVersioned {
 }
 
 /**
- * The fields of a `Offset8SizedVersioned`, to write
+ * The fields of a `Uint8OffsetsSizedVersioned`, to write
  *
- * @typedef {object} Offset8SizedVersionedFields
+ * @typedef {object} Uint8OffsetsSizedVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint16` offsets, for tables of up to 65,535 bytes */
-export class Offset16 {
-    static #LAYOUT = TableLayout.create({ offsetSize: 2 });
+export class Uint16Offsets {
+    static #LAYOUT = TableLayout.create({ offsetType: 'uint16' });
 
     /** @type {ByteBuffer} */
     #buffer;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset16.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint16Offsets.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset16` with every field
+     * Writes a `Uint16Offsets` with every field
      *
-     * @param {Offset16Fields} fields
+     * @param {Uint16OffsetsFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset16.#LAYOUT);
+        const sizer = new TableSizer(3, Uint16Offsets.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -323,34 +329,34 @@ export class Offset16 {
 }
 
 /**
- * The fields of a `Offset16`, to write
+ * The fields of a `Uint16Offsets`, to write
  *
- * @typedef {object} Offset16Fields
+ * @typedef {object} Uint16OffsetsFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint16` offsets, after the table's length */
-export class Offset16Sized {
-    static #LAYOUT = TableLayout.create({ sized: true, offsetSize: 2 });
+export class Uint16OffsetsSized {
+    static #LAYOUT = TableLayout.create({ sized: true, offsetType: 'uint16' });
 
     /** @type {ByteBuffer} */
     #buffer;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset16Sized.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint16OffsetsSized.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset16Sized` with every field
+     * Writes a `Uint16OffsetsSized` with every field
      *
-     * @param {Offset16SizedFields} fields
+     * @param {Uint16OffsetsSizedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset16Sized.#LAYOUT);
+        const sizer = new TableSizer(3, Uint16OffsetsSized.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -380,23 +386,26 @@ export class Offset16Sized {
 }
 
 /**
- * The fields of a `Offset16Sized`, to write
+ * The fields of a `Uint16OffsetsSized`, to write
  *
- * @typedef {object} Offset16SizedFields
+ * @typedef {object} Uint16OffsetsSizedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint16` offsets, after the largest version they hold */
-export class Offset16Versioned {
+export class Uint16OffsetsVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
      */
     static FORMAT_VERSION = 65535;
 
-    static #LAYOUT = TableLayout.create({ versioned: true, offsetSize: 2 });
+    static #LAYOUT = TableLayout.create({
+        versioned: true,
+        offsetType: 'uint16'
+    });
 
     /** @type {ByteBuffer} */
     #buffer;
@@ -406,27 +415,27 @@ export class Offset16Versioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset16Versioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint16OffsetsVersioned.#LAYOUT);
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset16Versioned.FORMAT_VERSION) {
+        if (version !== Uint16OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset16Versioned.FORMAT_VERSION} of Offset16Versioned, got ${version}`
+                `Expected format version ${Uint16OffsetsVersioned.FORMAT_VERSION} of Uint16OffsetsVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset16Versioned` with every field
+     * Writes a `Uint16OffsetsVersioned` with every field
      *
-     * @param {Offset16VersionedFields} fields
+     * @param {Uint16OffsetsVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset16Versioned.#LAYOUT,
-            Offset16Versioned.FORMAT_VERSION
+            Uint16OffsetsVersioned.#LAYOUT,
+            Uint16OffsetsVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -457,16 +466,16 @@ export class Offset16Versioned {
 }
 
 /**
- * The fields of a `Offset16Versioned`, to write
+ * The fields of a `Uint16OffsetsVersioned`, to write
  *
- * @typedef {object} Offset16VersionedFields
+ * @typedef {object} Uint16OffsetsVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint16` offsets, after the table's length and a version */
-export class Offset16SizedVersioned {
+export class Uint16OffsetsSizedVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
@@ -476,7 +485,7 @@ export class Offset16SizedVersioned {
     static #LAYOUT = TableLayout.create({
         sized: true,
         versioned: true,
-        offsetSize: 2
+        offsetType: 'uint16'
     });
 
     /** @type {ByteBuffer} */
@@ -487,27 +496,30 @@ export class Offset16SizedVersioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset16SizedVersioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(
+            bytes,
+            Uint16OffsetsSizedVersioned.#LAYOUT
+        );
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset16SizedVersioned.FORMAT_VERSION) {
+        if (version !== Uint16OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset16SizedVersioned.FORMAT_VERSION} of Offset16SizedVersioned, got ${version}`
+                `Expected format version ${Uint16OffsetsSizedVersioned.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset16SizedVersioned` with every field
+     * Writes a `Uint16OffsetsSizedVersioned` with every field
      *
-     * @param {Offset16SizedVersionedFields} fields
+     * @param {Uint16OffsetsSizedVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset16SizedVersioned.#LAYOUT,
-            Offset16SizedVersioned.FORMAT_VERSION
+            Uint16OffsetsSizedVersioned.#LAYOUT,
+            Uint16OffsetsSizedVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -538,16 +550,16 @@ export class Offset16SizedVersioned {
 }
 
 /**
- * The fields of a `Offset16SizedVersioned`, to write
+ * The fields of a `Uint16OffsetsSizedVersioned`, to write
  *
- * @typedef {object} Offset16SizedVersionedFields
+ * @typedef {object} Uint16OffsetsSizedVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint32` offsets, the default, for tables of up to 4 GiB */
-export class Offset32 {
+export class Uint32Offsets {
     static #LAYOUT = TableLayout.DEFAULT;
 
     /** @type {ByteBuffer} */
@@ -555,17 +567,17 @@ export class Offset32 {
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset32.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint32Offsets.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset32` with every field
+     * Writes a `Uint32Offsets` with every field
      *
-     * @param {Offset32Fields} fields
+     * @param {Uint32OffsetsFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset32.#LAYOUT);
+        const sizer = new TableSizer(3, Uint32Offsets.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -595,16 +607,16 @@ export class Offset32 {
 }
 
 /**
- * The fields of a `Offset32`, to write
+ * The fields of a `Uint32Offsets`, to write
  *
- * @typedef {object} Offset32Fields
+ * @typedef {object} Uint32OffsetsFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint32` offsets, after the table's length */
-export class Offset32Sized {
+export class Uint32OffsetsSized {
     static #LAYOUT = TableLayout.create({ sized: true });
 
     /** @type {ByteBuffer} */
@@ -612,17 +624,17 @@ export class Offset32Sized {
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset32Sized.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint32OffsetsSized.#LAYOUT);
     }
 
     /**
-     * Writes a `Offset32Sized` with every field
+     * Writes a `Uint32OffsetsSized` with every field
      *
-     * @param {Offset32SizedFields} fields
+     * @param {Uint32OffsetsSizedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(3, Offset32Sized.#LAYOUT);
+        const sizer = new TableSizer(3, Uint32OffsetsSized.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -652,16 +664,16 @@ export class Offset32Sized {
 }
 
 /**
- * The fields of a `Offset32Sized`, to write
+ * The fields of a `Uint32OffsetsSized`, to write
  *
- * @typedef {object} Offset32SizedFields
+ * @typedef {object} Uint32OffsetsSizedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint32` offsets, after the largest version they hold */
-export class Offset32Versioned {
+export class Uint32OffsetsVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
@@ -678,27 +690,27 @@ export class Offset32Versioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset32Versioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(bytes, Uint32OffsetsVersioned.#LAYOUT);
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset32Versioned.FORMAT_VERSION) {
+        if (version !== Uint32OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset32Versioned.FORMAT_VERSION} of Offset32Versioned, got ${version}`
+                `Expected format version ${Uint32OffsetsVersioned.FORMAT_VERSION} of Uint32OffsetsVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset32Versioned` with every field
+     * Writes a `Uint32OffsetsVersioned` with every field
      *
-     * @param {Offset32VersionedFields} fields
+     * @param {Uint32OffsetsVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset32Versioned.#LAYOUT,
-            Offset32Versioned.FORMAT_VERSION
+            Uint32OffsetsVersioned.#LAYOUT,
+            Uint32OffsetsVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -729,16 +741,16 @@ export class Offset32Versioned {
 }
 
 /**
- * The fields of a `Offset32Versioned`, to write
+ * The fields of a `Uint32OffsetsVersioned`, to write
  *
- * @typedef {object} Offset32VersionedFields
+ * @typedef {object} Uint32OffsetsVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values
  */
 
 /** `uint32` offsets, after the table's length and a version */
-export class Offset32SizedVersioned {
+export class Uint32OffsetsSizedVersioned {
     /**
      * The version of the format, which the header carries and the
      * constructor checks
@@ -755,27 +767,30 @@ export class Offset32SizedVersioned {
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Offset32SizedVersioned.#LAYOUT);
+        this.#buffer = new ByteBuffer(
+            bytes,
+            Uint32OffsetsSizedVersioned.#LAYOUT
+        );
 
         const version = this.#buffer.getVersion();
-        if (version !== Offset32SizedVersioned.FORMAT_VERSION) {
+        if (version !== Uint32OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
-                `Expected format version ${Offset32SizedVersioned.FORMAT_VERSION} of Offset32SizedVersioned, got ${version}`
+                `Expected format version ${Uint32OffsetsSizedVersioned.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got ${version}`
             );
         }
     }
 
     /**
-     * Writes a `Offset32SizedVersioned` with every field
+     * Writes a `Uint32OffsetsSizedVersioned` with every field
      *
-     * @param {Offset32SizedVersionedFields} fields
+     * @param {Uint32OffsetsSizedVersionedFields} fields
      * @returns {Uint8Array}
      */
     static serialize(fields) {
         const sizer = new TableSizer(
             3,
-            Offset32SizedVersioned.#LAYOUT,
-            Offset32SizedVersioned.FORMAT_VERSION
+            Uint32OffsetsSizedVersioned.#LAYOUT,
+            Uint32OffsetsSizedVersioned.FORMAT_VERSION
         );
         sizer.addUint32();
         sizer.addString(fields.name);
@@ -806,9 +821,9 @@ export class Offset32SizedVersioned {
 }
 
 /**
- * The fields of a `Offset32SizedVersioned`, to write
+ * The fields of a `Uint32OffsetsSizedVersioned`, to write
  *
- * @typedef {object} Offset32SizedVersionedFields
+ * @typedef {object} Uint32OffsetsSizedVersionedFields
  * @property {number} id
  * @property {string} name
  * @property {ArrayLike<number> | Uint16Array} values

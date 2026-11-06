@@ -2,7 +2,7 @@ import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
 import { headerLength, maxLength, TableLayout } from './layout.ts';
-import type { OffsetSize, ElementSize } from './types.ts';
+import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
 const INT8 = 0;
@@ -44,7 +44,7 @@ const STRUCT_ARRAY = 24;
  * must not change in between. Tables nested from their builders are written in
  * the same pass, straight into this one. A setter throws a `RangeError`, and
  * leaves the builder as it was, when its field would make the table longer
- * than the layout's `offsetSize` addresses: 255 bytes, 64 KiB or 4 GiB. Typed
+ * than the layout's `offsetType` addresses: 255 bytes, 64 KiB or 4 GiB. Typed
  * arrays of a field's element type are copied as bytes; any other array-like,
  * such as a `number[]` or a typed array of another type, is converted as the
  * typed array's constructor would.
@@ -78,7 +78,7 @@ export class TableBuilder {
 
     /**
      * @param fields - The number of fields that the table will hold.
-     * @param layout - The table's header and offset size, which its readers
+     * @param layout - The table's header and offset type, which its readers
      * must use too.
      * @param version - The version to write to the header, required when the
      * layout is versioned. Readers can check it with `ByteBuffer.getVersion()`
@@ -86,7 +86,7 @@ export class TableBuilder {
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
      * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * isn't an integer that fits in the layout's offset size, or the header
+     * isn't an integer that fits in the layout's offset type, or the header
      * alone is longer than the layout addresses.
      */
     constructor(fields: number, layout?: TableLayout<false>);
@@ -386,7 +386,7 @@ export class TableBuilder {
      * the end of each, which lets readers find any item without reading the
      * others. Builders must have all their fields set, and are written
      * straight into this table as `setTable()` writes them, except for those
-     * whose layout has another `offsetSize`, which are finalized and copied.
+     * whose layout has another `offsetType`, which are finalized and copied.
      * Items aren't padded, so their typed arrays are read as copies when they
      * don't happen to be aligned.
      *
@@ -470,7 +470,7 @@ export class TableBuilder {
 
         const length = this.#offset + padding + byteLength;
         if (!(length <= this.#maxLength)) {
-            throw tooLong(index, length, this.#size);
+            throw tooLong(index, length, this.#layout.offsetType());
         }
 
         const records = this.#records;
@@ -668,11 +668,7 @@ function writeField(buffer: ByteBuffer, kind: number, value: unknown): void {
 }
 
 /** Writes a length or count as wide as the table's offsets */
-function setLength(
-    buffer: ByteBuffer,
-    size: OffsetSize,
-    length: number
-): void {
+function setLength(buffer: ByteBuffer, size: OffsetSize, length: number): void {
     switch (size) {
         case SIZEOF_8:
             buffer.setUint8(length);
@@ -697,9 +693,13 @@ function tooManyFields(fields: number): RangeError {
     );
 }
 
-function tooLong(index: number, length: number, size: number): RangeError {
+function tooLong(
+    index: number,
+    length: number,
+    offsetType: OffsetType
+): RangeError {
     return new RangeError(
-        `Field ${index + 1} makes the table ${length} bytes, too long for ${size}-byte offsets`
+        `Field ${index + 1} makes the table ${length} bytes, too long for ${offsetType} offsets`
     );
 }
 

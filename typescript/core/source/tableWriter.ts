@@ -43,14 +43,14 @@ export class TableSizer {
 
     /**
      * @param fields - The number of fields that the table holds.
-     * @param layout - The table's header and offset size, which its readers
+     * @param layout - The table's header and offset type, which its readers
      * must use too.
      * @param version - The version that the writer writes to the header,
      * required when the layout is versioned.
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
      * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * isn't an integer that fits in the layout's offset size, or the header
+     * isn't an integer that fits in the layout's offset type, or the header
      * alone is longer than the layout addresses.
      */
     constructor(fields: number, layout?: TableLayout<false>);
@@ -77,7 +77,7 @@ export class TableSizer {
         const length = this.#position;
         if (!(length <= maxLength(this.#size))) {
             throw new RangeError(
-                `The table's fields make it ${length} bytes, too long for ${this.#size}-byte offsets`
+                `The table's fields make it ${length} bytes, too long for ${this.#layout.offsetType()} offsets`
             );
         }
 
@@ -333,7 +333,7 @@ export class TableWriter {
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
      * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * doesn't fit in the layout's offset size, or `bytes` are longer than the
+     * doesn't fit in the layout's offset type, or `bytes` are longer than the
      * layout addresses.
      */
     constructor(bytes: Uint8Array, fields: number, layout?: TableLayout<false>);
@@ -353,7 +353,7 @@ export class TableWriter {
         const header = headerLength(fields, layout, version);
         if (!(bytes.length <= maxLength(size))) {
             throw new RangeError(
-                `A table of ${bytes.length} bytes is too long for ${size}-byte offsets`
+                `A table of ${bytes.length} bytes is too long for ${layout.offsetType()} offsets`
             );
         }
 

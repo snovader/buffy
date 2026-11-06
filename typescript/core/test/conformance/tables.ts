@@ -48,9 +48,9 @@ export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
 export function layoutOf({
     sized,
     versioned,
-    offsetSize
+    offsetType
 }: LayoutDescription): TableLayout {
-    return TableLayout.create({ sized, versioned, offsetSize });
+    return TableLayout.create({ sized, versioned, offsetType });
 }
 
 /** Builds a table as its description sets it out */
@@ -69,19 +69,19 @@ export function createBuilder({
     version,
     fields
 }: TableDescription): TableBuilder {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableBuilder(
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
 
     return new TableBuilder(
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -231,9 +231,9 @@ export function writeTableInto(
  * with the root's offset size
  */
 export function nestedInPlace(table: TableDescription): TableDescription {
-    const { offsetSize } = table.layout;
+    const { offsetType } = table.layout;
     const inPlace = (nested: TableDescription): TableDescription => ({
-        layout: { sized: false, versioned: false, offsetSize },
+        layout: { sized: false, versioned: false, offsetType },
         fields: nested.fields.map(field)
     });
     const field = (description: FieldDescription): FieldDescription => {
@@ -269,19 +269,19 @@ function createSizer({
     version,
     fields
 }: TableDescription): TableSizer {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableSizer(
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
 
     return new TableSizer(
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -289,13 +289,13 @@ function createWriter(
     { layout, version, fields }: TableDescription,
     bytes: Uint8Array
 ): TableWriter {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableWriter(
             bytes,
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
@@ -303,7 +303,7 @@ function createWriter(
     return new TableWriter(
         bytes,
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -1025,7 +1025,7 @@ export class TableReader {
         return (
             !layout.sized &&
             !layout.versioned &&
-            layout.offsetSize === this.#layout.offsetSize
+            layout.offsetType === this.#layout.offsetType
         );
     }
 

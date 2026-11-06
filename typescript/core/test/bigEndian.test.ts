@@ -57,7 +57,7 @@ it.prop([ARRAY_FIELDS])(
     'should byte-swap the elements of every array type on a big-endian host',
     field => {
         const table: TableDescription = {
-            layout: { sized: false, versioned: false, offsetSize: 4 },
+            layout: { sized: false, versioned: false, offsetType: 'uint32' },
             fields: [field]
         };
         const bytes = buildTable(table).bytes();

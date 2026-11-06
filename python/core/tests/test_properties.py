@@ -31,7 +31,7 @@ from hypothesis.strategies import (
 from tafla import ByteBuffer, DecodeError
 from tests.descriptions import (
     LAYOUTS,
-    OFFSET_SIZES,
+    OFFSET_TYPES,
     SCALAR_VALUES,
     STRUCT_TYPES,
     longest_length,
@@ -43,7 +43,7 @@ from tests.tables import (
     LONGEST,
     Description,
     MismatchError,
-    OffsetSize,
+    OffsetType,
     Placement,
     TableReader,
     alignment_of,
@@ -53,6 +53,7 @@ from tests.tables import (
     create_builder,
     from_json,
     layout_of,
+    offset_size_of,
     read_table,
     set_field,
     struct_alignment,
@@ -151,7 +152,7 @@ class TestFormatRules(unittest.TestCase):
             build_table(table).bytes(), table
         ):
             layout = description["layout"]
-            size = layout["offsetSize"]
+            size = offset_size_of(layout["offsetType"])
 
             if layout["sized"]:
                 self.assertEqual(unsigned(table_bytes, 0, size), len(table_bytes))
@@ -170,7 +171,7 @@ class TestFormatRules(unittest.TestCase):
             build_table(table).bytes(), table
         ):
             layout = description["layout"]
-            size = layout["offsetSize"]
+            size = offset_size_of(layout["offsetType"])
             fields = len(description["fields"])
 
             header = (int(layout["sized"]) + int(layout["versioned"])) * size
@@ -456,24 +457,23 @@ def _growing(table: Description) -> Callable[[int], Description]:
     return of
 
 
-# Growing tables with no nested tables and 4-byte offsets, with and without a
+# Growing tables with no nested tables and uint32 offsets, with and without a
 # header
 _GROWING_TABLES: dict[bool, SearchStrategy[Callable[[int], Description]]] = {
-    header: tables(0, header=header, offset_sizes=(4,)).map(_growing)
+    header: tables(0, header=header, offset_types=("uint32",)).map(_growing)
     for header in (False, True)
 }
 
 
 @composite
-def growing_fields(draw: DrawFn, offset_size: OffsetSize) -> GrowingField:
+def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
     """Strings, arrays of scalars and of structs, and tables nested with
     ``set_table()`` and in a vector that end in a ``uint8[]``, which grow by a
     character, element or struct at a time, and vectors that grow by an empty
-    item, for tables whose offsets are ``offset_size`` bytes wide. Nested
-    tables have 4-byte offsets, so that they fit any length that their parent
-    does."""
+    item, for tables of the offset type ``offset_type``. Nested tables have
+    uint32 offsets, so that they fit any length that their parent does."""
     kinds = ["array", "struct array", "string", "table", "vector item"]
-    if offset_size == 1:
+    if offset_type == "uint8":
         # A vector of thousands of items would take most of the suite's time
         kinds.append("vector count")
 
@@ -530,20 +530,20 @@ def growing_fields(draw: DrawFn, offset_size: OffsetSize) -> GrowingField:
             layout = {
                 "sized": False,
                 "versioned": False,
-                "offsetSize": draw(sampled_from(OFFSET_SIZES)),
+                "offsetType": draw(sampled_from(OFFSET_TYPES)),
             }
             empty = {"from": draw(_FROM), "table": {"layout": layout, "fields": []}}
 
             return GrowingField(
                 lambda count: {"type": "vector", "items": [empty] * count},
-                offset_size,
+                offset_size_of(offset_type),
             )
 
 
 class Boundary(NamedTuple):
     """A field that grows after a table's fields, the bytes of the table with
     it at no length, and the most units of it that fit in the table's offset
-    size. Each unit makes the table ``field.unit`` bytes longer, since the
+    type. Each unit makes the table ``field.unit`` bytes longer, since the
     field is the last."""
 
     table: Description
@@ -556,21 +556,21 @@ class Boundary(NamedTuple):
 
 
 def draw_boundary(table: Description, data: DataObject) -> Boundary:
-    offset_size = table["layout"]["offsetSize"]
-    field = data.draw(growing_fields(offset_size), label="growing field")
+    offset_type = table["layout"]["offsetType"]
+    field = data.draw(growing_fields(offset_type), label="growing field")
 
     empty_field = {**table, "fields": [*table["fields"], field.of(0)]}
-    assume(longest_length(empty_field) <= LONGEST[offset_size])
+    assume(longest_length(empty_field) <= LONGEST[offset_type])
 
     empty = bytes(build_table(empty_field).bytes())
-    longest = (LONGEST[offset_size] - len(empty)) // field.unit
+    longest = (LONGEST[offset_type] - len(empty)) // field.unit
 
     return Boundary(table, field, empty, longest)
 
 
 class TestBuilderLimits(unittest.TestCase):
-    @given(tables(offset_sizes=(1, 2)), data())
-    def test_writes_the_longest_last_field_that_the_offset_size_addresses(
+    @given(tables(offset_types=("uint8", "uint16")), data())
+    def test_writes_the_longest_last_field_that_the_offset_type_addresses(
         self, table: Description, data: DataObject
     ) -> None:
         boundary = draw_boundary(table, data)
@@ -584,7 +584,7 @@ class TestBuilderLimits(unittest.TestCase):
             comparable_table(read_table(built, longest)), comparable_table(longest)
         )
 
-    @given(tables(offset_sizes=(1, 2)), data())
+    @given(tables(offset_types=("uint8", "uint16")), data())
     def test_a_too_long_field_raises_from_its_setter_and_leaves_the_builder_as_it_was(
         self, table: Description, data: DataObject
     ) -> None:

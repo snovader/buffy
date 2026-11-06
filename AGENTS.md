@@ -8,7 +8,7 @@ intent, not a requirement to preserve every detail.
 
 - Give each function, class, and module a clear scope of responsibility. Keep
   layout, writing, reading, and code generation with their respective owners.
-  For example, `TableLayout` describes a table's header and offset width,
+  For example, `TableLayout` describes a table's header and offset type,
   `TableBuilder` writes tables, and `ByteBuffer` reads them. In the generator,
   the parser owns syntax, the checker owns a schema's rules, and each target
   owns its language's code.
@@ -89,8 +89,8 @@ intent, not a requirement to preserve every detail.
   than edit it, as `rust/gen/README.md` describes; a check or test that it
   fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
-  offset size, vector, builder, and decode error. Make the syntax idiomatic for
-  each language.
+  offset type, offset size, vector, builder, and decode error. Make the syntax
+  idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
   JSpecify's annotations in Java. Adding a dependency to a runtime needs strong
   justification.
@@ -103,7 +103,7 @@ intent, not a requirement to preserve every detail.
   error, a crash, a panic, an out-of-bounds read, or an allocation out of
   proportion to the input.
 - Builders reject what they can't write, such as a table too long for its
-  offset size, with a documented error, rather than writing a table that
+  offset type, with a documented error, rather than writing a table that
   readers misread. Values converted to a field's type, such as numbers written
   as float32, convert as documented.
 
@@ -175,7 +175,7 @@ intent, not a requirement to preserve every detail.
 - Add example tests where they document behavior, such as the examples in
   READMEs and package documentation, and regression cases for known failures.
   Cover numerical, binary-format, and boundary cases: signed zero and NaN,
-  integer limits, empty arrays, the limits of each offset size, strings outside
+  integer limits, empty arrays, the limits of each offset type, strings outside
   the Basic Multilingual Plane, unaligned input, and big-endian hosts.
 - Compare floats by their bits or with `Object.is`. Some deep-equality matchers
   treat -0 as 0, so check that an assertion about signed zero fails against

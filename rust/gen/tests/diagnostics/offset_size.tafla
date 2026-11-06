@@ -1,4 +1,5 @@
-// `offset_size` took the offsets' width in bits, which `offset_type` names
+// `offset_size` took the offset type's width in bits, and `offset_type` names
+// the type
 
 message Narrow (offset_size: 16) {
     x: float64;

@@ -2,25 +2,38 @@
 package io.github.snovader.tafla.test.generated.layouts;
 
 import io.github.snovader.tafla.ByteBuffer;
-import io.github.snovader.tafla.OffsetSize;
+import io.github.snovader.tafla.DecodeException;
+import io.github.snovader.tafla.OffsetType;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** {@code uint8} offsets, for tables of up to 255 bytes */
-public final class Offset8 {
+/** {@code uint8} offsets, after the largest version they hold */
+public final class Uint8OffsetsVersioned {
+    /** The version of the format, which the header carries and the constructor checks */
+    public static final long FORMAT_VERSION = 255;
+
     private static final TableLayout LAYOUT = TableLayout.builder()
-        .offsetSize(OffsetSize.UINT8)
+        .versioned(true)
+        .offsetType(OffsetType.UINT8)
         .build();
 
     private final ByteBuffer buffer;
 
-    public Offset8(byte[] bytes) {
+    /** @throws DecodeException if {@code bytes} are in another format version */
+    public Uint8OffsetsVersioned(byte[] bytes) {
         this.buffer = new ByteBuffer(bytes, LAYOUT);
+
+        long version = buffer.getVersion();
+        if (version != FORMAT_VERSION) {
+            throw new DecodeException(
+                "Expected format version " + FORMAT_VERSION + " of Uint8OffsetsVersioned, got " + version
+            );
+        }
     }
 
-    /** Writes an {@code Offset8} with every field */
+    /** Writes a {@code Uint8OffsetsVersioned} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT);
+        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);
@@ -45,7 +58,7 @@ public final class Offset8 {
         return buffer.getUint16Array(buffer.rootOffset(2));
     }
 
-    /** The fields of an {@code Offset8}, to write */
+    /** The fields of a {@code Uint8OffsetsVersioned}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(long id, String name, int[] values) {}
 }

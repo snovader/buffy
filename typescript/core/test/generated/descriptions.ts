@@ -16,7 +16,7 @@ import {
 export const DEFAULT_LAYOUT: LayoutDescription = {
     sized: false,
     versioned: false,
-    offsetSize: 4
+    offsetType: 'uint32'
 };
 
 export function scalar(

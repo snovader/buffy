@@ -7,14 +7,24 @@ what it wrote."""
 from collections.abc import Buffer, Iterable
 from struct import pack
 
-from tests.tables import DEFAULT_LAYOUT, FORMATS, Description, from_json, to_json
+from tests.tables import (
+    DEFAULT_LAYOUT,
+    FORMATS,
+    Description,
+    OffsetType,
+    from_json,
+    to_json,
+)
 
 
 def layout(
-    *, sized: bool = False, versioned: bool = False, offset_size: int = 4
+    *,
+    sized: bool = False,
+    versioned: bool = False,
+    offset_type: OffsetType = "uint32",
 ) -> Description:
     """A layout, as a message's attributes set it"""
-    return {"sized": sized, "versioned": versioned, "offsetSize": offset_size}
+    return {"sized": sized, "versioned": versioned, "offsetType": offset_type}
 
 
 def scalar(kind: str, value: float) -> Description:

@@ -23,7 +23,7 @@ public class ByteBufferTest {
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void a_buffer_reads_back_the_limits_of_every_type_as_scalars_and_in_arrays(@ForAll("limits") ScalarField limit) {
-        var layout = LayoutDescription.headerless(OffsetSize.UINT32);
+        var layout = LayoutDescription.headerless(OffsetType.UINT32);
 
         assertReadsBack(limit, layout);
         assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout);
@@ -32,11 +32,11 @@ public class ByteBufferTest {
     @Property
     void unsigned_arrays_write_low_bits_and_preserve_the_following_field(
         @ForAll @Size(max = 65) long[] values,
-        @ForAll OffsetSize offsetSize
+        @ForAll OffsetType offsetType
     ) {
-        var layout = TableLayout.builder().offsetSize(offsetSize).build();
+        var layout = TableLayout.builder().offsetType(offsetType).build();
         for (var type : List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32)) {
-            var length = 1 + offsetSize.bytes() + values.length * type.size() + Integer.BYTES;
+            var length = 1 + offsetType.size() + values.length * type.size() + Integer.BYTES;
             var buffer = new ByteBuffer(new byte[length], layout);
             buffer.setInt8((byte) 42);
             type.writeArray(buffer, values);
@@ -44,7 +44,7 @@ public class ByteBufferTest {
 
             var expectedBytes = java.nio.ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN);
             expectedBytes.put((byte) 42);
-            for (int b = 0; b < offsetSize.bytes(); b++) {
+            for (int b = 0; b < offsetType.size(); b++) {
                 expectedBytes.put((byte) (values.length >>> (b * Byte.SIZE)));
             }
 
@@ -198,7 +198,7 @@ public class ByteBufferTest {
 
     @Example
     void struct_array_views_hold_every_struct_after_the_count() {
-        var layout = TableLayout.builder().offsetSize(OffsetSize.UINT16).build();
+        var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
         var buffer = new ByteBuffer(new byte[Short.BYTES + 6], layout);
         buffer.setStructArray(new byte[] {1, 0, 2, 3, 0, 4}, 3);
 
@@ -275,11 +275,12 @@ public class ByteBufferTest {
     }
 
     @Example
-    void should_reject_a_16_bit_size_beyond_65535_and_write_nothing() {
-        var layout = TableLayout.builder().offsetSize(OffsetSize.UINT16).build();
+    void should_reject_a_uint16_size_beyond_65535_and_write_nothing() {
+        var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
         var buffer = new ByteBuffer(new byte[Short.BYTES + 65536], layout);
 
-        assertThrows(IllegalArgumentException.class, () -> buffer.setInt8Array(new byte[65536]));
+        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.setInt8Array(new byte[65536]));
+        assertEquals("65536 doesn't fit in uint16 offsets", exception.getMessage());
         assertThrows(IllegalArgumentException.class, () -> buffer.setVector(new byte[][] {new byte[65536]}));
 
         buffer.setInt8Array(new byte[] {7});

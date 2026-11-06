@@ -18,7 +18,7 @@ import java.util.function.*;
  * Tables nested from their builders are written in the same pass, straight into this one.</p>
  *
  * <p>A setter throws, and leaves the builder as it was, when the table already holds all its
- * fields, or when its field would make the table longer than the layout's offset size addresses:
+ * fields, or when its field would make the table longer than the layout's offset type addresses:
  * 255 bytes, 64 KiB, or for {@code uint32} offsets, as long as a Java array can be.</p>
  */
 public final class TableBuilder {
@@ -28,8 +28,8 @@ public final class TableBuilder {
 
     private final TableLayout layout;
     private final long version;
-    /** The offset size, the width of offsets, lengths and header slots */
-    private final OffsetSize size;
+    /** The type of offsets, lengths and header slots */
+    private final OffsetType offsetType;
     private int fieldsSet;
     /** The longest table that the layout's offsets and lengths address */
     private final long maxLength;
@@ -54,7 +54,7 @@ public final class TableBuilder {
 
     /**
      * @param fields the number of fields that the table will hold
-     * @param layout the table's header and offset size, which its readers must use too
+     * @param layout the table's header and offset type, which its readers must use too
      * @throws IllegalArgumentException if the layout is versioned, or the header alone is longer
      *     than the layout addresses
      */
@@ -66,7 +66,7 @@ public final class TableBuilder {
      * @param version the version to write to the header. Readers can check it with
      *     {@link ByteBuffer#getVersion()} before reading any field.
      * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset size, or the header alone is longer than the layout addresses
+     *     the layout's offset type, or the header alone is longer than the layout addresses
      */
     public TableBuilder(int fields, TableLayout layout, long version) {
         this(fields, layout, true, version);
@@ -76,7 +76,7 @@ public final class TableBuilder {
         this.offset = layout.headerLength(fields, versioned, version);
         this.layout = layout;
         this.version = version;
-        this.size = layout.offsetSize();
+        this.offsetType = layout.offsetType();
         this.maxLength = layout.maxLength();
 
         this.positions = new int[fields];
@@ -196,7 +196,7 @@ public final class TableBuilder {
     /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
     public void setString(String string) {
         var utf8 = Utf8.encode(string);
-        addField(size.bytes() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
+        addField(offsetType.size() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
     }
 
     /**
@@ -282,7 +282,7 @@ public final class TableBuilder {
      * Writes a vector of tables from their builders, after the end of each, which lets readers find
      * any item without reading the others. Builders must have all their fields set, and are written
      * straight into this table as {@link #setTable(TableBuilder)} writes them, except for those
-     * whose layout has another offset size, which are written to their own bytes and copied. Items
+     * whose layout has another offset type, which are written to their own bytes and copied. Items
      * aren't padded.
      *
      * @throws IllegalArgumentException if a builder has fields left to set
@@ -291,7 +291,7 @@ public final class TableBuilder {
         // A copy, so that the items can't change before the table is written
         var items = List.copyOf(tables);
 
-        var byteLength = size.bytes() + (long) items.size() * size.bytes();
+        var byteLength = offsetType.size() + (long) items.size() * offsetType.size();
         for (var item : items) {
             byteLength += lengthOf(item);
         }
@@ -303,7 +303,7 @@ public final class TableBuilder {
     public void setVector(byte[][] tables) {
         var items = tables.clone();
 
-        var byteLength = size.bytes() + (long) items.length * size.bytes();
+        var byteLength = offsetType.size() + (long) items.length * offsetType.size();
         for (var item : items) {
             byteLength += item.length;
         }
@@ -328,8 +328,8 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
      */
     private void addElements(long byteLength, int alignment, Consumer<ByteBuffer> writer) {
-        var padding = TableLayout.padding(offset + size.bytes(), alignment);
-        addField(size.bytes() + byteLength, padding, writer);
+        var padding = TableLayout.padding(offset + offsetType.size(), alignment);
+        addField(offsetType.size() + byteLength, padding, writer);
         alignTo(alignment);
     }
 
@@ -402,16 +402,16 @@ public final class TableBuilder {
         }
 
         return String.format(
-            "Field %d makes the table %d bytes, too long for %d-byte offsets",
+            "Field %d makes the table %d bytes, too long for %s offsets",
             index + 1,
             length,
-            size.bytes()
+            offsetType
         );
     }
 
     /**
-     * Writes the table from the buffer's position, which counts as its start. The buffer's offsets
-     * must be as wide as the table's.
+     * Writes the table from the buffer's position, which counts as its start. The buffer's layout
+     * must have the table's offset type.
      */
     private void write(ByteBuffer buffer) {
         if (layout.sized()) {
@@ -439,7 +439,7 @@ public final class TableBuilder {
         buffer.setLength(vector.size());
 
         // Each end counts from the vector's position, which is its count's
-        var end = (vector.size() + 1) * size.bytes();
+        var end = (vector.size() + 1) * offsetType.size();
         for (var table : vector) {
             end += table.offset;
             buffer.setLength(end);
@@ -451,12 +451,12 @@ public final class TableBuilder {
     }
 
     /**
-     * Writes a builder straight into the buffer, unless it was written already or has offsets of
-     * another width than the buffer, which writes every offset and length at its own width. Those
+     * Writes a builder straight into the buffer, unless it was written already or has another
+     * offset type than the buffer, which writes every offset and length in its own type. Those
      * tables are copied.
      */
     private void writeTable(ByteBuffer buffer, TableBuilder table) {
-        if (table.buffer == null && table.size == size) {
+        if (table.buffer == null && table.offsetType == offsetType) {
             table.write(buffer);
         } else {
             buffer.setBytes(table.bytes());

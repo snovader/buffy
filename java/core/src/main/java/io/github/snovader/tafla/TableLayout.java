@@ -3,7 +3,7 @@ package io.github.snovader.tafla;
 import java.util.*;
 
 /**
- * The header and offset size of a table. A format creates its layout once and passes it to both
+ * The header and offset type of a table. A format creates its layout once and passes it to both
  * the {@link TableBuilder} that writes the table and the {@link ByteBuffer} that reads it, so that
  * the two can't disagree. Nested tables use {@link #DEFAULT}.
  *
@@ -17,7 +17,7 @@ import java.util.*;
  */
 public final class TableLayout {
     /** No header slots, and offsets and lengths of the offset type {@code uint32} */
-    public static final TableLayout DEFAULT = new TableLayout(false, false, OffsetSize.UINT32);
+    public static final TableLayout DEFAULT = new TableLayout(false, false, OffsetType.UINT32);
 
     /**
      * The longest array that the JDK's own collections allocate, which limits a table of
@@ -27,16 +27,16 @@ public final class TableLayout {
 
     private final boolean sized;
     private final boolean versioned;
-    private final OffsetSize offsetSize;
+    private final OffsetType offsetType;
     private final int headerSize;
 
-    private TableLayout(boolean sized, boolean versioned, OffsetSize offsetSize) {
+    private TableLayout(boolean sized, boolean versioned, OffsetType offsetType) {
         this.sized = sized;
         this.versioned = versioned;
-        this.offsetSize = offsetSize;
+        this.offsetType = offsetType;
 
         var headerSlots = (sized ? 1 : 0) + (versioned ? 1 : 0);
-        this.headerSize = headerSlots * offsetSize.bytes();
+        this.headerSize = headerSlots * offsetType.size();
     }
 
     /** {@return a builder of a layout, which starts as {@link #DEFAULT}} */
@@ -55,11 +55,16 @@ public final class TableLayout {
     }
 
     /**
-     * {@return the offset size, the width of the header slots, field offsets, counts, lengths and
-     * item ends}
+     * {@return the offset type, the unsigned integer type of the header slots, field offsets,
+     * counts, lengths and item ends}
      */
-    public OffsetSize offsetSize() {
-        return offsetSize;
+    public OffsetType offsetType() {
+        return offsetType;
+    }
+
+    /** {@return the offset size, the width in bytes of the offset type: 1, 2 or 4} */
+    public int offsetSize() {
+        return offsetType.size();
     }
 
     /** {@return the byte length of the header slots before the field offsets} */
@@ -74,7 +79,7 @@ public final class TableLayout {
      * or for {@code uint32} offsets, about 2 GiB rather than their 4 GiB
      */
     long maxLength() {
-        return Math.min(offsetSize.maxValue(), MAX_ARRAY_LENGTH);
+        return Math.min(offsetType.maxValue(), MAX_ARRAY_LENGTH);
     }
 
     /**
@@ -82,7 +87,7 @@ public final class TableLayout {
      * fields}, whose writer puts {@code version} in the header when {@code versioned}
      *
      * @throws IllegalArgumentException if the layout is versioned and no version is given, or the
-     *     other way round, the version doesn't fit in the offset size, the number of fields is
+     *     other way round, the version doesn't fit in the offset type, the number of fields is
      *     negative, or the header alone is longer than the layout addresses
      */
     int headerLength(int fields, boolean versioned, long version) {
@@ -92,9 +97,9 @@ public final class TableLayout {
             );
         }
 
-        if (versioned && (version < 0 || version > offsetSize.maxValue())) {
+        if (versioned && (version < 0 || version > offsetType.maxValue())) {
             throw new IllegalArgumentException(
-                String.format("Version %d doesn't fit in a %d-byte slot", version, offsetSize.bytes())
+                String.format("Version %d doesn't fit in a %s slot", version, offsetType)
             );
         }
 
@@ -102,10 +107,10 @@ public final class TableLayout {
             throw new IllegalArgumentException(String.format("A table can't hold %d fields", fields));
         }
 
-        var length = headerSize + (long) fields * offsetSize.bytes();
+        var length = headerSize + (long) fields * offsetType.size();
         if (length > maxLength()) {
             throw new IllegalArgumentException(
-                String.format("A header of %d fields doesn't fit in %d-byte offsets", fields, offsetSize.bytes())
+                String.format("A header of %d fields doesn't fit in %s offsets", fields, offsetType)
             );
         }
 
@@ -132,10 +137,10 @@ public final class TableLayout {
     @Override
     public String toString() {
         return String.format(
-            "TableLayout[sized=%s, versioned=%s, offsetSize=%s]",
+            "TableLayout[sized=%s, versioned=%s, offsetType=%s]",
             sized,
             versioned,
-            offsetSize
+            offsetType
         );
     }
 
@@ -146,7 +151,7 @@ public final class TableLayout {
     public static final class Builder {
         private boolean sized = false;
         private boolean versioned = false;
-        private OffsetSize offsetSize = OffsetSize.UINT32;
+        private OffsetType offsetType = OffsetType.UINT32;
 
         private Builder() {}
 
@@ -167,18 +172,18 @@ public final class TableLayout {
         }
 
         /**
-         * The offset size, the width of the header slots, field offsets, counts, lengths and item ends,
-         * which limits the table's length: {@link OffsetSize#UINT8} for up to 255 bytes,
-         * {@link OffsetSize#UINT16} for 65,535, and {@link OffsetSize#UINT32}, the default, for as
-         * long as a Java array can be, about 2 GiB.
+         * The offset type, the unsigned integer type of the header slots, field offsets, counts,
+         * lengths and item ends, which limits the table's length: {@link OffsetType#UINT8} for up to
+         * 255 bytes, {@link OffsetType#UINT16} for 65,535, and {@link OffsetType#UINT32}, the
+         * default, for as long as a Java array can be, about 2 GiB.
          */
-        public Builder offsetSize(OffsetSize offsetSize) {
-            this.offsetSize = Objects.requireNonNull(offsetSize);
+        public Builder offsetType(OffsetType offsetType) {
+            this.offsetType = Objects.requireNonNull(offsetType);
             return this;
         }
 
         public TableLayout build() {
-            return new TableLayout(sized, versioned, offsetSize);
+            return new TableLayout(sized, versioned, offsetType);
         }
     }
 }

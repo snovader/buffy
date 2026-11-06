@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, str::Utf8Error};
 
-use crate::OffsetSize;
+use crate::OffsetType;
 
 /// Returned when bytes can't be read as the table, array, string, struct,
 /// vector or value that a read expects.
@@ -94,13 +94,13 @@ pub enum BuildError {
     /// The version doesn't fit in the layout's header slots
     VersionTooLarge {
         version: u32,
-        offset_size: OffsetSize,
+        offset_type: OffsetType,
     },
     /// The header of `fields` offsets alone is longer than the layout's
     /// offsets address
     HeaderTooLong {
         fields: usize,
-        offset_size: OffsetSize,
+        offset_type: OffsetType,
     },
     /// A field was set on a table that already holds its `fields` fields, or
     /// written to a `TableWriter` at an index past them
@@ -110,7 +110,7 @@ pub enum BuildError {
     TooLong {
         index: usize,
         length: u64,
-        offset_size: OffsetSize,
+        offset_type: OffsetType,
     },
     /// The table was written, or nested, with `set` of its `fields` fields
     /// set
@@ -129,19 +129,14 @@ impl fmt::Display for BuildError {
         match *self {
             Self::VersionTooLarge {
                 version,
-                offset_size,
-            } => write!(
-                f,
-                "Version {version} doesn't fit in a {}-byte slot",
-                offset_size.bytes()
-            ),
+                offset_type,
+            } => write!(f, "Version {version} doesn't fit in a {offset_type} slot"),
             Self::HeaderTooLong {
                 fields,
-                offset_size,
+                offset_type,
             } => write!(
                 f,
-                "A header of {fields} fields doesn't fit in {}-byte offsets",
-                offset_size.bytes()
+                "A header of {fields} fields doesn't fit in {offset_type} offsets"
             ),
             Self::TooManyFields { fields } => {
                 write!(f, "Can't add field {} to a table of {fields}", fields + 1)
@@ -149,12 +144,11 @@ impl fmt::Display for BuildError {
             Self::TooLong {
                 index,
                 length,
-                offset_size,
+                offset_type,
             } => write!(
                 f,
-                "Field {} makes the table {length} bytes, too long for {}-byte offsets",
-                index + 1,
-                offset_size.bytes()
+                "Field {} makes the table {length} bytes, too long for {offset_type} offsets",
+                index + 1
             ),
             Self::Incomplete { set, fields } => {
                 write!(f, "Only {set} of the table's {fields} fields were set")

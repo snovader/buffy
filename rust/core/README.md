@@ -63,9 +63,9 @@ and then the fields in the order they were set:
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
 - Header slots, offsets, counts and vector item ends are all of the
-  layout's offset type, `uint8`, `uint16` or `uint32`, whose offset size,
-  `OffsetSize`, is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB
-  or 4 GiB.
+  layout's offset type, `OffsetType::Uint8`, `Uint16` or `Uint32`, whose
+  offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
+  4 GiB.
 - Offsets count from the table's start. A table nested with `set_table()` has
   no header, and its offsets count from its own start.
 - A struct is its scalars, one after another without padding, which
@@ -78,7 +78,7 @@ and then the fields in the order they were set:
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector::get()` finds any
   item from two ends without reading the others. An item without a header
-  and with its parent's offset size is read in place, from the bytes that
+  and with its parent's offset type is read in place, from the bytes that
   `Vector::get_in_place()` returns, which run on to the end of its parent's,
   since its offsets may lead past its end. Any other item is read from its
   own bytes, which `Vector::get()` returns.

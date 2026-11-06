@@ -6,9 +6,10 @@
 
 use std::fmt::Display;
 
+use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 
 /// The runtime's crate, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -121,10 +122,10 @@ impl Generator<'_> {
             .any(|field| {
                 matches!(field.field_type, FieldType::Array(scalar) if scalar != Scalar::Uint8)
             });
-        let has_offset_size = definitions.iter().any(|definition| {
+        let has_offset_type = definitions.iter().any(|definition| {
             definition
                 .layout()
-                .is_some_and(|layout| layout.offset_size != OffsetSize::Uint32)
+                .is_some_and(|layout| layout.offset_type != OffsetType::Uint32)
         });
         let has_structs = definitions.iter().any(Definition::is_struct);
         let has_vector = definitions
@@ -147,8 +148,8 @@ impl Generator<'_> {
             names.push("ByteBuffer");
         }
         names.push("DecodeError");
-        if has_offset_size {
-            names.push("OffsetSize");
+        if has_offset_type {
+            names.push("OffsetType");
         }
         // Messages make sizers, and tables take them and their writers
         if has_tables {
@@ -501,7 +502,7 @@ impl Generator<'_> {
             "a [`BuildError`]",
             &format!(
                 "if it's longer than its offset type, `{}`, addresses",
-                layout.offset_size.type_name()
+                layout.offset_type.name()
             ),
         ));
         rust_doc(writer, &docs);
@@ -723,7 +724,7 @@ impl Generator<'_> {
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
         // Each getter reads with a buffer in the table's layout, a constant,
         // rather than one that the reader holds, so that its reads compile
-        // for that layout's offset size wherever the reader is passed
+        // for that layout's offset type wherever the reader is passed
         let buffer = if is_root {
             "let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);"
         } else {
@@ -997,10 +998,10 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
     if layout.version.is_some() {
         calls.push(".versioned()".to_owned());
     }
-    match layout.offset_size {
-        OffsetSize::Uint8 => calls.push(".with_offset_size(OffsetSize::Uint8)".to_owned()),
-        OffsetSize::Uint16 => calls.push(".with_offset_size(OffsetSize::Uint16)".to_owned()),
-        OffsetSize::Uint32 => {}
+    match layout.offset_type {
+        OffsetType::Uint8 => calls.push(".with_offset_type(OffsetType::Uint8)".to_owned()),
+        OffsetType::Uint16 => calls.push(".with_offset_type(OffsetType::Uint16)".to_owned()),
+        OffsetType::Uint32 => {}
     }
 
     let prefix = format!("const LAYOUT: TableLayout{generics} = ");
@@ -1243,11 +1244,7 @@ fn integer(value: &impl Display) -> String {
 }
 
 fn article(name: &str) -> String {
-    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
-        "an"
-    } else {
-        "a"
-    };
+    let article = indefinite_article(name);
     format!("{article} [`{name}`]")
 }
 

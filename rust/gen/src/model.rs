@@ -42,21 +42,21 @@ pub struct StructLayout {
 pub struct Layout {
     pub sized: bool,
     pub version: Option<u32>,
-    pub offset_size: OffsetSize,
+    pub offset_type: OffsetType,
 }
 
-/// The width of a message's offsets, which its `offset_type` attribute names
+/// The offset type of a message, which its `offset_type` attribute names
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OffsetSize {
+pub enum OffsetType {
     Uint8,
     Uint16,
     Uint32,
 }
 
-impl OffsetSize {
+impl OffsetType {
     /// The offset type of a schema's `offset_type` attribute, or `None` for
     /// any other name
-    pub fn from_type_name(name: &str) -> Option<Self> {
+    pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "uint8" => Some(Self::Uint8),
             "uint16" => Some(Self::Uint16),
@@ -65,21 +65,12 @@ impl OffsetSize {
         }
     }
 
-    /// The offset type, as schemas name it: `uint8`, `uint16` or `uint32`
-    pub const fn type_name(self) -> &'static str {
+    /// The type's name, as schemas spell it: `uint8`, `uint16` or `uint32`
+    pub const fn name(self) -> &'static str {
         match self {
             Self::Uint8 => "uint8",
             Self::Uint16 => "uint16",
             Self::Uint32 => "uint32",
-        }
-    }
-
-    /// The offset size in bytes: 1, 2 or 4
-    pub const fn bytes(self) -> u8 {
-        match self {
-            Self::Uint8 => 1,
-            Self::Uint16 => 2,
-            Self::Uint32 => 4,
         }
     }
 

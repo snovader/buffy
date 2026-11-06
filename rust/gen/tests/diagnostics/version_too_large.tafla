@@ -1,13 +1,13 @@
 // One more than the largest version that each offset type holds
 
-message Offset8 (offset_type: uint8, version: 256) {
+message Uint8Offsets (offset_type: uint8, version: 256) {
     x: float64;
 }
 
-message Offset16 (version: 65536, offset_type: uint16) {
+message Uint16Offsets (version: 65536, offset_type: uint16) {
     x: float64;
 }
 
-message Offset32 (sized, version: 4294967296) {
+message Uint32Offsets (sized, version: 4294967296) {
     x: float64;
 }

@@ -11,7 +11,7 @@ use common::{
     read::{ReadError, read_root_field, read_table},
 };
 use serde_json::Value;
-use tafla::{Alignment, OffsetSize};
+use tafla::{Alignment, OffsetType};
 
 const CONFORMANCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance");
 
@@ -95,18 +95,18 @@ fn test_reads_invalid_tables_up_to_the_field_that_fails() {
 
 fn table_of(value: &Value) -> Table {
     let layout = &value["layout"];
-    let offset_size = match layout["offsetSize"].as_u64() {
-        Some(1) => OffsetSize::Uint8,
-        Some(2) => OffsetSize::Uint16,
-        Some(4) => OffsetSize::Uint32,
-        other => panic!("Offsets can't be {other:?} bytes wide"),
+    let offset_type = match layout["offsetType"].as_str() {
+        Some("uint8") => OffsetType::Uint8,
+        Some("uint16") => OffsetType::Uint16,
+        Some("uint32") => OffsetType::Uint32,
+        other => panic!("{other:?} isn't an offset type"),
     };
 
     Table {
         layout: Layout {
             sized: layout["sized"].as_bool().unwrap(),
             versioned: layout["versioned"].as_bool().unwrap(),
-            offset_size,
+            offset_type,
         },
         version: value["version"]
             .as_u64()

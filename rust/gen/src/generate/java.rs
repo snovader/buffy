@@ -7,9 +7,10 @@
 use std::fmt::Write;
 
 use super::java_package::KEYWORDS;
+use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, doc_comment, text};
 use super::{GeneratedFile, JavaPackage, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
@@ -247,8 +248,8 @@ fn imports(
     if layout.is_some_and(|layout| layout.version.is_some()) {
         names.push("DecodeException");
     }
-    if layout.is_some_and(|layout| layout.offset_size != OffsetSize::Uint32) {
-        names.push("OffsetSize");
+    if layout.is_some_and(|layout| layout.offset_type != OffsetType::Uint32) {
+        names.push("OffsetType");
     }
     // Messages make a sizer, and tables take a sizer and a writer
     if layout.is_some() {
@@ -359,10 +360,10 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout) {
     if layout.version.is_some() {
         options.push(".versioned(true)".to_owned());
     }
-    if layout.offset_size != OffsetSize::Uint32 {
+    if layout.offset_type != OffsetType::Uint32 {
         options.push(format!(
-            ".offsetSize(OffsetSize.{})",
-            layout.offset_size.type_name().to_ascii_uppercase()
+            ".offsetType(OffsetType.{})",
+            layout.offset_type.name().to_ascii_uppercase()
         ));
     }
 
@@ -910,11 +911,7 @@ fn identifier(name: &str) -> String {
 }
 
 fn article(name: &str) -> String {
-    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
-        "an"
-    } else {
-        "a"
-    };
+    let article = indefinite_article(name);
     format!("{article} `{name}`")
 }
 

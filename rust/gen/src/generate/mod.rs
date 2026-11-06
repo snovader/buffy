@@ -9,6 +9,13 @@
 mod java;
 // Options name a Java package in every build
 mod java_package;
+#[cfg(any(
+    feature = "typescript",
+    feature = "python",
+    feature = "java",
+    feature = "rust"
+))]
+mod prose;
 #[cfg(feature = "python")]
 mod python;
 // The checker rejects every target's names in every build

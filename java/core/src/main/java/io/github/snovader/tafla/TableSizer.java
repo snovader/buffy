@@ -36,7 +36,7 @@ public final class TableSizer {
     private final TableLayout layout;
     private final long version;
     private final int fields;
-    /** The offset size, the width of offsets, lengths and header slots */
+    /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
     /** The table's length so far, which is where the next field goes */
     private long position;
@@ -60,7 +60,7 @@ public final class TableSizer {
      * constructor.
      *
      * @param fields the number of fields that the table holds
-     * @param layout the table's header and offset size, which its readers must use too
+     * @param layout the table's header and offset type, which its readers must use too
      * @throws IllegalArgumentException if the layout is versioned, the number of fields is
      *     negative, or the header alone is longer than the layout addresses
      */
@@ -73,7 +73,7 @@ public final class TableSizer {
      *
      * @param version the version that the writer writes to the header
      * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset size, the number of fields is negative, or the header alone is longer
+     *     the layout's offset type, the number of fields is negative, or the header alone is longer
      *     than the layout addresses
      */
     public TableSizer(int fields, TableLayout layout, long version) {
@@ -85,7 +85,7 @@ public final class TableSizer {
         this.layout = layout;
         this.version = version;
         this.fields = fields;
-        this.offsetSize = layout.offsetSize().bytes();
+        this.offsetSize = layout.offsetSize();
     }
 
     /**
@@ -314,6 +314,6 @@ public final class TableSizer {
             return String.format("The table's fields make it %d bytes, longer than a Java array can be", position);
         }
 
-        return String.format("The table's fields make it %d bytes, too long for %d-byte offsets", position, offsetSize);
+        return String.format("The table's fields make it %d bytes, too long for %s offsets", position, layout.offsetType());
     }
 }

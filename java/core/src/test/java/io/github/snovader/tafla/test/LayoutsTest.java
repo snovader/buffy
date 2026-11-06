@@ -67,111 +67,111 @@ public class LayoutsTest {
 
     private static final List<LayoutMessage<?>> MESSAGES = List.of(
         new LayoutMessage<>(
-            "Offset8",
-            new LayoutDescription(false, false, OffsetSize.UINT8),
+            "Uint8Offsets",
+            new LayoutDescription(false, false, OffsetType.UINT8),
             OptionalLong.empty(),
-            fields -> Offset8.serialize(new Offset8.Fields(fields.id(), fields.name(), fields.values())),
-            Offset8::new,
+            fields -> Uint8Offsets.serialize(new Uint8Offsets.Fields(fields.id(), fields.name(), fields.values())),
+            Uint8Offsets::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset8Sized",
-            new LayoutDescription(true, false, OffsetSize.UINT8),
+            "Uint8OffsetsSized",
+            new LayoutDescription(true, false, OffsetType.UINT8),
             OptionalLong.empty(),
-            fields -> Offset8Sized.serialize(new Offset8Sized.Fields(fields.id(), fields.name(), fields.values())),
-            Offset8Sized::new,
+            fields -> Uint8OffsetsSized.serialize(new Uint8OffsetsSized.Fields(fields.id(), fields.name(), fields.values())),
+            Uint8OffsetsSized::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset8Versioned",
-            new LayoutDescription(false, true, OffsetSize.UINT8),
+            "Uint8OffsetsVersioned",
+            new LayoutDescription(false, true, OffsetType.UINT8),
             OptionalLong.of(255),
-            fields -> Offset8Versioned.serialize(
-                new Offset8Versioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint8OffsetsVersioned.serialize(
+                new Uint8OffsetsVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset8Versioned::new,
+            Uint8OffsetsVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset8SizedVersioned",
-            new LayoutDescription(true, true, OffsetSize.UINT8),
+            "Uint8OffsetsSizedVersioned",
+            new LayoutDescription(true, true, OffsetType.UINT8),
             OptionalLong.of(0),
-            fields -> Offset8SizedVersioned.serialize(
-                new Offset8SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint8OffsetsSizedVersioned.serialize(
+                new Uint8OffsetsSizedVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset8SizedVersioned::new,
+            Uint8OffsetsSizedVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset16",
-            new LayoutDescription(false, false, OffsetSize.UINT16),
+            "Uint16Offsets",
+            new LayoutDescription(false, false, OffsetType.UINT16),
             OptionalLong.empty(),
-            fields -> Offset16.serialize(new Offset16.Fields(fields.id(), fields.name(), fields.values())),
-            Offset16::new,
+            fields -> Uint16Offsets.serialize(new Uint16Offsets.Fields(fields.id(), fields.name(), fields.values())),
+            Uint16Offsets::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset16Sized",
-            new LayoutDescription(true, false, OffsetSize.UINT16),
+            "Uint16OffsetsSized",
+            new LayoutDescription(true, false, OffsetType.UINT16),
             OptionalLong.empty(),
-            fields -> Offset16Sized.serialize(new Offset16Sized.Fields(fields.id(), fields.name(), fields.values())),
-            Offset16Sized::new,
+            fields -> Uint16OffsetsSized.serialize(new Uint16OffsetsSized.Fields(fields.id(), fields.name(), fields.values())),
+            Uint16OffsetsSized::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset16Versioned",
-            new LayoutDescription(false, true, OffsetSize.UINT16),
+            "Uint16OffsetsVersioned",
+            new LayoutDescription(false, true, OffsetType.UINT16),
             OptionalLong.of(65_535),
-            fields -> Offset16Versioned.serialize(
-                new Offset16Versioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint16OffsetsVersioned.serialize(
+                new Uint16OffsetsVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset16Versioned::new,
+            Uint16OffsetsVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset16SizedVersioned",
-            new LayoutDescription(true, true, OffsetSize.UINT16),
+            "Uint16OffsetsSizedVersioned",
+            new LayoutDescription(true, true, OffsetType.UINT16),
             OptionalLong.of(1),
-            fields -> Offset16SizedVersioned.serialize(
-                new Offset16SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint16OffsetsSizedVersioned.serialize(
+                new Uint16OffsetsSizedVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset16SizedVersioned::new,
+            Uint16OffsetsSizedVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset32",
-            new LayoutDescription(false, false, OffsetSize.UINT32),
+            "Uint32Offsets",
+            new LayoutDescription(false, false, OffsetType.UINT32),
             OptionalLong.empty(),
-            fields -> Offset32.serialize(new Offset32.Fields(fields.id(), fields.name(), fields.values())),
-            Offset32::new,
+            fields -> Uint32Offsets.serialize(new Uint32Offsets.Fields(fields.id(), fields.name(), fields.values())),
+            Uint32Offsets::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset32Sized",
-            new LayoutDescription(true, false, OffsetSize.UINT32),
+            "Uint32OffsetsSized",
+            new LayoutDescription(true, false, OffsetType.UINT32),
             OptionalLong.empty(),
-            fields -> Offset32Sized.serialize(new Offset32Sized.Fields(fields.id(), fields.name(), fields.values())),
-            Offset32Sized::new,
+            fields -> Uint32OffsetsSized.serialize(new Uint32OffsetsSized.Fields(fields.id(), fields.name(), fields.values())),
+            Uint32OffsetsSized::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset32Versioned",
-            new LayoutDescription(false, true, OffsetSize.UINT32),
+            "Uint32OffsetsVersioned",
+            new LayoutDescription(false, true, OffsetType.UINT32),
             OptionalLong.of(4_294_967_295L),
-            fields -> Offset32Versioned.serialize(
-                new Offset32Versioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint32OffsetsVersioned.serialize(
+                new Uint32OffsetsVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset32Versioned::new,
+            Uint32OffsetsVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         ),
         new LayoutMessage<>(
-            "Offset32SizedVersioned",
-            new LayoutDescription(true, true, OffsetSize.UINT32),
+            "Uint32OffsetsSizedVersioned",
+            new LayoutDescription(true, true, OffsetType.UINT32),
             OptionalLong.of(2),
-            fields -> Offset32SizedVersioned.serialize(
-                new Offset32SizedVersioned.Fields(fields.id(), fields.name(), fields.values())
+            fields -> Uint32OffsetsSizedVersioned.serialize(
+                new Uint32OffsetsSizedVersioned.Fields(fields.id(), fields.name(), fields.values())
             ),
-            Offset32SizedVersioned::new,
+            Uint32OffsetsSizedVersioned::new,
             message -> new LayoutFields(message.id(), message.name(), message.values())
         )
     );
@@ -179,7 +179,7 @@ public class LayoutsTest {
     /** {@return the messages of uint8 and uint16 offsets, whose limits a test can reach} */
     private static List<LayoutMessage<?>> narrowMessages() {
         return MESSAGES.stream()
-            .filter(message -> message.layout().offsetSize() != OffsetSize.UINT32)
+            .filter(message -> message.layout().offsetType() != OffsetType.UINT32)
             .toList();
     }
 
@@ -207,12 +207,12 @@ public class LayoutsTest {
     }
 
     @Example
-    void layouts_of_8_and_16_bit_offsets_read_back_fields_at_offsets_with_the_top_bit_set() {
+    void layouts_of_uint8_and_uint16_offsets_read_back_fields_at_offsets_with_the_top_bit_set() {
         for (var message : narrowMessages()) {
-            var offsetSize = message.layout().offsetSize();
+            var offsetType = message.layout().offsetType();
 
             // A name that ends past 2^7 or 2^15 bytes, before the values
-            var name = "a".repeat((int) (offsetSize.maxValue() / 2) + 1);
+            var name = "a".repeat((int) (offsetType.maxValue() / 2) + 1);
             var fields = new LayoutFields(0xffff_ffffL, name, new int[] {0, 0xffff});
             var bytes = message.serialize(fields);
 
@@ -222,9 +222,9 @@ public class LayoutsTest {
     }
 
     @Example
-    void layouts_of_8_and_16_bit_offsets_write_tables_as_long_as_they_address_and_throw_IllegalArgumentException_past_them() {
+    void layouts_of_uint8_and_uint16_offsets_write_tables_as_long_as_they_address_and_throw_IllegalArgumentException_past_them() {
         for (var message : narrowMessages()) {
-            var max = message.layout().offsetSize().maxValue();
+            var max = message.layout().offsetType().maxValue();
             var withoutName = Tables.build(message.describe(named(""))).bytes().length;
 
             // Names that make the table a few bytes shorter than the longest it can be, to a few longer
@@ -306,7 +306,7 @@ public class LayoutsTest {
 
     private static Arbitrary<OtherVersion> otherVersionsOf(LayoutMessage<?> message) {
         var own = message.version().orElseThrow();
-        var versions = Arbitraries.longs().between(0, message.layout().offsetSize().maxValue());
+        var versions = Arbitraries.longs().between(0, message.layout().offsetType().maxValue());
 
         return versions.filter(version -> version != own).map(version -> new OtherVersion(message, version));
     }

@@ -2,9 +2,10 @@
 //! and tables are classes that read fields lazily from their bytes, and are
 //! written from interfaces of their fields. Structs are read eagerly.
 
+use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Expr, Style, call, comment_text, doc_comment, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -1278,11 +1279,7 @@ fn identifier(name: &str) -> String {
 
 /// "a `Name`" or "an `Name`", in a comment
 fn article(name: &str) -> String {
-    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
-        "an"
-    } else {
-        "a"
-    };
+    let article = indefinite_article(name);
     format!("{article} `{name}`")
 }
 
@@ -1294,10 +1291,10 @@ fn layout_expression(layout: Layout) -> Expr {
     if layout.version.is_some() {
         entries.push(("versioned".to_owned(), "true".to_owned()));
     }
-    if layout.offset_size != OffsetSize::Uint32 {
+    if layout.offset_type != OffsetType::Uint32 {
         entries.push((
-            "offsetSize".to_owned(),
-            layout.offset_size.bytes().to_string(),
+            "offsetType".to_owned(),
+            format!("'{}'", layout.offset_type.name()),
         ));
     }
 
