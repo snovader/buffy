@@ -758,10 +758,24 @@ export class ByteBuffer {
         return this.#itemOffset(position, start, end);
     }
 
-    getVectorOffsets(position: number): Uint32Array {
+    /**
+     * Returns the position of every item of the vector at `position`, as
+     * `getVectorOffset()` finds each.
+     *
+     * The positions are numbers, as `getVectorOffset()` returns, rather than
+     * a `Uint32Array`: a vector in a larger buffer, such as one of many
+     * tables stored one after another, can lie past 4 GiB, although its
+     * items' offsets from it fit in 32 bits.
+     *
+     * @throws {DecodeError} If the count, the ends or the items don't lie
+     * within the bytes, or an item ends before it starts.
+     */
+    getVectorOffsets(position: number): number[] {
         // Checking the ends bounds the count before allocating for it
         const count = this.getVectorLength(position);
-        const offsets = new Uint32Array(count);
+        // Filling an array of the count's length reads as fast as a
+        // Uint32Array, where push() and a Float64Array measured slower
+        const offsets = new Array<number>(count);
 
         let start = (count + 1) * this.#size;
         for (let i = 0; i < count; i++) {
