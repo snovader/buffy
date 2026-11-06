@@ -128,7 +128,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt8(position);
         } catch {
-            throw outOfRange(position, SIZEOF_8, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_8, this.#byteLength());
         }
     }
 
@@ -136,7 +136,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint8(position);
         } catch {
-            throw outOfRange(position, SIZEOF_8, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_8, this.#byteLength());
         }
     }
 
@@ -144,7 +144,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt16(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_16, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_16, this.#byteLength());
         }
     }
 
@@ -152,7 +152,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint16(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_16, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_16, this.#byteLength());
         }
     }
 
@@ -160,7 +160,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_32, this.#byteLength());
         }
     }
 
@@ -168,7 +168,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_32, this.#byteLength());
         }
     }
 
@@ -176,7 +176,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigInt64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_64, this.#byteLength());
         }
     }
 
@@ -184,7 +184,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigUint64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_64, this.#byteLength());
         }
     }
 
@@ -192,7 +192,7 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_32, this.#byteLength());
         }
     }
 
@@ -200,7 +200,7 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#view.byteLength);
+            throw outOfRange(position, SIZEOF_64, this.#byteLength());
         }
     }
 
@@ -832,14 +832,28 @@ export class ByteBuffer {
     }
 
     #assertRange(position: number, byteLength: number): void {
+        const available = this.#byteLength();
         if (
             !Number.isSafeInteger(position) ||
             position < 0 ||
             !Number.isSafeInteger(byteLength) ||
             byteLength < 0 ||
-            position > this.#view.byteLength - byteLength
+            position > available - byteLength
         ) {
-            throw outOfRange(position, byteLength, this.#view.byteLength);
+            throw outOfRange(position, byteLength, available);
+        }
+    }
+
+    /**
+     * The number of bytes that reads may use: the view's, or none once its
+     * buffer is detached or has shrunk below it, when DataView throws a
+     * `TypeError` for its length as for every read
+     */
+    #byteLength(): number {
+        try {
+            return this.#view.byteLength;
+        } catch {
+            return 0;
         }
     }
 

@@ -326,8 +326,9 @@ export class TableWriter {
 
     /**
      * Writes the header of a table of `fields` fields into `bytes`, which
-     * must be new, and as long as the table, as `TableSizer.writer()` makes
-     * them.
+     * must be as long as the table, as `TableSizer.writer()` makes them. They
+     * needn't be zero: the writer writes every byte of the table, padding
+     * included.
      *
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
@@ -637,7 +638,7 @@ export class TableWriter {
      * `endTable()`
      */
     setTable(index: number, alignment: ElementSize): void {
-        this.#position += padding(this.#position - this.#table, alignment);
+        this.#pad(padding(this.#position - this.#table, alignment));
         this.#setOffset(index);
     }
 
@@ -696,10 +697,21 @@ export class TableWriter {
         elements: number,
         byteLength: number
     ): void {
-        this.#position = elements - this.#size;
+        this.#pad(elements - this.#size - this.#position);
         this.#setOffset(index);
         this.#setLength(this.#position, count);
         this.#position = elements + byteLength;
+    }
+
+    /**
+     * Writes `length` bytes of zero padding at the position, and moves past
+     * them. The bytes needn't be new, so their padding is written rather
+     * than left as it was.
+     */
+    #pad(length: number): void {
+        const position = this.#position;
+        this.#bytes.fill(0, position, position + length);
+        this.#position = position + length;
     }
 
     #setOffset(index: number): void {
