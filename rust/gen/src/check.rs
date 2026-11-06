@@ -535,31 +535,105 @@ fn check_cycles(
     declarations: &[Declaration],
     errors: &mut Vec<Diagnostic>,
 ) {
-    for (start, definition) in definitions.iter().enumerate() {
-        let mut stack: Vec<usize> = nested_in_place(definition).collect();
-        let mut seen = vec![false; definitions.len()];
+    let contains_itself = find_definitions_that_contain_themselves(definitions);
 
-        while let Some(index) = stack.pop() {
-            if index == start {
-                let help = if definition.is_struct() {
-                    "a struct can't contain itself, even within another struct"
-                } else {
-                    "only a vector can nest a table in itself"
-                };
-                errors.push(
-                    Diagnostic::new(
-                        format!("`{}` contains itself", definition.name),
-                        declarations[start].name.span,
-                    )
-                    .with_help(help),
-                );
-                break;
+    for (index, definition) in definitions.iter().enumerate() {
+        if !contains_itself[index] {
+            continue;
+        }
+
+        let help = if definition.is_struct() {
+            "a struct can't contain itself, even within another struct"
+        } else {
+            "only a vector can nest a table in itself"
+        };
+        errors.push(
+            Diagnostic::new(
+                format!("`{}` contains itself", definition.name),
+                declarations[index].name.span,
+            )
+            .with_help(help),
+        );
+    }
+}
+
+/// Whether each definition holds itself in place, through the tables and
+/// structs nested in it. A definition does so exactly when it nests itself
+/// directly, or when it lies in a strongly connected component of more than
+/// one definition, which Tarjan's algorithm finds in a single search. The
+/// search runs from a stack rather than by recursion, so that long chains of
+/// definitions don't overflow it.
+fn find_definitions_that_contain_themselves(definitions: &[Definition]) -> Vec<bool> {
+    let count = definitions.len();
+    let mut contains_itself = vec![false; count];
+
+    // Each definition's position in the order that the search reaches them,
+    // and the earliest position reachable from it through definitions whose
+    // component isn't complete
+    let mut reached: Vec<Option<usize>> = vec![None; count];
+    let mut lowest = vec![0; count];
+    let mut next_position = 0;
+    // The definitions reached whose component isn't complete, in the order
+    // reached, so that each component lies at the top once complete
+    let mut incomplete = Vec::new();
+    let mut is_incomplete = vec![false; count];
+    // The definitions from the root to the one being searched, each with the
+    // definitions nested in it that are left to search
+    let mut path = Vec::new();
+
+    for root in 0..count {
+        let mut entering = reached[root].is_none().then_some(root);
+
+        loop {
+            if let Some(index) = entering.take() {
+                reached[index] = Some(next_position);
+                lowest[index] = next_position;
+                next_position += 1;
+                incomplete.push(index);
+                is_incomplete[index] = true;
+                path.push((index, nested_in_place(&definitions[index])));
             }
-            if !std::mem::replace(&mut seen[index], true) {
-                stack.extend(nested_in_place(&definitions[index]));
+
+            let Some((index, nested)) = path.last_mut() else {
+                break;
+            };
+            let index = *index;
+
+            if let Some(inner) = nested.next() {
+                if inner == index {
+                    contains_itself[index] = true;
+                } else if let Some(position) = reached[inner] {
+                    if is_incomplete[inner] {
+                        lowest[index] = lowest[index].min(position);
+                    }
+                } else {
+                    entering = Some(inner);
+                }
+                continue;
+            }
+
+            path.pop();
+            if let Some(&(parent, _)) = path.last() {
+                lowest[parent] = lowest[parent].min(lowest[index]);
+            }
+
+            // The definition is its component's first, and the component
+            // is complete
+            if Some(lowest[index]) == reached[index] {
+                let start = incomplete
+                    .iter()
+                    .rposition(|&member| member == index)
+                    .expect("a definition is incomplete until its component is");
+                let is_cycle = incomplete.len() - start > 1;
+                for member in incomplete.drain(start..) {
+                    is_incomplete[member] = false;
+                    contains_itself[member] |= is_cycle;
+                }
             }
         }
     }
+
+    contains_itself
 }
 
 /// The definitions in an order where each comes after the tables and structs
