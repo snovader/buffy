@@ -6,8 +6,14 @@ mod common;
 
 use std::path::Path;
 
-use common::{DIAGNOSTICS, assert_no_differences, compare_file, files_with_extension, update};
-use tafla_gen::{Diagnostic, parse};
+use std::collections::BTreeSet;
+use std::fmt::Write;
+
+use common::{
+    DIAGNOSTICS, assert_no_differences, compare_file, example_schemas, files_with_extension,
+    targets, update,
+};
+use tafla_gen::{Diagnostic, Options, compile, parse};
 
 #[test]
 fn invalid_schemas_fail_with_the_expected_errors() {
@@ -88,4 +94,129 @@ fn cycles_and_nested_offsets_are_checked_once_the_rest_is_valid() {
         .map(|diagnostic| diagnostic.message.as_str())
         .collect();
     assert_eq!(messages, ["unknown type `Missing`"]);
+}
+
+/// The stack of the WebAssembly module, which aborts on a panic, so that an
+/// overflow would trap its host
+const WASM_STACK: usize = 1 << 20;
+
+#[test]
+fn long_chains_fail_with_an_error_rather_than_overflowing_the_stack() {
+    for keyword in ["struct", "table"] {
+        let mut source = format!("{keyword} Link0 {{ value: uint8; }}\n");
+        for link in 1..10_000 {
+            let inner = link - 1;
+            writeln!(
+                source,
+                "{keyword} Link{link} {{ value: uint8; inner: Link{inner}; }}"
+            )
+            .unwrap();
+        }
+
+        let diagnostics = std::thread::Builder::new()
+            .stack_size(WASM_STACK)
+            .spawn(move || parse(&source).unwrap_err())
+            .unwrap()
+            .join()
+            .unwrap();
+
+        // The 65th link, counting from the innermost, rather than every link
+        // that holds it
+        let messages: Vec<&str> = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+        assert_eq!(messages, ["`Link64` nests too deeply"], "{keyword}");
+    }
+}
+
+#[test]
+fn declarations_cant_take_a_name_that_the_generated_code_imports() {
+    let mut names = BTreeSet::new();
+    for schema in example_schemas() {
+        for (_, target) in targets() {
+            let files = compile(
+                &schema.file_name,
+                &schema.source,
+                target,
+                &Options::default(),
+            )
+            .unwrap();
+            for file in &files {
+                names.extend(imported_names(&file.contents));
+            }
+        }
+    }
+    // Some of each target's
+    for name in ["TableLayout", "Unpack", "List", "Vector"] {
+        assert!(names.contains(name), "{name} in {names:?}");
+    }
+
+    for name in names {
+        let source = format!("table {name} {{ x: uint8; }}");
+        let messages: Vec<String> = parse(&source)
+            .err()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|diagnostic| diagnostic.message)
+            .collect();
+        assert_eq!(
+            messages,
+            [format!(
+                "`{name}` clashes with a name of the generated code"
+            )]
+        );
+    }
+}
+
+/// The names that a generated file imports which a declaration could take,
+/// those that start with a capital letter, from each target's imports:
+/// lists in braces or parentheses, on one line or several, and Java's
+/// imports of one class
+fn imported_names(contents: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    // The end of the list of names that the lines are in, if they're in one
+    let mut list_end = None;
+
+    for line in contents.lines().map(str::trim) {
+        let list = if let Some(end) = list_end {
+            if line.starts_with(end) {
+                list_end = None;
+                continue;
+            }
+            line
+        } else if let Some((_, list)) = line
+            .split_once(" import ")
+            .filter(|_| line.starts_with("from "))
+        {
+            if list == "(" {
+                list_end = Some(")");
+                continue;
+            }
+            list
+        } else if line.starts_with("import ")
+            || line.starts_with("/** @import ")
+            || line.starts_with("use ")
+        {
+            match (line.find('{'), line.find('}')) {
+                (Some(start), Some(end)) => &line[start + 1..end],
+                (Some(_), None) => {
+                    list_end = Some("}");
+                    continue;
+                }
+                // Java's `import a.b.Name;`
+                _ => line.trim_end_matches(';').rsplit('.').next().unwrap_or(""),
+            }
+        } else {
+            continue;
+        };
+
+        let imported = list
+            .split(',')
+            .map(|name| name.trim().trim_start_matches("type ").trim())
+            .filter(|name| name.starts_with(|first: char| first.is_ascii_uppercase()));
+        names.extend(imported.map(str::to_owned));
+    }
+
+    names
 }

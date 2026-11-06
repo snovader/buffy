@@ -1,7 +1,8 @@
 // A struct takes at most 65536 bytes. Each of these structs holds two of the
 // one before, which doubles its size: `S16` takes 65536 bytes, `S17` is the
 // first too large, and the error points at it rather than at the structs
-// that hold it. Their sizes saturate rather than overflow past `S63`.
+// that hold it. Their sizes saturate rather than overflow past `S63`. `S64`
+// nests 65 structs, which is an error of its own.
 
 struct S0 {
     value: uint8;

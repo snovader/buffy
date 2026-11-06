@@ -11,6 +11,8 @@ mod java;
 mod java_package;
 #[cfg(feature = "python")]
 mod python;
+// The checker rejects every target's names in every build
+pub mod reserved;
 #[cfg(feature = "rust")]
 mod rust;
 #[cfg(feature = "typescript")]

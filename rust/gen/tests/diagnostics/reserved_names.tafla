@@ -1,0 +1,33 @@
+// Declarations can't take a name that a target's generated code imports or
+// relies on, which they would clash with or hide
+
+message List {
+    items: [Fields];
+    v: Vector;
+    s: String;
+}
+
+// Java's record of a message's or table's fields
+table Fields { x: uint8; }
+// The runtime's view of a vector in Rust
+table Vector { x: uint8; }
+// java.lang.String, which a class in the same package hides
+table String { x: uint8; }
+
+// Every target imports the runtime's ByteBuffer
+table ByteBuffer { x: uint8; }
+// TypeScript's global
+struct Number { x: uint8; }
+// Python's typing
+table TypedDict { x: uint8; }
+// The annotation of Java's overrides
+struct Override { x: uint8; }
+// Rust's prelude
+struct Option { x: uint8; }
+// A keyword in Rust, and a type of typing in Python
+struct Self { x: uint8; }
+
+// Declarations whose names the generated code doesn't use are valid: Java
+// names java.util.Arrays in full
+message Arrays { values: [uint8]; nested: [Nested]; }
+table Nested { x: uint8; }

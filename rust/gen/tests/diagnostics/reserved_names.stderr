@@ -1,0 +1,59 @@
+error: `List` clashes with a name of the generated code
+ --> reserved_names.tafla:4:9
+  |
+4 | message List {
+  |         ^^^^ the code generated for Java uses `List`
+
+error: `Fields` clashes with a name of the generated code
+  --> reserved_names.tafla:11:7
+   |
+11 | table Fields { x: uint8; }
+   |       ^^^^^^ the code generated for Java uses `Fields`
+
+error: `Vector` clashes with a name of the generated code
+  --> reserved_names.tafla:13:7
+   |
+13 | table Vector { x: uint8; }
+   |       ^^^^^^ the code generated for Rust uses `Vector`
+
+error: `String` clashes with a name of the generated code
+  --> reserved_names.tafla:15:7
+   |
+15 | table String { x: uint8; }
+   |       ^^^^^^ the code generated for Java uses `String`
+
+error: `ByteBuffer` clashes with a name of the generated code
+  --> reserved_names.tafla:18:7
+   |
+18 | table ByteBuffer { x: uint8; }
+   |       ^^^^^^^^^^ the code generated for TypeScript, JavaScript, Python, Java and Rust uses `ByteBuffer`
+
+error: `Number` clashes with a name of the generated code
+  --> reserved_names.tafla:20:8
+   |
+20 | struct Number { x: uint8; }
+   |        ^^^^^^ the code generated for TypeScript and JavaScript uses `Number`
+
+error: `TypedDict` clashes with a name of the generated code
+  --> reserved_names.tafla:22:7
+   |
+22 | table TypedDict { x: uint8; }
+   |       ^^^^^^^^^ the code generated for Python uses `TypedDict`
+
+error: `Override` clashes with a name of the generated code
+  --> reserved_names.tafla:24:8
+   |
+24 | struct Override { x: uint8; }
+   |        ^^^^^^^^ the code generated for Java uses `Override`
+
+error: `Option` clashes with a name of the generated code
+  --> reserved_names.tafla:26:8
+   |
+26 | struct Option { x: uint8; }
+   |        ^^^^^^ the code generated for Rust uses `Option`
+
+error: `Self` clashes with a name of the generated code
+  --> reserved_names.tafla:28:8
+   |
+28 | struct Self { x: uint8; }
+   |        ^^^^ the code generated for Python and Rust uses `Self`

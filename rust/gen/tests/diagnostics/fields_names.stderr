@@ -1,0 +1,17 @@
+error: `PointFields` clashes with the fields of `Point`
+ --> fields_names.tafla:5:7
+  |
+5 | table PointFields { x: uint8; }
+  |       ^^^^^^^^^^^ the generated code declares `PointFields` to write `Point` from
+
+error: `DocumentFields` clashes with the fields of `Document`
+ --> fields_names.tafla:9:8
+  |
+9 | struct DocumentFields { x: uint8; }
+  |        ^^^^^^^^^^^^^^ the generated code declares `DocumentFields` to write `Document` from
+
+error: `PairFields` clashes with the fields of `Pair`
+  --> fields_names.tafla:12:8
+   |
+12 | struct PairFields { first: float64; }
+   |        ^^^^^^^^^^ the generated code declares `PairFields` to write `Pair` from
