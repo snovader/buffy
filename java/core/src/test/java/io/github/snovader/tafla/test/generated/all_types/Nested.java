@@ -5,7 +5,6 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-import java.util.Arrays;
 import java.util.List;
 
 /** Tables nested in tables, by field and in vectors */
@@ -57,7 +56,7 @@ public final class Nested {
     public List<Tree> trees() {
         var offsets = buffer.getVectorOffsets(buffer.rootOffset(2));
 
-        return Arrays.stream(offsets)
+        return java.util.Arrays.stream(offsets)
             .mapToObj(item -> new Tree(buffer, item))
             .toList();
     }

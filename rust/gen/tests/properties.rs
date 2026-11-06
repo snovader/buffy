@@ -1,8 +1,8 @@
 //! Properties of the generator over arbitrary input: parsing never panics,
 //! every schema that the checker accepts generates code for every target,
-//! structs that contain themselves or grow too large fail with the checker's
-//! errors, its files stay in the output directory, and the CLI writes what the
-//! library generates.
+//! structs that contain themselves or grow too large and chains of tables or
+//! structs that nest too deep fail with the checker's errors, its files stay
+//! in the output directory, and the CLI writes what the library generates.
 
 mod common;
 
@@ -14,6 +14,13 @@ use common::targets;
 use proptest::prelude::*;
 use proptest::sample::{Index, subsequence};
 use tafla_gen::{Diagnostic, GeneratedFile, Options, compile, parse};
+
+/// The most bytes that a struct takes
+const MAX_STRUCT_SIZE: usize = 65_536;
+
+/// The most tables, and the most structs, that nest in place one within
+/// another, the outermost included
+const MAX_NESTING_DEPTH: usize = 64;
 
 const SCALARS: [&str; 10] = [
     "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float32", "float64",
@@ -154,6 +161,29 @@ proptest! {
         // The struct that grows too large, rather than those that hold it
         let expected = [(format!("`{}` is too large for a struct", name(large)), name(large))];
         check_errors(&source, &expected)?;
+    }
+
+    #[test]
+    fn structs_and_tables_nest_at_most_64_deep(chain in chain()) {
+        let source = chain.render();
+
+        if chain.depth <= MAX_NESTING_DEPTH {
+            for (_, target) in targets() {
+                compile("schema.tafla", &source, target, &Options::default()).map_err(
+                    |diagnostics| {
+                        TestCaseError::fail(Diagnostic::render_all(
+                            &diagnostics,
+                            "schema.tafla",
+                            &source,
+                        ))
+                    },
+                )?;
+            }
+        } else {
+            // The link that grows too deep, rather than those that hold it
+            let link = link_name(MAX_NESTING_DEPTH);
+            check_errors(&source, &[(format!("`{link}` nests too deeply"), link)])?;
+        }
     }
 
     #[test]
@@ -319,12 +349,14 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 /// nested only in definitions before them, so that none contains itself,
 /// tables only in messages of `uint32` offsets, structs of scalars and of the
 /// structs after them, which can share a struct, and versions that fit in
-/// their offset type. Of at most 5 definitions of at most 5 fields, a struct
-/// takes at most 5^5 float64s, 25,000 bytes, within the 65,536 that a struct
-/// takes at most.
+/// their offset type. A struct of `n` fields nests only structs of at most
+/// 65,536 / `n` bytes, so that it takes at most 65,536 itself. Of at most 11
+/// definitions, tables and structs nest at most 11 deep.
 #[derive(Debug)]
 struct Schema {
     definitions: Vec<Definition>,
+    /// The bytes that each struct takes, by its index, and 0 for the others
+    struct_sizes: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -372,7 +404,7 @@ enum FieldType {
 }
 
 fn schema() -> impl Strategy<Value = Schema> {
-    prop::collection::vec(definition(), 0..6).prop_map(|definitions| Schema { definitions })
+    prop::collection::vec(definition(), 0..12).prop_map(Schema::new)
 }
 
 /// A schema with at least one struct, for a property to break
@@ -416,7 +448,7 @@ fn definition() -> impl Strategy<Value = Definition> {
 }
 
 fn fields(field_type: BoxedStrategy<FieldType>) -> impl Strategy<Value = Vec<Field>> {
-    subsequence(&FIELD_NAMES[..], 1..6)
+    subsequence(&FIELD_NAMES[..], 1..13)
         .prop_shuffle()
         .prop_flat_map(move |names| {
             let count = names.len();
@@ -467,6 +499,33 @@ fn docs() -> impl Strategy<Value = Vec<String>> {
 }
 
 impl Schema {
+    /// The schema of `definitions`, with the size of each struct, measured
+    /// from the last, since a struct nests only the structs after it
+    fn new(definitions: Vec<Definition>) -> Self {
+        let mut schema = Self {
+            struct_sizes: vec![0; definitions.len()],
+            definitions,
+        };
+
+        let structs: Vec<usize> = schema.structs().collect();
+        for index in structs.into_iter().rev() {
+            let size = schema.definitions[index]
+                .fields
+                .iter()
+                .map(|field| match field.of_type {
+                    FieldType::Scalar(scalar) => scalar_size(scalar),
+                    FieldType::Struct(chosen) => schema
+                        .nested_struct(index, chosen)
+                        .map_or_else(|| scalar_size(chosen), |nested| schema.struct_sizes[nested]),
+                    _ => unreachable!("structs hold scalars and structs"),
+                })
+                .sum();
+            schema.struct_sizes[index] = size;
+        }
+
+        schema
+    }
+
     fn render(&self) -> String {
         self.render_with(None)
     }
@@ -604,12 +663,14 @@ impl Schema {
 
     /// The struct that a field of the definition at `index` holds, if there's
     /// one: any of the structs, or in a struct one after it, so that none
-    /// contains itself
+    /// contains itself, of at most its share of the bytes that a struct takes
     fn nested_struct(&self, index: usize, chosen: Index) -> Option<usize> {
-        let in_struct = matches!(self.definitions[index].kind, Kind::Struct);
+        let definition = &self.definitions[index];
+        let in_struct = matches!(definition.kind, Kind::Struct);
+        let share = MAX_STRUCT_SIZE / definition.fields.len();
         let structs: Vec<usize> = self
             .structs()
-            .filter(|&other| !in_struct || other > index)
+            .filter(|&other| !in_struct || (other > index && self.struct_sizes[other] <= share))
             .collect();
 
         (!structs.is_empty()).then(|| structs[chosen.index(structs.len())])
@@ -634,6 +695,15 @@ fn scalar_name(scalar: Index) -> &'static str {
     SCALARS[scalar.index(SCALARS.len())]
 }
 
+/// The bytes of a scalar, from the bits in its name
+fn scalar_size(scalar: Index) -> usize {
+    let bits: usize = scalar_name(scalar)
+        .trim_start_matches(char::is_alphabetic)
+        .parse()
+        .unwrap();
+    bits / 8
+}
+
 /// Unique names, which mix letters and digits as `PascalCase` allows
 fn name(index: usize) -> String {
     format!("Definition{index}X")
@@ -652,4 +722,70 @@ fn large_structs() -> String {
         .unwrap();
     }
     source
+}
+
+/// A chain of tables or of structs, each of which holds the one before it in
+/// place, `depth` of them in all, declared in any order
+#[derive(Debug)]
+struct Chain {
+    is_struct: bool,
+    depth: usize,
+    /// How many fields each link has besides its scalar: a table's each hold
+    /// the link before it, and a struct's all but the first are scalars,
+    /// since each struct that held the one before it twice would double
+    width: usize,
+    /// The order of the links' declarations, by their depth less one
+    order: Vec<usize>,
+}
+
+fn chain() -> impl Strategy<Value = Chain> {
+    // Depths around the most that nest, as often as any others
+    let depth = prop_oneof![
+        1..=MAX_NESTING_DEPTH + 16,
+        MAX_NESTING_DEPTH - 2..=MAX_NESTING_DEPTH + 2,
+    ];
+
+    (any::<bool>(), depth, 1..=4_usize).prop_flat_map(|(is_struct, depth, width)| {
+        Just((0..depth).collect::<Vec<usize>>())
+            .prop_shuffle()
+            .prop_map(move |order| Chain {
+                is_struct,
+                depth,
+                width,
+                order,
+            })
+    })
+}
+
+impl Chain {
+    fn render(&self) -> String {
+        let keyword = if self.is_struct { "struct" } else { "table" };
+
+        let mut source = String::new();
+        for &link in &self.order {
+            let mut fields = vec!["value: uint8".to_owned()];
+            for field in 0..self.width {
+                let nests = link > 0 && (field == 0 || !self.is_struct);
+                fields.push(if nests {
+                    format!("inner_{field}: {}", link_name(link - 1))
+                } else {
+                    format!("value_{field}: float64")
+                });
+            }
+            writeln!(
+                source,
+                "{keyword} {} {{ {}; }}",
+                link_name(link),
+                fields.join("; ")
+            )
+            .unwrap();
+        }
+
+        source
+    }
+}
+
+/// The name of the link that nests `index` others
+fn link_name(index: usize) -> String {
+    format!("Link{index}")
 }

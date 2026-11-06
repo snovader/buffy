@@ -18,6 +18,8 @@ yarn test
 ```
 
 `yarn format:write` and `yarn lint:write` fix what they can.
+`TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
+buffers of more than 4 GiB, which are skipped by default.
 `yarn conformance:generate` regenerates the conformance suite at the root of the
 repository from `core/test/conformance/cases.ts`, and the tables of the
 generated code in its `generated` directory from
@@ -40,5 +42,8 @@ TypeScript configs set it in `customConditions`. Without it, as for the
 package's users, they resolve to the build in `dist`.
 
 `yarn workspace tafla build` compiles the package to `dist`, and packing
-it builds it first. `yarn package:check` packs it, checks the archive with Are
+it builds it first. The package holds only `dist`, so its `publishConfig`
+replaces `exports` and `imports` with copies without the condition, which
+Yarn writes into the packed manifest. Pack and publish it with Yarn, since npm
+doesn't apply them. `yarn package:check` packs it, checks the archive with Are
 the Types Wrong and publint, and imports the build to read back a table.

@@ -534,9 +534,11 @@ class ByteBuffer:
     # for each item took: 6 µs against 16 µs for 100 items.
 
     def get_vector_offsets(self, position: int) -> array[int]:
-        """Returns the position of every item of the vector at ``position``."""
+        """Returns the position of every item of the vector at ``position``,
+        as 64-bit unsigned integers, since the buffer may be longer than
+        4 GiB, as a memory map of many tables is."""
         ends = self.__get_item_ends(position)
-        offsets = array("I", bytes(len(ends) * SIZEOF_32))
+        offsets = array("Q", bytes(len(ends) * SIZEOF_64))
         length = self.__length
 
         start = (len(ends) + 1) * self.__size

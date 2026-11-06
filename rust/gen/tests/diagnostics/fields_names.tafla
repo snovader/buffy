@@ -1,0 +1,15 @@
+// The generated code writes each message and table from a declaration of its
+// fields, `<Name>Fields`, and each struct too in TypeScript and JavaScript,
+// which no declaration can take
+
+table PointFields { x: uint8; }
+table Point { p: PointFields; }
+
+message Document { pair: Pair; }
+struct DocumentFields { x: uint8; }
+
+struct Pair { first: float64; second: float64; }
+struct PairFields { first: float64; }
+
+// Valid: `Fields` alone takes no declaration's name, other than in Java
+table Pointfields { x: uint8; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteBuffer, DecodeError } from 'tafla';
+import { ByteBuffer, DecodeError, TableBuilder } from 'tafla';
 
 describe('DecodeError', () => {
     it('should be a RangeError named DecodeError', () => {
@@ -64,5 +64,72 @@ describe('DecodeError', () => {
         expect(() => buffer.getString(0)).toThrow(
             expect.objectContaining({ cause: expect.any(TypeError) })
         );
+    });
+});
+
+/**
+ * A table with a field of each kind that has a getter, in a resizable buffer
+ * with room around it, and the getters that read its fields
+ */
+function resizableTable(): [ArrayBuffer, ByteBuffer, Record<string, () => unknown>] {
+    const builder = new TableBuilder(6);
+    builder.setUint32(7);
+    builder.setFloat64Array([1.5, 2.5]);
+    builder.setString('🦀');
+    builder.setStruct(Uint8Array.of(1, 2, 3, 4));
+    builder.setStructArray(Uint8Array.of(1, 2, 3, 4), 2, 2);
+    builder.setVector([Uint8Array.of(5), Uint8Array.of(6, 7)]);
+    const table = builder.bytes();
+
+    const buffer = new ArrayBuffer(8 + table.length + 8, { maxByteLength: 1024 });
+    const bytes = new Uint8Array(buffer, 8, table.length);
+    bytes.set(table);
+
+    const reader = new ByteBuffer(bytes);
+    const [scalar, array, string, struct, structArray, vector] = [0, 1, 2, 3, 4, 5].map(index =>
+        reader.rootOffset(index)
+    );
+    const getters: Record<string, () => unknown> = {
+        'rootOffset()': () => reader.rootOffset(0),
+        'getUint32()': () => reader.getUint32(scalar),
+        'getFloat64()': () => reader.getFloat64(array),
+        'getFloat64Array()': () => reader.getFloat64Array(array),
+        'getUint8Array()': () => reader.getUint8Array(string),
+        'getString()': () => reader.getString(string),
+        'getStruct()': () => reader.getStruct(struct, 4),
+        'getStructArray()': () => reader.getStructArray(structArray, 2),
+        'getVectorLength()': () => reader.getVectorLength(vector),
+        'getVectorOffset()': () => reader.getVectorOffset(vector, 1),
+        'getVectorOffsets()': () => reader.getVectorOffsets(vector),
+        'getVector()': () => reader.getVector(vector)
+    };
+
+    return [buffer, reader, getters];
+}
+
+describe('bytes lost after the reader was made', () => {
+    const GETTERS = Object.keys(resizableTable()[2]);
+
+    it.each(GETTERS)('should read the table with %s before its buffer changes', getter => {
+        const [, , getters] = resizableTable();
+
+        expect(getters[getter]).not.toThrow();
+    });
+
+    it.each(GETTERS)(
+        'should throw DecodeError from %s once the buffer has shrunk below the table',
+        getter => {
+            const [buffer, , getters] = resizableTable();
+            buffer.resize(12);
+
+            expect(getters[getter]).toThrow(DecodeError);
+        }
+    );
+
+    it.each(GETTERS)('should throw DecodeError from %s once the buffer is detached', getter => {
+        const [buffer, , getters] = resizableTable();
+        buffer.transfer();
+
+        expect(getters[getter]).toThrow(DecodeError);
     });
 });

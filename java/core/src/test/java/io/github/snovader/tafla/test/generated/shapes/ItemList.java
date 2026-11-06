@@ -5,7 +5,6 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-import java.util.Arrays;
 import java.util.List;
 
 /** A list of items, each a table of its own */
@@ -40,7 +39,7 @@ public final class ItemList {
     public List<Item> items() {
         var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
-        return Arrays.stream(offsets)
+        return java.util.Arrays.stream(offsets)
             .mapToObj(item -> new Item(buffer, item))
             .toList();
     }

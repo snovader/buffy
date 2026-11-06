@@ -1,5 +1,7 @@
 //! A checked schema, which the generators read: every type resolved, every
-//! name unique and every layout within what tafla can write.
+//! name unique and every layout within what tafla can write. Tables and
+//! structs nest in place at most 64 deep, so the generators and the methods
+//! here can follow them by recursion.
 
 #[derive(Debug)]
 pub struct Schema {
@@ -228,8 +230,8 @@ impl Schema {
             let alignment = match field.field_type {
                 FieldType::Array(scalar) => scalar.size(),
                 FieldType::StructArray(index) => self.definition(index).struct_layout().alignment,
-                // Tables nest in place only acyclically, which the checker
-                // ensures, so this ends
+                // Tables nest in place only acyclically and at most 64 deep,
+                // which the checker ensures, so this ends soon
                 FieldType::Table(index) => {
                     if let Some(alignment) = alignments[index] {
                         alignment

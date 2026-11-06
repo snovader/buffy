@@ -264,6 +264,42 @@ describe('counts and sizes', () => {
 });
 
 describe('bytes that are part of a larger buffer', () => {
+    it.prop([inPlaceTables(), fc.integer({ min: 1, max: 255 })])(
+        'should write zero padding into bytes that are not zero',
+        (table, fill) => {
+            const expected = buildTable(table).bytes();
+            const bytes = new Uint8Array(expected.length).fill(fill);
+
+            expect(writeTableInto(table, bytes)).toStrictEqual(expected);
+        }
+    );
+
+    it('should zero the padding before an array and a nested table in reused bytes', () => {
+        // A uint8 leaves the uint32[]'s count 3 bytes short of its alignment,
+        // and a uint16 the nested table of float64s 1 byte short of its own
+        const table: TableDescription = {
+            fields: [
+                { type: 'uint8', value: 1 },
+                { type: 'uint32[]', value: [2] },
+                { type: 'uint16', value: 3 },
+                {
+                    type: 'table',
+                    from: 'builder',
+                    table: {
+                        layout: { sized: false, versioned: false, offsetSize: 4 },
+                        fields: [{ type: 'float64[]', value: [4] }]
+                    }
+                }
+            ],
+            layout: { sized: false, versioned: false, offsetSize: 4 }
+        };
+        const expected = buildTable(table).bytes();
+
+        expect(writeTableInto(table, new Uint8Array(expected.length).fill(0xee))).toStrictEqual(
+            expected
+        );
+    });
+
     it.prop([inPlaceTables(), SLICES])(
         'should write a table into a slice of a larger buffer, and nothing around it',
         (table, slice) => {

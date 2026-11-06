@@ -11,6 +11,12 @@ const config = defineProject({
         // than in Vite's
         experimental: {
             viteModuleRunner: false
+        },
+        // The tests can't read the environment themselves, as they're typed
+        // without Node's globals
+        provide: {
+            // Tests that allocate buffers of more than 4 GiB
+            largeBufferTests: process.env.TAFLA_LARGE_BUFFER_TESTS === '1'
         }
     }
 });

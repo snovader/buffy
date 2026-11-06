@@ -1,0 +1,213 @@
+// Messages and tables nest in place at most 64 deep, one within another, and
+// structs too, the outermost included. Each chain here is one too deep, and
+// the error points at the definition that grows too deep, rather than at
+// those that hold it. A struct within a table adds nothing to the table's
+// depth, and vectors nest tables deeper.
+
+struct S1 { value: uint8; }
+struct S2 { value: uint8; inner: S1; }
+struct S3 { value: uint8; inner: S2; }
+struct S4 { value: uint8; inner: S3; }
+struct S5 { value: uint8; inner: S4; }
+struct S6 { value: uint8; inner: S5; }
+struct S7 { value: uint8; inner: S6; }
+struct S8 { value: uint8; inner: S7; }
+struct S9 { value: uint8; inner: S8; }
+struct S10 { value: uint8; inner: S9; }
+struct S11 { value: uint8; inner: S10; }
+struct S12 { value: uint8; inner: S11; }
+struct S13 { value: uint8; inner: S12; }
+struct S14 { value: uint8; inner: S13; }
+struct S15 { value: uint8; inner: S14; }
+struct S16 { value: uint8; inner: S15; }
+struct S17 { value: uint8; inner: S16; }
+struct S18 { value: uint8; inner: S17; }
+struct S19 { value: uint8; inner: S18; }
+struct S20 { value: uint8; inner: S19; }
+struct S21 { value: uint8; inner: S20; }
+struct S22 { value: uint8; inner: S21; }
+struct S23 { value: uint8; inner: S22; }
+struct S24 { value: uint8; inner: S23; }
+struct S25 { value: uint8; inner: S24; }
+struct S26 { value: uint8; inner: S25; }
+struct S27 { value: uint8; inner: S26; }
+struct S28 { value: uint8; inner: S27; }
+struct S29 { value: uint8; inner: S28; }
+struct S30 { value: uint8; inner: S29; }
+struct S31 { value: uint8; inner: S30; }
+struct S32 { value: uint8; inner: S31; }
+struct S33 { value: uint8; inner: S32; }
+struct S34 { value: uint8; inner: S33; }
+struct S35 { value: uint8; inner: S34; }
+struct S36 { value: uint8; inner: S35; }
+struct S37 { value: uint8; inner: S36; }
+struct S38 { value: uint8; inner: S37; }
+struct S39 { value: uint8; inner: S38; }
+struct S40 { value: uint8; inner: S39; }
+struct S41 { value: uint8; inner: S40; }
+struct S42 { value: uint8; inner: S41; }
+struct S43 { value: uint8; inner: S42; }
+struct S44 { value: uint8; inner: S43; }
+struct S45 { value: uint8; inner: S44; }
+struct S46 { value: uint8; inner: S45; }
+struct S47 { value: uint8; inner: S46; }
+struct S48 { value: uint8; inner: S47; }
+struct S49 { value: uint8; inner: S48; }
+struct S50 { value: uint8; inner: S49; }
+struct S51 { value: uint8; inner: S50; }
+struct S52 { value: uint8; inner: S51; }
+struct S53 { value: uint8; inner: S52; }
+struct S54 { value: uint8; inner: S53; }
+struct S55 { value: uint8; inner: S54; }
+struct S56 { value: uint8; inner: S55; }
+struct S57 { value: uint8; inner: S56; }
+struct S58 { value: uint8; inner: S57; }
+struct S59 { value: uint8; inner: S58; }
+struct S60 { value: uint8; inner: S59; }
+struct S61 { value: uint8; inner: S60; }
+struct S62 { value: uint8; inner: S61; }
+struct S63 { value: uint8; inner: S62; }
+struct S64 { value: uint8; inner: S63; }
+struct S65 { value: uint8; inner: S64; }
+
+table T1 { value: uint8; }
+table T2 { value: uint8; inner: T1; }
+table T3 { value: uint8; inner: T2; }
+table T4 { value: uint8; inner: T3; }
+table T5 { value: uint8; inner: T4; }
+table T6 { value: uint8; inner: T5; }
+table T7 { value: uint8; inner: T6; }
+table T8 { value: uint8; inner: T7; }
+table T9 { value: uint8; inner: T8; }
+table T10 { value: uint8; inner: T9; }
+table T11 { value: uint8; inner: T10; }
+table T12 { value: uint8; inner: T11; }
+table T13 { value: uint8; inner: T12; }
+table T14 { value: uint8; inner: T13; }
+table T15 { value: uint8; inner: T14; }
+table T16 { value: uint8; inner: T15; }
+table T17 { value: uint8; inner: T16; }
+table T18 { value: uint8; inner: T17; }
+table T19 { value: uint8; inner: T18; }
+table T20 { value: uint8; inner: T19; }
+table T21 { value: uint8; inner: T20; }
+table T22 { value: uint8; inner: T21; }
+table T23 { value: uint8; inner: T22; }
+table T24 { value: uint8; inner: T23; }
+table T25 { value: uint8; inner: T24; }
+table T26 { value: uint8; inner: T25; }
+table T27 { value: uint8; inner: T26; }
+table T28 { value: uint8; inner: T27; }
+table T29 { value: uint8; inner: T28; }
+table T30 { value: uint8; inner: T29; }
+table T31 { value: uint8; inner: T30; }
+table T32 { value: uint8; inner: T31; }
+table T33 { value: uint8; inner: T32; }
+table T34 { value: uint8; inner: T33; }
+table T35 { value: uint8; inner: T34; }
+table T36 { value: uint8; inner: T35; }
+table T37 { value: uint8; inner: T36; }
+table T38 { value: uint8; inner: T37; }
+table T39 { value: uint8; inner: T38; }
+table T40 { value: uint8; inner: T39; }
+table T41 { value: uint8; inner: T40; }
+table T42 { value: uint8; inner: T41; }
+table T43 { value: uint8; inner: T42; }
+table T44 { value: uint8; inner: T43; }
+table T45 { value: uint8; inner: T44; }
+table T46 { value: uint8; inner: T45; }
+table T47 { value: uint8; inner: T46; }
+table T48 { value: uint8; inner: T47; }
+table T49 { value: uint8; inner: T48; }
+table T50 { value: uint8; inner: T49; }
+table T51 { value: uint8; inner: T50; }
+table T52 { value: uint8; inner: T51; }
+table T53 { value: uint8; inner: T52; }
+table T54 { value: uint8; inner: T53; }
+table T55 { value: uint8; inner: T54; }
+table T56 { value: uint8; inner: T55; }
+table T57 { value: uint8; inner: T56; }
+table T58 { value: uint8; inner: T57; }
+table T59 { value: uint8; inner: T58; }
+table T60 { value: uint8; inner: T59; }
+table T61 { value: uint8; inner: T60; }
+table T62 { value: uint8; inner: T61; }
+table T63 { value: uint8; inner: T62; }
+table T64 { value: uint8; inner: T63; }
+
+/// The 65th table, as a message
+message Root { inner: T64; }
+
+/// 64 tables deep, and holds 64 structs deep
+table Deepest { inner: T63; deep: S64; }
+
+table V1 { value: uint8; }
+table V2 { items: [V1]; }
+table V3 { items: [V2]; }
+table V4 { items: [V3]; }
+table V5 { items: [V4]; }
+table V6 { items: [V5]; }
+table V7 { items: [V6]; }
+table V8 { items: [V7]; }
+table V9 { items: [V8]; }
+table V10 { items: [V9]; }
+table V11 { items: [V10]; }
+table V12 { items: [V11]; }
+table V13 { items: [V12]; }
+table V14 { items: [V13]; }
+table V15 { items: [V14]; }
+table V16 { items: [V15]; }
+table V17 { items: [V16]; }
+table V18 { items: [V17]; }
+table V19 { items: [V18]; }
+table V20 { items: [V19]; }
+table V21 { items: [V20]; }
+table V22 { items: [V21]; }
+table V23 { items: [V22]; }
+table V24 { items: [V23]; }
+table V25 { items: [V24]; }
+table V26 { items: [V25]; }
+table V27 { items: [V26]; }
+table V28 { items: [V27]; }
+table V29 { items: [V28]; }
+table V30 { items: [V29]; }
+table V31 { items: [V30]; }
+table V32 { items: [V31]; }
+table V33 { items: [V32]; }
+table V34 { items: [V33]; }
+table V35 { items: [V34]; }
+table V36 { items: [V35]; }
+table V37 { items: [V36]; }
+table V38 { items: [V37]; }
+table V39 { items: [V38]; }
+table V40 { items: [V39]; }
+table V41 { items: [V40]; }
+table V42 { items: [V41]; }
+table V43 { items: [V42]; }
+table V44 { items: [V43]; }
+table V45 { items: [V44]; }
+table V46 { items: [V45]; }
+table V47 { items: [V46]; }
+table V48 { items: [V47]; }
+table V49 { items: [V48]; }
+table V50 { items: [V49]; }
+table V51 { items: [V50]; }
+table V52 { items: [V51]; }
+table V53 { items: [V52]; }
+table V54 { items: [V53]; }
+table V55 { items: [V54]; }
+table V56 { items: [V55]; }
+table V57 { items: [V56]; }
+table V58 { items: [V57]; }
+table V59 { items: [V58]; }
+table V60 { items: [V59]; }
+table V61 { items: [V60]; }
+table V62 { items: [V61]; }
+table V63 { items: [V62]; }
+table V64 { items: [V63]; }
+table V65 { items: [V64]; }
+table V66 { items: [V65]; }
+table V67 { items: [V66]; }
+table V68 { items: [V67]; }
+table V69 { items: [V68]; }
+table V70 { items: [V69]; }

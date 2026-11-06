@@ -264,7 +264,6 @@ fn imports(
 
     if has_vector {
         writer.blank();
-        writer.line("import java.util.Arrays;");
         writer.line("import java.util.List;");
     }
     writer.blank();
@@ -837,7 +836,8 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                 let table = &schema.definition(table).name;
                 writer.line(format!("var offsets = buffer.getVectorOffsets({offset});"));
                 writer.blank();
-                writer.line("return Arrays.stream(offsets)");
+                // Qualified, so that a schema can declare its own `Arrays`
+                writer.line("return java.util.Arrays.stream(offsets)");
                 writer.indent();
                 writer.line(format!(".mapToObj(item -> new {table}(buffer, item))"));
                 writer.line(".toList();");
