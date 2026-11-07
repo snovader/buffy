@@ -1,6 +1,6 @@
 import { describe, expect, inject, test } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
+import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { LAYOUTS, MAX_VALUES, SLICES, sliceOf } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
@@ -41,6 +41,16 @@ it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError'
         new RangeError(`Item ${index} is outside the vector of 2 at 4`)
     );
 });
+
+it.each([0, 3])(
+    "should throw DecodeError for item %s of a vector whose count the bytes can't hold",
+    index => {
+        // A count of 3, whose ends need 12 bytes after it, where 4 are left
+        const buffer = new ByteBuffer(new Uint8Array([3, 0, 0, 0, 8, 0, 0, 0]));
+
+        expect(() => buffer.getVectorOffset(0, index)).toThrow(DecodeError);
+    }
+);
 
 it('should find each vector item from its ends, as reading every item finds it', () => {
     const builder = new TableBuilder(1);

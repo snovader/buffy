@@ -131,10 +131,7 @@ class TableWriter:
         """
         data = self.__data
         if len(data) > self.__max_length:
-            raise ValueError(
-                f"The table's fields make it {len(data)} bytes, "
-                f"too long for {OFFSET_TYPES[self.__size]} offsets"
-            )
+            raise self.__too_long(len(data))
 
         if self.__sized:
             self.__length.pack_into(data, 0, len(data))
@@ -297,7 +294,7 @@ class TableWriter:
         encoded = string.encode()
 
         self.__set_offset(index)
-        self.__set_count(len(encoded))
+        self.__set_count(len(encoded), len(encoded))
         self.__data += encoded
 
     def set_struct(self, index: int, data: Buffer) -> None:
@@ -317,9 +314,10 @@ class TableWriter:
         Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
         whole number of structs.
         """
-        count = struct_count(memoryview(data).nbytes, size)
+        byte_length = memoryview(data).nbytes
+        count = struct_count(byte_length, size)
 
-        self.__start_array(index, count, alignment)
+        self.__start_array(index, count, byte_length, alignment)
         self.__data += data
 
     def set_table(self, index: int, alignment: ElementSize) -> None:
@@ -337,8 +335,9 @@ class TableWriter:
         self.__set_offset(index)
 
         vector = len(self.__data)
-        self.__set_count(count)
-        self.__data += bytes(count * self.__size)
+        ends = count * self.__size
+        self.__set_count(count, ends)
+        self.__data += bytes(ends)
 
         return vector
 
@@ -362,15 +361,17 @@ class TableWriter:
     ) -> None:
         source = little_endian_bytes(type_code, as_elements(type_code, values))
 
-        self.__start_array(index, len(source) // item_size, item_size)
+        self.__start_array(index, len(source) // item_size, len(source), item_size)
         self.__data += source
 
-    def __start_array(self, index: int, count: int, alignment: ElementSize) -> None:
-        """Pads the array so that its elements, after the count, are aligned,
-        and writes its offset and count"""
+    def __start_array(
+        self, index: int, count: int, byte_length: int, alignment: ElementSize
+    ) -> None:
+        """Pads the array so that its ``byte_length`` bytes of elements, after
+        the count, are aligned, and writes its offset and count"""
         self.__pad(len(self.__data) + self.__size, alignment)
         self.__set_offset(index)
-        self.__set_count(count)
+        self.__set_count(count, byte_length)
 
     def __pad(self, position: int, alignment: ElementSize) -> None:
         """Pads so that ``position`` lies at a multiple of ``alignment`` from
@@ -389,16 +390,18 @@ class TableWriter:
         except _PACK_ERRORS as error:
             raise self.__slot_error(len(data) - self.__table, error) from error
 
-    def __set_count(self, count: int) -> None:
-        """Appends a count or length, as wide as the offsets"""
+    def __set_count(self, count: int, byte_length: int) -> None:
+        """Appends a count or length, as wide as the offsets, of the
+        ``byte_length`` bytes that follow it"""
         try:
             self.__data += self.__length.pack(count)
         except StructError as error:
-            raise self.__too_long() from error
+            length = len(self.__data) + self.__size + byte_length
+            raise self.__too_long(length) from error
 
     def __scalar_error(self, value: float, offset: int, error: Exception) -> ValueError:
         if offset > self.__max_length:
-            return self.__too_long()
+            return self.__too_long(len(self.__data))
 
         return ValueError(f"Can't write {value!r} at {len(self.__data)}: {error}")
 
@@ -407,14 +410,18 @@ class TableWriter:
         large for the offset type, or one whose slot lies outside the bytes,
         which only an index or item that isn't its own has"""
         if value > self.__max_length:
-            return self.__too_long()
+            return self.__too_long(len(self.__data))
 
         return ValueError(
             f"Can't write {describe_int(value)} in a slot outside the table: {error}"
         )
 
-    def __too_long(self) -> ValueError:
-        """The error of an offset, count or item end that doesn't fit in the
-        offset type, which only a table too long for it has"""
+    def __too_long(self, length: int) -> ValueError:
+        """The error of a table whose fields make it ``length`` bytes, too long
+        for its offset type, which an offset, count or item end then doesn't
+        fit in"""
         offset_type = OFFSET_TYPES[self.__size]
-        return ValueError(f"The table is too long for {offset_type} offsets")
+        return ValueError(
+            f"The table's fields make it {length} bytes, "
+            f"too long for {offset_type} offsets"
+        )

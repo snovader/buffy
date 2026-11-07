@@ -12,3 +12,7 @@ message Odd (offset_size: 12) {
 message Bare (offset_size) {
     x: float64;
 }
+
+message Named (offset_size: uint8) {
+    x: float64;
+}

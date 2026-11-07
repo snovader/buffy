@@ -57,6 +57,20 @@ class TestTableLayout(unittest.TestCase):
                     str(raised.exception), f"{offset_type!r} isn't an offset type"
                 )
 
+    def test_rejects_the_offset_size_as_a_keyword(self) -> None:
+        """A keyword that isn't read would leave its default in its place"""
+        cases: list[dict[str, Any]] = [
+            {"offset_size": 2},
+            {"offset_type": "uint16", "offset_size": 2},
+        ]
+
+        for options in cases:
+            with (
+                self.subTest(options=options),
+                self.assertRaisesRegex(TypeError, "offset_size"),
+            ):
+                TableLayout(**options)
+
     def test_shows_its_offset_type_in_its_repr(self) -> None:
         layout = TableLayout(sized=True, offset_type="uint16")
 

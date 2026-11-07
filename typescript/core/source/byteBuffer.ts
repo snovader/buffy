@@ -442,6 +442,12 @@ export class ByteBuffer {
      */
     getStruct(position: number, size: number): Uint8Array {
         this.#assertRange(position, size);
+        // A struct of no bytes passes the range check of a buffer that has
+        // lost the slice, which would then give an empty view or a TypeError
+        if (size === 0 && this.#lost()) {
+            throw outOfRange(position, size, 0);
+        }
+
         return this.#bytes.subarray(position, position + size);
     }
 
@@ -739,10 +745,12 @@ export class ByteBuffer {
      * read from the ends of that item and the one before it, without reading
      * any other item.
      *
+     * @throws {DecodeError} If the count or the ends after it don't lie within
+     * the bytes, which is checked before `index`, or the item doesn't.
      * @throws {RangeError} If the vector has no item `index`.
      */
     getVectorOffset(position: number, index: number): number {
-        const count = this.#getSize(position);
+        const count = this.getVectorLength(position);
         if (!(Number.isInteger(index) && index >= 0 && index < count)) {
             throw new RangeError(
                 `Item ${index} is outside the vector of ${count} at ${position}`
@@ -868,6 +876,19 @@ export class ByteBuffer {
             return this.#view.byteLength;
         } catch {
             return 0;
+        }
+    }
+
+    /**
+     * Whether the buffer is detached or has shrunk below the slice, when
+     * DataView throws a `TypeError` for its length
+     */
+    #lost(): boolean {
+        try {
+            void this.#view.byteLength;
+            return false;
+        } catch {
+            return true;
         }
     }
 

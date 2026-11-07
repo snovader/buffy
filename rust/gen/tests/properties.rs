@@ -36,7 +36,7 @@ const FIELD_NAMES: [&str; 24] = [
 
 /// The tokens of the schema language and some that aren't, for input that
 /// gets further into the parser and the checker than arbitrary text does
-const TOKENS: [&str; 41] = [
+const TOKENS: [&str; 42] = [
     "message",
     "table",
     "struct",
@@ -64,6 +64,7 @@ const TOKENS: [&str; 41] = [
     "version",
     "offset_type",
     "offset_size",
+    "uint8",
     "uint16",
     "uint32",
     "8",

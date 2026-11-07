@@ -19,7 +19,7 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// order writes each where the sizer counted it.
 ///
 /// Adding a field doesn't fail: [`TableSizer::writer()`] returns the error
-/// of a table longer than its layout's offsets address, as `TableBuilder`'s
+/// of a table too long for its layout's offset type, as `TableBuilder`'s
 /// setter of the field would have.
 ///
 /// ```
@@ -86,8 +86,8 @@ impl TableSizer {
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is longer than the
-    /// layout's offsets address, as `TableBuilder::new()` returns.
+    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
+    /// layout's offset type, as `TableBuilder::new()` returns.
     pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
         let header = layout.header_length(fields)?;
 
@@ -101,7 +101,7 @@ impl TableSizer {
     ///
     /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
     /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is longer than the layout's offsets address, as
+    /// alone is too long for the layout's offset type, as
     /// `TableBuilder::versioned()` returns.
     pub fn versioned(
         fields: usize,
@@ -136,10 +136,10 @@ impl TableSizer {
     ///
     /// # Errors
     ///
-    /// [`BuildError::TooLong`] if the table is longer than its layout's
-    /// offsets address: 255 bytes, 64 KiB or 4 GiB. It names the root field
-    /// that made it too long, and the length that the root's fields up to it
-    /// make the table, as `TableBuilder`'s setter of the field returns.
+    /// [`BuildError::TooLong`] if the table is too long for its layout's
+    /// offset type: longer than 255 bytes, 64 KiB or 4 GiB. It names the root
+    /// field that made it too long, and the length that the root's fields up
+    /// to it make the table, as `TableBuilder`'s setter of the field returns.
     pub fn byte_length(&self) -> Result<usize, BuildError> {
         if let Some(error) = self.too_long {
             return Err(error);

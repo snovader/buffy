@@ -70,8 +70,8 @@ export class TableSizer {
     /**
      * The byte length of the table, with every field added
      *
-     * @throws {RangeError} If the table is longer than its layout's offsets
-     * address: 255 bytes, 64 KiB or 4 GiB.
+     * @throws {RangeError} If the table is too long for its offset type:
+     * longer than 255 bytes, 64 KiB or 4 GiB.
      */
     byteLength(): number {
         const length = this.#position;
@@ -88,8 +88,7 @@ export class TableSizer {
      * Returns a writer of the table, into new bytes of its length, which
      * takes its fields in the order that they were added
      *
-     * @throws {RangeError} If the table is longer than its layout's offsets
-     * address.
+     * @throws {RangeError} If the table is too long for its offset type.
      */
     writer(): TableWriter {
         const bytes = new Uint8Array(this.byteLength());

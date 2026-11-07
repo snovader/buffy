@@ -277,6 +277,13 @@ fn test_reject_vector_whose_ends_lie_outside_slice() {
 
     // The count of 3, at 0, has three ends, of 12 bytes from 4
     assert_eq!(buffer.get_vector(0).unwrap_err(), outside(4, 12));
+
+    // The count is checked before any item is found, so an index past it
+    // fails with the decode error too, as in every runtime
+    for index in [0, 3] {
+        let item = buffer.get_vector(0).map(|vector| vector.get(index));
+        assert_eq!(item, Err(outside(4, 12)), "Item {index}");
+    }
 }
 
 #[test]

@@ -155,3 +155,5 @@ Using the API wrongly throws other errors, whatever the bytes:
   from `bytes()` when its fields didn't fill the bytes that its sizer
   counted, and from `setString()` for a string longer than the one counted.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.
+- `getVectorOffset()` throws a `RangeError` for an index outside the vector,
+  once its count has been checked against the bytes.

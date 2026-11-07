@@ -511,10 +511,12 @@ class ByteBuffer:
         ``position``. It's read from the ends of that item and the one before
         it, without reading any other item.
 
-        Raises ``IndexError`` if the vector has no item ``index``.
+        Raises ``DecodeError`` if the count or the ends after it don't lie
+        within the buffer, which is checked before ``index``, or the item
+        doesn't, and ``IndexError`` if the vector has no item ``index``.
         """
         size = self.__size
-        count = self.__get_size(position)
+        count = self.get_vector_length(position)
         if not 0 <= index < count:
             raise IndexError(
                 f"Item {describe_int(index)} is outside the vector of {count} "

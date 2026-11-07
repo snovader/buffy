@@ -179,6 +179,16 @@ public class ByteBufferTest {
         assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
     }
 
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_reject_a_vector_count_that_the_bytes_cant_hold_before_the_index(
+        @ForAll @IntRange(min = 0, max = 3) int index
+    ) {
+        // A count of 3, whose ends need 12 bytes after it, where 4 are left
+        var buffer = new ByteBuffer(new byte[] {3, 0, 0, 0, 8, 0, 0, 0});
+
+        assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, index));
+    }
+
     @Example
     void struct_views_are_read_only_little_endian_and_start_at_the_struct() {
         // A uint8 field, and then a struct of a uint16 and a float32
@@ -280,7 +290,10 @@ public class ByteBufferTest {
         var buffer = new ByteBuffer(new byte[Short.BYTES + 65536], layout);
 
         var exception = assertThrows(IllegalArgumentException.class, () -> buffer.setInt8Array(new byte[65536]));
-        assertEquals("65536 doesn't fit in uint16 offsets", exception.getMessage());
+        assertEquals(
+            "Can't write 65536 at 0: a uint16 count, length or item end holds at most 65535",
+            exception.getMessage()
+        );
         assertThrows(IllegalArgumentException.class, () -> buffer.setVector(new byte[][] {new byte[65536]}));
 
         buffer.setInt8Array(new byte[] {7});

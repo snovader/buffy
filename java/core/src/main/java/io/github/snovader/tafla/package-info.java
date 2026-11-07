@@ -118,7 +118,7 @@
  *
  * <ul>
  *   <li>Writes past the end of a {@code ByteBuffer} throw an {@link IndexOutOfBoundsException},
- *     and lengths, offsets and versions too large for its offsets an
+ *     and lengths, offsets and versions too large for its offset type an
  *     {@link IllegalArgumentException}. Either writes nothing. A struct size below 1, or below 0
  *     for {@code getStruct()}, throws an {@code IllegalArgumentException}, and
  *     {@code getVectorOffset()} an {@code IndexOutOfBoundsException} for an item outside the
@@ -128,12 +128,12 @@
  *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given
  *     for a layout, a version that doesn't fit, a nested builder with fields left to set, an
  *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
- *     number of structs. A field that would make the table too long for its offsets throws an
+ *     number of structs. A field that would make the table too long for its offset type throws an
  *     {@code IllegalArgumentException} from its setter and isn't added.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a struct size below 1 and an alignment other
  *     than 1, 2, 4 or 8. Its {@code byteLength()} and {@code writer()} throw one for a table too
- *     long for its offsets, before allocating it. {@code TableWriter} never writes outside the
+ *     long for its offset type, before allocating it. {@code TableWriter} never writes outside the
  *     sized bytes: a field that would end past them throws an
  *     {@link IndexOutOfBoundsException}, and {@code bytes()} an {@code IllegalStateException}
  *     for fields that didn't fill them.</li>
