@@ -33,6 +33,10 @@ first commits, for code built from its source before the release.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
+- Rust's `ByteBuffer::root_offsets()` and `field_offsets()`, which return the
+  positions of a table's first fields with one range check of their offsets,
+  as reading each would, and generated Rust views of nested tables of at most
+  four fields, which find their fields' positions with it when they're read.
 
 ### Changed
 

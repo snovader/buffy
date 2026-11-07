@@ -28,6 +28,12 @@ const CHAIN_WIDTH: usize = 60;
 /// rustfmt's `fn_call_width`, past which it breaks a call's arguments
 const FN_CALL_WIDTH: usize = 60;
 
+/// The most fields that a nested table's view finds when it's read, with one
+/// range check of their offsets, rather than in each getter. A view of a
+/// wider table finds each field when its getter is called, so that reading
+/// one field of it doesn't read every offset.
+const RESOLVED_FIELDS: usize = 4;
+
 /// The widest `use` statement with a list that rustfmt keeps on one line, two
 /// columns less than its `max_width`
 const USE_LIST_WIDTH: usize = 98;
@@ -261,23 +267,50 @@ impl Generator<'_> {
         let name = &definition.name;
 
         rust_doc(writer, &definition.docs);
+        let fields = definition.fields.len();
         writer.line("#[derive(Clone, Copy, Debug)]");
         writer.open(format!("pub struct {name}<'a> {{"));
         writer.line("bytes: &'a [u8],");
-        writer.line("position: usize,");
+        if resolves_fields(definition) {
+            writer.line(format!("positions: [usize; {}],", integer(&fields)));
+        } else {
+            writer.line("position: usize,");
+        }
         writer.close("}");
         writer.blank();
 
         writer.open(format!("impl<'a> {name}<'a> {{"));
-        rust_doc(
-            writer,
-            &[
-                "Reads the table at `position` in `bytes`, as its parent's getter finds it"
-                    .to_owned(),
-            ],
-        );
-        writer.open("const fn new(bytes: &'a [u8], position: usize) -> Self {");
-        writer.line("Self { bytes, position }");
+        if resolves_fields(definition) {
+            rust_doc(
+                writer,
+                &[
+                    "Reads the table at `position` in `bytes`, as its parent's getter finds it,"
+                        .to_owned(),
+                    "and the positions of its fields".to_owned(),
+                ],
+            );
+            open_method(
+                writer,
+                "fn new",
+                &["bytes: &'a [u8]", "position: usize"],
+                "Result<Self, DecodeError>",
+            );
+            writer.line("let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);");
+            writer.open("Ok(Self {");
+            writer.line("bytes,");
+            writer.line("positions: buffer.field_offsets(position)?,");
+            writer.close("})");
+        } else {
+            rust_doc(
+                writer,
+                &[
+                    "Reads the table at `position` in `bytes`, as its parent's getter finds it"
+                        .to_owned(),
+                ],
+            );
+            writer.open("const fn new(bytes: &'a [u8], position: usize) -> Self {");
+            writer.line("Self { bytes, position }");
+        }
         writer.close("}");
 
         self.getters(writer, definition, false);
@@ -743,25 +776,26 @@ impl Generator<'_> {
             "let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);"
         };
 
+        let resolved = !is_root && resolves_fields(definition);
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if is_root {
                 format!("buffer.root_offset({})?", integer(&index))
+            } else if resolved {
+                format!("self.positions[{}]", integer(&index))
             } else {
                 format!("buffer.field_offset(self.position, {})?", integer(&index))
             };
 
-            let mut docs = field.docs.clone();
-            docs.extend(errors_doc("if the field lies outside the bytes"));
-            if field.docs.is_empty() {
-                docs.remove(0);
-            }
-
             writer.blank();
-            rust_doc(writer, &docs);
+            rust_doc(writer, &self.getter_docs(field));
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
-            writer.line(buffer);
+            // A field's position that the view found needs no buffer to read
+            // a table from the bytes
+            if !(resolved && matches!(field.field_type, FieldType::Table(_))) {
+                writer.line(buffer);
+            }
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
@@ -774,23 +808,7 @@ impl Generator<'_> {
                     ));
                 }
                 FieldType::String => writer.line("buffer.get_str(position)"),
-                FieldType::Table(table) => {
-                    let table = &self.schema.definition(table).name;
-                    let read = format!("{table}::new(self.bytes, position)");
-
-                    // rustfmt breaks a call wider than its `fn_call_width`
-                    // as `Ok`'s argument
-                    if read.len() <= FN_CALL_WIDTH {
-                        writer.line(format!("Ok({read})"));
-                    } else {
-                        writer.line(format!("Ok({table}::new("));
-                        writer.indent();
-                        writer.line("self.bytes,");
-                        writer.line("position,");
-                        writer.dedent();
-                        writer.line("))");
-                    }
-                }
+                FieldType::Table(table) => read_table(writer, self.schema.definition(table)),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     writer.line(format!(
@@ -818,7 +836,9 @@ impl Generator<'_> {
                     writer.line(format!("Ok(structs.iter().map({structure}::from_bytes))"));
                 }
                 FieldType::Vector(table) => {
-                    let table = &self.schema.definition(table).name;
+                    let nested = self.schema.definition(table);
+                    let table = &nested.name;
+                    let read = if resolves_fields(nested) { "?" } else { "" };
                     writer.line("let vector = buffer.get_vector(position)?;");
                     // Collecting into a `Result` would grow the items from
                     // nothing, since its size hint starts at zero
@@ -826,7 +846,7 @@ impl Generator<'_> {
                     writer.open("for item in vector.iter_in_place() {");
                     // Each item is read in place, from its bytes and those
                     // after it in the message
-                    writer.line(format!("items.push({table}::new(item?, 0));"));
+                    writer.line(format!("items.push({table}::new(item?, 0){read});"));
                     writer.close("}");
                     writer.blank();
                     writer.line("Ok(items)");
@@ -841,6 +861,24 @@ impl Generator<'_> {
                 self.view_getter(writer, field, buffer, &offset);
             }
         }
+    }
+
+    /// A getter's docs: the field's, and the errors it returns
+    fn getter_docs(&self, field: &Field) -> Vec<String> {
+        let condition = match field.field_type {
+            FieldType::Table(table) if resolves_fields(self.schema.definition(table)) => {
+                "if the field, or its table's offsets, lie outside the bytes"
+            }
+            _ => "if the field lies outside the bytes",
+        };
+
+        let mut docs = field.docs.clone();
+        docs.extend(errors_doc(condition));
+        if field.docs.is_empty() {
+            docs.remove(0);
+        }
+
+        docs
     }
 
     /// The getter of a view of a vector or an array of structs, which reads
@@ -1099,7 +1137,11 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
         &["bytes: Result<&'a [u8], DecodeError>"],
         &item,
     );
-    writer.line(format!("Ok({table}::new(bytes?, 0))"));
+    if resolves_fields(definition) {
+        writer.line(format!("{table}::new(bytes?, 0)"));
+    } else {
+        writer.line(format!("Ok({table}::new(bytes?, 0))"));
+    }
     writer.close("}");
     writer.close("}");
 }
@@ -1175,6 +1217,36 @@ fn open_method(writer: &mut CodeWriter, head: &str, parameters: &[&str], result:
     }
     writer.dedent();
     writer.open(format!(") -> {result} {{"));
+}
+
+/// Returns the view of the nested table `nested` at `position`, which reads
+/// its offsets if it finds its fields when it's read
+fn read_table(writer: &mut CodeWriter, nested: &Definition) {
+    let table = &nested.name;
+    let read = format!("{table}::new(self.bytes, position)");
+
+    // rustfmt breaks a call wider than its `fn_call_width` as `Ok`'s argument
+    if resolves_fields(nested) {
+        writer.line(read);
+    } else if read.len() <= FN_CALL_WIDTH {
+        writer.line(format!("Ok({read})"));
+    } else {
+        writer.line(format!("Ok({table}::new("));
+        writer.indent();
+        writer.line("self.bytes,");
+        writer.line("position,");
+        writer.dedent();
+        writer.line("))");
+    }
+}
+
+/// Whether a nested table's view finds the positions of its fields when
+/// it's read, with [`ByteBuffer::field_offsets()`], rather than in each
+/// getter, which it does when it has at most [`RESOLVED_FIELDS`] fields
+///
+/// [`ByteBuffer::field_offsets()`]: https://docs.rs/tafla/latest/tafla/struct.ByteBuffer.html#method.field_offsets
+const fn resolves_fields(definition: &Definition) -> bool {
+    definition.fields.len() <= RESOLVED_FIELDS
 }
 
 /// The calls of a chain on `root`, on one line, or each on a line of its own

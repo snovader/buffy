@@ -106,6 +106,15 @@ fn item_access(criterion: &mut Criterion) {
             );
         },
     );
+    group(
+        criterion,
+        &format!("{vector}: read a field of the last item"),
+        |group| {
+            for_each_item_access!(
+                |access, name| read(group, name, || access.last_value(black_box(tables)))
+            );
+        },
+    );
     group(criterion, &format!("{vector}: sum every item"), |group| {
         for_each_item_access!(
             |access, name| read(group, name, || access.every_table(black_box(tables)))

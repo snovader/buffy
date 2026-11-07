@@ -175,6 +175,16 @@ them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
 
+In Rust, the view of a nested table of at most four fields finds the
+positions of all its fields when it's read, by its parent's getter or a
+vector's view, with one range check of their offsets in
+`ByteBuffer::field_offsets()`, and fails then if one lies outside the bytes
+or is 0. Its getters then check only their values. The view of a wider
+table finds each field's position in its getter, so that reading one field
+of it doesn't read every offset. Views that find their fields at once read
+the last of a vector's 100 small tables in less than half the time, and sum
+every one in a third less, than views that find each in its getter.
+
 | Target     | Files                                    | Messages and tables                                                      | Structs                                              |
 | ---------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
 | TypeScript | `<schema>.ts`, in camelCase              | Classes, written from interfaces of their fields                         | Classes, read eagerly and written at any offset      |

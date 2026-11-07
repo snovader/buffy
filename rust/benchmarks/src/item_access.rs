@@ -22,6 +22,14 @@ pub trait ItemAccess: Copy {
     /// A decode error, or an error if the vector is empty.
     fn last_table(self, bytes: &[u8]) -> Result<f64, Error>;
 
+    /// Reads one field of the last item of the vector of nested tables, its
+    /// `value`, as an `f64`
+    ///
+    /// # Errors
+    ///
+    /// A decode error, or an error if the vector is empty.
+    fn last_value(self, bytes: &[u8]) -> Result<f64, Error>;
+
     /// Sums every item of the vector of nested tables, in order
     ///
     /// # Errors
@@ -85,7 +93,8 @@ pub fn no_items() -> Error {
 /// differs.
 pub fn check<A: ItemAccess>(access: A, list: &List, bytes: &ItemBytes) -> Result<(), Error> {
     let sum_of = |item: &Item| sum_item(item.value, item.first, item.second);
-    let last_sum = list.items.last().map(sum_of).ok_or_else(no_items)?;
+    let last_item = list.items.last().ok_or_else(no_items)?;
+    let last_sum = sum_of(last_item);
     let every_sum = list
         .items
         .iter()
@@ -97,6 +106,11 @@ pub fn check<A: ItemAccess>(access: A, list: &List, bytes: &ItemBytes) -> Result
             "the vector's last item",
             access.last_table(&bytes.tables)?,
             last_sum,
+        ),
+        (
+            "the value of the vector's last item",
+            access.last_value(&bytes.tables)?,
+            f64::from(last_item.value),
         ),
         (
             "every item of the vector",

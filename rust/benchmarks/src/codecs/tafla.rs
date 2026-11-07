@@ -207,6 +207,16 @@ impl ItemAccess for Tafla {
         Ok(sum_table(item)?)
     }
 
+    fn last_value(self, bytes: &[u8]) -> Result<f64, Error> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
+        let item = vector.get_in_place(last).ok_or_else(no_items)??;
+        let item = ByteBuffer::new(item, TableLayout::DEFAULT);
+
+        Ok(f64::from(item.get_f32(item.root_offset(0)?)?))
+    }
+
     fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
         let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
         let vector = buffer.get_vector(buffer.root_offset(0)?)?;
@@ -281,12 +291,13 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
 /// Sums an item of the vector, as [`read_item()`] reads it
 fn sum_table(bytes: &[u8]) -> Result<f64, DecodeError> {
     let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-    let pair = item.root_offset(1)?;
+    let [value, pair] = item.root_offsets()?;
+    let [first, second] = item.field_offsets(pair)?;
 
     Ok(sum_item(
-        item.get_f32(item.root_offset(0)?)?,
-        item.get_f32(item.field_offset(pair, 0)?)?,
-        item.get_f32(item.field_offset(pair, 1)?)?,
+        item.get_f32(value)?,
+        item.get_f32(first)?,
+        item.get_f32(second)?,
     ))
 }
 

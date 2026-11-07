@@ -30,11 +30,13 @@ Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in three ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as `f64`s, rather than
-collecting items of its own, and `item_access.rs` holds them:
+collecting items of its own, and `item_access.rs` holds them.
 
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `Vector::iter_in_place()`,
-  and `get_struct_array()`'s bytes with `as_chunks()`.
+  with the positions of its fields from `root_offsets()` and those of its
+  nested table from `field_offsets()`, and `get_struct_array()`'s bytes with
+  `as_chunks()`.
 - **tafla-gen** reads with the generated getters, `items()`, which collect
   the vector's items into a `Vec` first, and iterate over the array's
   structs, whose `last()` the compiler finds without reading the others.
@@ -42,6 +44,11 @@ collecting items of its own, and `item_access.rs` holds them:
   `get(i)` reads one item and whose `iter()` reads every item.
 - **tafla-gen view A/A** reads with the views again, an A/A pair that shows
   Criterion's noise.
+
+One more group, **read a field of the last item** of the vector, reads only
+that table's `value` in the same ways, which shows the cost of finding every
+field of a table to read one. It has no counterpart in the other languages
+yet.
 
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
 sizes and what it does with a truncated document, as the TypeScript comparison

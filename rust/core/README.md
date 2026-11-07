@@ -36,7 +36,8 @@ if version != FORMAT_VERSION {
 let latitude = buffer.get_f64(buffer.root_offset(0)?)?;
 let time_zone = buffer.get_str(buffer.root_offset(1)?)?;
 let table = buffer.root_offset(2)?;
-let read = buffer.get_f32_array(buffer.field_offset(table, 1)?)?;
+let [_, read] = buffer.field_offsets(table)?; // both offsets, checked at once
+let read = buffer.get_f32_array(read)?;
 
 assert_eq!((latitude, time_zone), (59.3293, "Europe/Stockholm"));
 assert_eq!(read.to_vec(), values);
@@ -154,6 +155,10 @@ Validation is always on:
   `DecodeError::ItemEndsBeforeStart`.
 - `root_offset()` and `field_offset()` return `DecodeError::ZeroOffset` for
   a field whose offset is 0, which the format reserves.
+- `root_offsets()` and `field_offsets()` return the positions of a table's
+  first `N` fields, as `N` calls of `root_offset()` and `field_offset()`
+  would, or the error of the first of them that fails. They check the
+  offsets' range once, and whether any is 0 with one comparison.
 - `ByteBuffer` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
   the example does, so that every decoding failure is a `DecodeError`.

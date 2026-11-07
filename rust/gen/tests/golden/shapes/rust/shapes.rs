@@ -159,11 +159,11 @@ impl<'a> Document<'a> {
 
     /// # Errors
     ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    /// Returns a [`DecodeError`] if the field, or its table's offsets, lie outside the bytes.
     pub fn columns(&self) -> Result<Columns<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(3)?;
-        Ok(Columns::new(self.bytes, position))
+        Columns::new(self.bytes, position)
     }
 }
 
@@ -205,13 +205,18 @@ impl DocumentFields<'_> {
 #[derive(Clone, Copy, Debug)]
 pub struct Columns<'a> {
     bytes: &'a [u8],
-    position: usize,
+    positions: [usize; 4],
 }
 
 impl<'a> Columns<'a> {
-    /// Reads the table at `position` in `bytes`, as its parent's getter finds it
-    const fn new(bytes: &'a [u8], position: usize) -> Self {
-        Self { bytes, position }
+    /// Reads the table at `position` in `bytes`, as its parent's getter finds it,
+    /// and the positions of its fields
+    fn new(bytes: &'a [u8], position: usize) -> Result<Self, DecodeError> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        Ok(Self {
+            bytes,
+            positions: buffer.field_offsets(position)?,
+        })
     }
 
     /// The value that `keys` count from
@@ -221,7 +226,7 @@ impl<'a> Columns<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn base(&self) -> Result<i64, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 0)?;
+        let position = self.positions[0];
         buffer.get_i64(position)
     }
 
@@ -230,7 +235,7 @@ impl<'a> Columns<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn keys(&self) -> Result<ArrayView<'a, u32>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 1)?;
+        let position = self.positions[1];
         buffer.get_u32_array(position)
     }
 
@@ -239,7 +244,7 @@ impl<'a> Columns<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn a(&self) -> Result<ArrayView<'a, f32>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 2)?;
+        let position = self.positions[2];
         buffer.get_f32_array(position)
     }
 
@@ -248,7 +253,7 @@ impl<'a> Columns<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn b(&self) -> Result<ArrayView<'a, f32>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 3)?;
+        let position = self.positions[3];
         buffer.get_f32_array(position)
     }
 }
@@ -312,7 +317,7 @@ impl<'a> ItemList<'a> {
         let vector = buffer.get_vector(position)?;
         let mut items = Vec::with_capacity(vector.len());
         for item in vector.iter_in_place() {
-            items.push(Item::new(item?, 0));
+            items.push(Item::new(item?, 0)?);
         }
 
         Ok(items)
@@ -365,13 +370,18 @@ impl ItemListFields<'_> {
 #[derive(Clone, Copy, Debug)]
 pub struct Item<'a> {
     bytes: &'a [u8],
-    position: usize,
+    positions: [usize; 2],
 }
 
 impl<'a> Item<'a> {
-    /// Reads the table at `position` in `bytes`, as its parent's getter finds it
-    const fn new(bytes: &'a [u8], position: usize) -> Self {
-        Self { bytes, position }
+    /// Reads the table at `position` in `bytes`, as its parent's getter finds it,
+    /// and the positions of its fields
+    fn new(bytes: &'a [u8], position: usize) -> Result<Self, DecodeError> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        Ok(Self {
+            bytes,
+            positions: buffer.field_offsets(position)?,
+        })
     }
 
     /// # Errors
@@ -379,17 +389,16 @@ impl<'a> Item<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn value(&self) -> Result<f32, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 0)?;
+        let position = self.positions[0];
         buffer.get_f32(position)
     }
 
     /// # Errors
     ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    /// Returns a [`DecodeError`] if the field, or its table's offsets, lie outside the bytes.
     pub fn pair(&self) -> Result<Pair<'a>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 1)?;
-        Ok(Pair::new(self.bytes, position))
+        let position = self.positions[1];
+        Pair::new(self.bytes, position)
     }
 }
 
@@ -456,7 +465,7 @@ impl<'a> ItemVector<'a> {
 
     /// Reads an item in place, from its bytes and those after it in the message
     fn item(bytes: Result<&'a [u8], DecodeError>) -> Result<Item<'a>, DecodeError> {
-        Ok(Item::new(bytes?, 0))
+        Item::new(bytes?, 0)
     }
 }
 
@@ -464,13 +473,18 @@ impl<'a> ItemVector<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct Pair<'a> {
     bytes: &'a [u8],
-    position: usize,
+    positions: [usize; 2],
 }
 
 impl<'a> Pair<'a> {
-    /// Reads the table at `position` in `bytes`, as its parent's getter finds it
-    const fn new(bytes: &'a [u8], position: usize) -> Self {
-        Self { bytes, position }
+    /// Reads the table at `position` in `bytes`, as its parent's getter finds it,
+    /// and the positions of its fields
+    fn new(bytes: &'a [u8], position: usize) -> Result<Self, DecodeError> {
+        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        Ok(Self {
+            bytes,
+            positions: buffer.field_offsets(position)?,
+        })
     }
 
     /// # Errors
@@ -478,7 +492,7 @@ impl<'a> Pair<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn first(&self) -> Result<f32, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 0)?;
+        let position = self.positions[0];
         buffer.get_f32(position)
     }
 
@@ -487,7 +501,7 @@ impl<'a> Pair<'a> {
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
     pub fn second(&self) -> Result<f32, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 1)?;
+        let position = self.positions[1];
         buffer.get_f32(position)
     }
 }

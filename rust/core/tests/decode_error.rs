@@ -13,7 +13,7 @@ use common::{
     read::{ReadError, read_field, read_root_field, read_table},
     strategy,
 };
-use proptest::{collection::vec, prelude::*, sample::Index};
+use proptest::{collection::vec, prelude::*, sample::Index, test_runner::TestCaseError};
 use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
 
 proptest! {
@@ -94,6 +94,33 @@ proptest! {
         );
     }
 
+    /// Reading the first offsets of a table at once, in a table of any
+    /// layout and in arbitrary bytes, at any position, finds the positions
+    /// that reading each finds, or fails with the error of the first that
+    /// fails
+    #[test]
+    fn test_offsets_read_at_once_read_as_one_at_a_time(
+        bytes in vec(byte(), 0..64),
+        table in strategy::table(),
+        position in position(),
+    ) {
+        let table_bytes = table.to_bytes().unwrap();
+        let layout = table.layout.unversioned();
+
+        for bytes in [bytes.as_slice(), &table_bytes] {
+            let buffer = ByteBuffer::new(bytes, layout);
+            let versioned = ByteBuffer::new(bytes, layout.versioned());
+
+            check_offsets::<0, false>(&buffer, position)?;
+            check_offsets::<1, false>(&buffer, position)?;
+            check_offsets::<2, false>(&buffer, position)?;
+            check_offsets::<3, false>(&buffer, position)?;
+            check_offsets::<5, false>(&buffer, position)?;
+            check_offsets::<2, true>(&versioned, position)?;
+            check_offsets::<5, true>(&versioned, position)?;
+        }
+    }
+
     /// Every getter, at the root offsets of a table of any layout, in the
     /// tables nested in it and in its vectors, and at any position and
     /// field offset, and structs of any size, returns a value or a
@@ -130,6 +157,38 @@ proptest! {
             }
         }
     }
+}
+
+/// Checks that `root_offsets()` and `field_offsets()` of `N` fields at
+/// `position` return what `N` calls of `root_offset()` and `field_offset()`
+/// return
+fn check_offsets<const N: usize, const VERSIONED: bool>(
+    buffer: &ByteBuffer<'_, VERSIONED>,
+    position: usize,
+) -> Result<(), TestCaseError> {
+    prop_assert_eq!(
+        buffer.root_offsets::<N>(),
+        one_at_a_time(|index| buffer.root_offset(index))
+    );
+    prop_assert_eq!(
+        buffer.field_offsets::<N>(position),
+        one_at_a_time(|index| buffer.field_offset(position, index))
+    );
+
+    Ok(())
+}
+
+/// The positions of `N` fields, read one at a time with `read`, or the
+/// error of the first that fails
+fn one_at_a_time<const N: usize>(
+    read: impl Fn(usize) -> Result<usize, DecodeError>,
+) -> Result<[usize; N], DecodeError> {
+    let mut positions = [0; N];
+    for (index, position) in positions.iter_mut().enumerate() {
+        *position = read(index)?;
+    }
+
+    Ok(positions)
 }
 
 /// Bytes, mostly small, so that offsets, counts and lengths often lie
@@ -342,11 +401,30 @@ fn test_reject_field_offset_of_zero() {
     assert_eq!(buffer.get_u8(buffer.root_offset(0).unwrap()), Ok(7));
     assert_eq!(buffer.root_offset(1), Err(error.clone()));
     assert_eq!(buffer.field_offset(0, 1), Err(error.clone()));
+    assert_eq!(buffer.root_offsets::<1>(), Ok([8]));
+    assert_eq!(buffer.root_offsets::<2>(), Err(error.clone()));
+    assert_eq!(buffer.field_offsets::<2>(0), Err(error.clone()));
     assert_eq!(
         error.to_string(),
         "The offset of field 1 is 0, which the format reserves"
     );
     assert!(error.source().is_none());
+}
+
+#[test]
+fn test_read_no_offsets_anywhere() {
+    let buffer = ByteBuffer::new(&[], TableLayout::DEFAULT.sized());
+
+    assert_eq!(buffer.root_offsets::<0>(), Ok([]));
+    assert_eq!(buffer.field_offsets::<0>(usize::MAX), Ok([]));
+    assert_eq!(
+        buffer.root_offsets::<1>(),
+        Err(DecodeError::OutOfRange {
+            position: 4,
+            byte_length: 4,
+            available: 0
+        })
+    );
 }
 
 #[test]

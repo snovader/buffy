@@ -187,6 +187,12 @@ impl ItemAccess for TaflaGen {
         Ok(sum_table(items.last().ok_or_else(no_items)?)?)
     }
 
+    fn last_value(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items()?;
+
+        Ok(f64::from(items.last().ok_or_else(no_items)?.value()?))
+    }
+
     fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
         let items = ItemList::new(bytes).items()?;
 
@@ -224,6 +230,13 @@ impl ItemAccess for TaflaGenView {
         let last = items.len().checked_sub(1).ok_or_else(no_items)?;
 
         Ok(sum_table(&items.get(last).ok_or_else(no_items)??)?)
+    }
+
+    fn last_value(self, bytes: &[u8]) -> Result<f64, Error> {
+        let items = ItemList::new(bytes).items_view()?;
+        let last = items.len().checked_sub(1).ok_or_else(no_items)?;
+
+        Ok(f64::from(items.get(last).ok_or_else(no_items)??.value()?))
     }
 
     fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {

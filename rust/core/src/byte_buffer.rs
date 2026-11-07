@@ -121,6 +121,36 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
         })
     }
 
+    /// Returns the positions of the first `N` fields of the root table, as
+    /// `N` calls of [`ByteBuffer::root_offset()`] would. It checks that their
+    /// offsets lie within the bytes once, and that none is 0 with one
+    /// comparison, so that a reader of several fields does fewer checks.
+    ///
+    /// # Errors
+    ///
+    /// The error of the first of those calls that fails.
+    #[inline]
+    pub fn root_offsets<const N: usize>(&self) -> Result<[usize; N], DecodeError> {
+        self.read_offsets(self.layout.header_size(), 0)
+            .ok_or_else(|| offsets_error(self.bytes, self.layout, None, N))
+    }
+
+    /// Returns the positions of the first `N` fields of a nested table at
+    /// `table_position`, as `N` calls of [`ByteBuffer::field_offset()`]
+    /// would, with the checks of [`ByteBuffer::root_offsets()`].
+    ///
+    /// # Errors
+    ///
+    /// The error of the first of those calls that fails.
+    #[inline]
+    pub fn field_offsets<const N: usize>(
+        &self,
+        table_position: usize,
+    ) -> Result<[usize; N], DecodeError> {
+        self.read_offsets(table_position, table_position)
+            .ok_or_else(|| offsets_error(self.bytes, self.layout, Some(table_position), N))
+    }
+
     scalar_getters!(
         get_i8 -> i8, get_u8 -> u8,
         get_i16 -> i16, get_u16 -> u16,
@@ -204,6 +234,47 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
             count,
             self.offset_type(),
         ))
+    }
+
+    /// Reads the `N` offsets at `slots` and adds `table_position` to each,
+    /// or returns `None` if any doesn't lie within the bytes, is 0, or
+    /// overflows
+    // Always inlined: it's small only once the offset type is a constant, as
+    // it is in a caller with a constant layout. Otherwise LLVM costs every
+    // offset type's loop and calls it out of line.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    fn read_offsets<const N: usize>(
+        &self,
+        slots: usize,
+        table_position: usize,
+    ) -> Option<[usize; N]> {
+        // No fields read no offsets, wherever they'd lie. N is a constant, so
+        // this compiles away.
+        if N == 0 {
+            return Some([0; N]);
+        }
+
+        let width = self.offset_type().size();
+        let bytes = self.bytes.get(slots..)?.get(..N.checked_mul(width)?)?;
+
+        let mut positions = [0; N];
+        let mut smallest = usize::MAX;
+        let mut overflows = false;
+        for (position, slot) in positions.iter_mut().zip(bytes.chunks_exact(width)) {
+            // The chunk holds the slot, so this reads 0 only for an offset of 0
+            let offset = read_slot(slot, self.offset_type()).unwrap_or(0) as usize;
+            // Only a 32-bit host can overflow, at a position past any bytes
+            let (sum, overflow) = table_position.overflowing_add(offset);
+
+            smallest = smallest.min(offset);
+            overflows |= overflow;
+            *position = sum;
+        }
+
+        // One comparison of the smallest offset, which LLVM keeps as one
+        // branch, rather than one per offset
+        (smallest != 0 && !overflows).then_some(positions)
     }
 
     const fn offset_type(&self) -> OffsetType {
@@ -307,4 +378,35 @@ pub fn read_slot(bytes: &[u8], offset_type: OffsetType) -> Option<u32> {
 #[inline(never)]
 const fn zero_offset(index: usize) -> DecodeError {
     DecodeError::ZeroOffset { index }
+}
+
+/// The error of the first of the `count` fields of the root table, or of the
+/// table at `table_position`, that `ByteBuffer::read_offsets()` rejected, as
+/// reading them one at a time finds it. Its arguments are passed by value,
+/// so that its caller needn't store its buffer for it.
+#[cold]
+#[inline(never)]
+fn offsets_error<const VERSIONED: bool>(
+    bytes: &[u8],
+    layout: TableLayout<VERSIONED>,
+    table_position: Option<usize>,
+    count: usize,
+) -> DecodeError {
+    let buffer = ByteBuffer::new(bytes, layout);
+    let read = |index| {
+        table_position.map_or_else(
+            || buffer.root_offset(index),
+            |position| buffer.field_offset(position, index),
+        )
+    };
+
+    // One of the reads fails, since read_offsets() rejects only what they
+    // reject. Were none to fail, the offsets' range is the error.
+    (0..count)
+        .find_map(|index| read(index).err())
+        .unwrap_or_else(|| {
+            let slots = table_position.unwrap_or_else(|| layout.header_size());
+            let byte_length = count as u64 * layout.offset_type().size() as u64;
+            DecodeError::out_of_range(slots, byte_length, bytes.len())
+        })
 }
