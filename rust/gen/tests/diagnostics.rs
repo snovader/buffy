@@ -258,3 +258,39 @@ fn imported_names(contents: &str) -> Vec<String> {
 
     names
 }
+
+#[test]
+fn doc_comments_cannot_hold_what_would_garble_generated_comments() {
+    for (character, name) in [
+        ('\0', "U+0000"),
+        ('\r', "U+000D"),
+        ('\u{1B}', "U+001B"),
+        ('\u{7F}', "U+007F"),
+        ('\u{85}', "U+0085"),
+        ('\u{2028}', "U+2028"),
+        ('\u{2029}', "U+2029"),
+        ('\u{202E}', "U+202E"),
+        ('\u{2066}', "U+2066"),
+    ] {
+        let source = format!("/// a{character}b\nmessage Point {{ x: uint8; }}");
+
+        let diagnostics = parse(&source).unwrap_err();
+
+        assert_eq!(
+            diagnostics[0].message,
+            format!("a doc comment can't hold {name}")
+        );
+        assert_eq!(diagnostics[0].span.start, 5, "{name}");
+    }
+}
+
+#[test]
+fn doc_comments_hold_tabs_and_end_before_a_crlf() {
+    let source = "\u{FEFF}/// a\tb\r\nmessage Point {\r\n    /// c\r\n    x: uint8;\r\n}\r\n";
+
+    let schema = parse(source).unwrap();
+
+    let point = &schema.definitions[0];
+    assert_eq!(point.docs, ["a\tb"]);
+    assert_eq!(point.fields[0].docs, ["c"]);
+}

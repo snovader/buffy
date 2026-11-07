@@ -1,5 +1,6 @@
 //! The `tafla-gen` binary: it writes the generated files under `--out`,
-//! prints errors as the library renders them, and fails on wrong usage.
+//! prints errors as the library renders them, and fails on wrong arguments
+//! with exit code 2 and on a schema's errors with 1.
 
 mod common;
 
@@ -278,57 +279,222 @@ fn generates_a_schema_given_twice_once() {
 }
 
 #[test]
-fn rejects_a_package_that_isnt_a_java_package() {
+fn prints_its_help_to_stdout() {
+    for arguments in [
+        &["--help"][..],
+        &["-h"],
+        &["rust", "schema.tafla", "--help"],
+    ] {
+        let output = tafla_gen(REPOSITORY, arguments);
+
+        assert!(output.status.success(), "{arguments:?}");
+        assert_eq!(stderr(&output), "");
+        let help = String::from_utf8(output.stdout).unwrap();
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(
+            help.starts_with(&format!("tafla-gen {version}\n")),
+            "{help}"
+        );
+        assert!(help.contains(&format!("\n{USAGE}\n")), "{help}");
+        assert!(help.contains("\n  rust, rs\n"), "{help}");
+        assert!(help.contains("\n  2  The arguments are wrong\n"), "{help}");
+    }
+}
+
+#[test]
+fn prints_its_version_to_stdout() {
+    for argument in ["--version", "-V"] {
+        let output = tafla_gen(REPOSITORY, &[argument]);
+
+        assert!(output.status.success());
+        assert_eq!(stderr(&output), "");
+        let version = format!("tafla-gen {}\n", env!("CARGO_PKG_VERSION"));
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), version);
+    }
+}
+
+const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust> <schema>... \
+                     [--out <dir>] [--runtime <module>] [--package <package>]";
+
+/// Fails as wrong arguments do: with the error, the usage and exit code 2,
+/// without writing a file
+fn assert_usage_error(directory: &str, arguments: &[&str], error: &str) {
     let out = tempfile::tempdir().unwrap();
+    let mut arguments = arguments.to_vec();
+    if !arguments.contains(&"--out") {
+        arguments.extend(["--out", out.path().to_str().unwrap()]);
+    }
 
-    let output = tafla_gen(
-        REPOSITORY,
-        &[
-            "java",
-            "schemas/shapes.tafla",
-            "--out",
-            out.path().to_str().unwrap(),
-            "--package",
-            ".generated",
-        ],
-    );
+    let output = tafla_gen(directory, &arguments);
 
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
     assert_eq!(
         stderr(&output),
-        "`.generated` isn't a Java package, which is identifiers in ASCII separated by dots, \
-         such as `com.example.shapes`\n"
+        format!("error: {error}\n{USAGE}\nRun `tafla-gen --help` for more.\n"),
+        "{arguments:?}"
     );
     assert!(read_tree(out.path()).is_empty());
 }
 
 #[test]
-fn prints_its_usage_without_a_target_or_a_schema() {
-    for arguments in [&[][..], &["--help"], &["go", "schema.tafla"], &["rust"]] {
-        let output = tafla_gen(REPOSITORY, arguments);
-
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(
-            stderr(&output),
-            "usage: tafla-gen <typescript|javascript|python|java|rust> <schema>... \
-             [--out <dir>] [--runtime <module>] [--package <package>]\n",
-            "{arguments:?}"
-        );
+fn rejects_wrong_arguments() {
+    for (arguments, error) in [
+        (&[][..], "no target is given"),
+        (&["rust"], "no schema is given"),
+        (
+            &["go", "schemas/shapes.tafla"],
+            "unknown target `go`: this build generates typescript, javascript, python, java, rust",
+        ),
+        (
+            &["rust", "schemas/shapes.tafla", "--outdir", "out"],
+            "unknown option `--outdir`",
+        ),
+        (
+            &["rust", "-o", "schemas/shapes.tafla"],
+            "unknown option `-o`",
+        ),
+        (
+            &["rust", "schemas/shapes.tafla", "--out"],
+            "`--out` needs a value",
+        ),
+        (
+            &[
+                "rust",
+                "schemas/shapes.tafla",
+                "--runtime",
+                "a",
+                "--runtime",
+                "b",
+            ],
+            "`--runtime` is given twice",
+        ),
+    ] {
+        assert_usage_error(REPOSITORY, arguments, error);
     }
 }
 
 #[test]
-fn reports_a_schema_it_cannot_read() {
-    let output = tafla_gen(REPOSITORY, &["rust", "schemas/missing.tafla"]);
+fn rejects_a_package_that_isnt_a_java_package() {
+    assert_usage_error(
+        REPOSITORY,
+        &["java", "schemas/shapes.tafla", "--package", ".generated"],
+        "`.generated` isn't a Java package, which is identifiers in ASCII separated by dots, \
+         such as `com.example.shapes`",
+    );
+}
 
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr(&output).starts_with("schemas/missing.tafla: "));
+#[cfg(unix)]
+#[test]
+fn rejects_an_argument_that_isnt_utf8() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let out = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_tafla-gen"))
+        .current_dir(REPOSITORY)
+        .args(["rust", "--out", out.path().to_str().unwrap()])
+        .arg(std::ffi::OsStr::from_bytes(b"caf\xe9.tafla"))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).starts_with("error: `caf\u{FFFD}.tafla` isn't UTF-8\n"));
+    assert!(read_tree(out.path()).is_empty());
 }
 
 #[test]
-fn reports_an_option_without_a_value() {
-    let output = tafla_gen(REPOSITORY, &["rust", "schemas/shapes.tafla", "--out"]);
+fn takes_options_before_the_target_and_schemas_after_a_double_dash() {
+    let directory = write_schemas(&[("-point.tafla", "message Point { x: uint8; }\n")]);
+    let out = tempfile::tempdir().unwrap();
+
+    let output = tafla_gen(
+        directory.path().to_str().unwrap(),
+        &[
+            "--out",
+            out.path().to_str().unwrap(),
+            "py",
+            "--",
+            "-point.tafla",
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["-point.py"]);
+}
+
+#[test]
+fn reads_a_schema_with_a_byte_order_mark_and_crlf_line_endings() {
+    let source = "/// A point\n/// on a plane\nmessage Point {\n    x: float64;\n}\n";
+    let windows = format!("\u{FEFF}{}", source.replace('\n', "\r\n"));
+    let directory = write_schemas(&[
+        ("unix/point.tafla", source),
+        ("windows/point.tafla", &windows),
+    ]);
+
+    for (name, _) in targets() {
+        let [unix, windows] = ["unix", "windows"].map(|system| {
+            let out = tempfile::tempdir().unwrap();
+            let schema = format!("{system}/point.tafla");
+            let output = tafla_gen(
+                directory.path().to_str().unwrap(),
+                &[name, &schema, "--out", out.path().to_str().unwrap()],
+            );
+            assert!(output.status.success(), "{}", stderr(&output));
+            read_tree(out.path())
+        });
+
+        // The same files, but for the schema's path in their header
+        let windows: Vec<String> = windows
+            .into_values()
+            .map(|contents| contents.replace("windows/point.tafla", "unix/point.tafla"))
+            .collect();
+        assert_eq!(unix.into_values().collect::<Vec<_>>(), windows, "{name}");
+    }
+}
+
+#[test]
+fn rejects_a_schema_that_isnt_utf8() {
+    let directory = tempfile::tempdir().unwrap();
+    // A doc comment in Latin-1 rather than UTF-8
+    let source = b"message Point {\n    /// caf\xe9 au lait\n    x: float64;\n}\n";
+    std::fs::write(directory.path().join("point.tafla"), source).unwrap();
+    let out = tempfile::tempdir().unwrap();
+
+    let output = tafla_gen(
+        directory.path().to_str().unwrap(),
+        &["rust", "point.tafla", "--out", out.path().to_str().unwrap()],
+    );
 
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(stderr(&output), "--out needs a value\n");
+    assert_eq!(
+        stderr(&output),
+        "error: the schema isn't UTF-8\n \
+         --> point.tafla:2:12\n  \
+         |\n\
+         2 |     /// caf\u{FFFD} au lait\n  \
+         |            ^ this isn't a character in UTF-8\n"
+    );
+    assert!(read_tree(out.path()).is_empty());
+}
+
+#[test]
+fn reports_a_schema_it_cannot_read_and_writes_the_others() {
+    let out = tempfile::tempdir().unwrap();
+
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "rust",
+            "schemas/missing.tafla",
+            "schemas/shapes.tafla",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).starts_with("schemas/missing.tafla: "));
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["shapes.rs"]);
 }

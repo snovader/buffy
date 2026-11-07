@@ -47,6 +47,10 @@ first commits, for code built from its source before the release.
   than a `Uint32Array`, so that positions past 4 GiB are exact.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
+- tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and
+  rejects an unknown option rather than reading it as a schema. It has
+  `--help`, `--version` and `--`, takes options anywhere, and reports every
+  schema it can't read or write rather than stopping at the first.
 
 ### Fixed
 
@@ -67,5 +71,12 @@ first commits, for code built from its source before the release.
   compile or overflowing its stack. It checks for cycles in linear time, keeps
   generated files within `--out`, and lines up the carets of its errors under
   tabs.
+- tafla-gen skips a byte-order mark at the start of a schema, points at the
+  first bytes of a schema that aren't UTF-8, and rejects doc comments that
+  hold control characters, rather than generating Rust that doesn't compile.
+  Javadoc writes `&`, `<`, `>` and `@` from doc comments as HTML entities,
+  and `JSDoc` writes `@` as one, so that a line such as `@deprecated` can't
+  become a tag, and a schema's path in a generated header can't end its
+  comment or hold a Unicode escape that Java reads.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main

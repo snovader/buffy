@@ -545,10 +545,13 @@ fn struct_field_type() -> impl Strategy<Value = FieldType> {
     ]
 }
 
-/// Lines of any text, including what ends a comment or string in some
-/// target language
+/// Lines of any text that a doc comment can hold, including what ends a
+/// comment or string in some target language, but no control character
+/// other than a tab, line or paragraph separator or control of the direction
+/// of text, which the lexer rejects
 fn docs() -> impl Strategy<Value = Vec<String>> {
-    prop::collection::vec("[^\n]{0,30}", 0..3)
+    let line = "[\t[^\\p{Cc}\u{2028}\u{2029}\u{202A}-\u{202E}\u{2066}-\u{2069}]]{0,30}";
+    prop::collection::vec(line, 0..3)
 }
 
 impl Schema {

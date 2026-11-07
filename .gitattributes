@@ -13,3 +13,6 @@
 /typescript/.yarn/**            linguist-vendored
 /typescript/.yarn/releases/*    binary
 /typescript/.yarn/plugins/**/*  binary
+
+# A schema whose lines end with CR LF, which tafla-gen reads as LF
+/rust/gen/tests/diagnostics/crlf_line_endings.tafla  -text

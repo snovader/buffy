@@ -8,7 +8,7 @@ use std::fmt::Write;
 
 use super::java_package::KEYWORDS;
 use super::prose::article;
-use super::writer::{CodeWriter, Style, call, doc_comment, text};
+use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
@@ -49,6 +49,10 @@ const MEMBERS: [&str; 12] = [
 ];
 
 pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<GeneratedFile> {
+    // Java reads `\u` as a Unicode escape even in comments, such as in a
+    // path on Windows, unless it's an escape of the backslash itself, which
+    // javac doesn't read on
+    let header = format!("// {}", header.replace("\\u", "\\u005cu"));
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
     let package = options
         .package
@@ -63,7 +67,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
     let mut files = Vec::new();
     for (index, definition) in schema.definitions.iter().enumerate() {
         let mut writer = CodeWriter::new(STYLE.indent);
-        writer.line(format!("// {header}"));
+        writer.line(&header);
         writer.line(format!("package {package};"));
         writer.blank();
 
@@ -91,7 +95,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
 
         if schema.is_item(index) {
             let mut writer = CodeWriter::new(STYLE.indent);
-            writer.line(format!("// {header}"));
+            writer.line(&header);
             writer.line(format!("package {package};"));
             writer.blank();
 
@@ -273,7 +277,7 @@ fn imports(
 fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
     let name = &definition.name;
 
-    writer.lines(&javadoc(&definition.docs));
+    writer.lines(&javadoc(&schema_docs(&definition.docs)));
     writer.open(format!("public final class {name} {{"));
     if let Some(version) = layout.version {
         writer.lines(&doc_comment(&[
@@ -384,7 +388,7 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     let definition = schema.definition(index);
     let name = &definition.name;
 
-    writer.lines(&javadoc(&definition.docs));
+    writer.lines(&javadoc(&schema_docs(&definition.docs)));
     writer.open(format!("public final class {name} {{"));
     writer.lines(&javadoc(&[
         format!(
@@ -466,7 +470,7 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         })
         .collect();
 
-    writer.lines(&javadoc(&definition.docs));
+    writer.lines(&javadoc(&schema_docs(&definition.docs)));
     let components = fields
         .iter()
         .map(|(field, field_type, _)| text(format!("{} {field}", value_type(*field_type, schema))))
@@ -784,7 +788,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         };
 
         writer.blank();
-        writer.lines(&javadoc(&field.docs));
+        writer.lines(&javadoc(&schema_docs(&field.docs)));
         writer.open(format!(
             "public {} {}() {{",
             value_type(field.field_type, schema),
@@ -849,7 +853,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         writer.close("}");
 
         if let Some(view) = view_type(field.field_type, schema) {
-            let mut docs = field.docs.clone();
+            let mut docs = schema_docs(&field.docs);
             if !docs.is_empty() {
                 docs.push(String::new());
             }
@@ -878,6 +882,22 @@ fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
         FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
         _ => None,
     }
+}
+
+/// A schema's documentation as Javadoc's HTML, outside code spans: with
+/// `&`, `<` and `>` as entities, and `@` too, so that it can't start a tag,
+/// such as `@deprecated`, which would deprecate the class, or `{@link}`, but
+/// means itself as it does in the schema
+fn schema_docs(docs: &[String]) -> Vec<String> {
+    let html = |text: &str| {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('@', "&#64;")
+    };
+    docs.iter()
+        .map(|line| escape_outside_code_spans(line, html))
+        .collect()
 }
 
 /// Javadoc, with Markdown's code spans as `{@code ...}`
