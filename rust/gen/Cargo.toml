@@ -31,8 +31,10 @@ java = []
 rust = []
 
 [dev-dependencies]
-# Runs the Rust generated from the example schemas in tests/generated_*.rs
-tafla = { path = "../core" }
+# Runs the Rust generated from the example schemas in tests/generated_*.rs. The
+# version, which scripts/set-version.sh sets, is the one crates.io resolves it
+# to, so tafla is published first
+tafla = { path = "../core", version = "0.0.0" }
 proptest = "1"
 # Parses the cases of conformance/generated in tests/shapes_cases.rs, with
 # floats exactly rather than to within an ulp

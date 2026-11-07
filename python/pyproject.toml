@@ -1,3 +1,11 @@
+# The workspace root isn't a package. Without a build system, `uv build` here
+# would fall back to setuptools and build one named UNKNOWN; with uv_build's, it
+# fails for want of a [project], and `uv build --package tafla` builds the
+# runtime.
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14"]
+build-backend = "uv_build"
+
 [tool.uv.workspace]
 members = ["core", "benchmarks"]
 

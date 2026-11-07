@@ -22,8 +22,8 @@ uv run python -m unittest discover -s benchmarks/tests -t benchmarks
 ```
 
 `uv build --package tafla` builds the runtime's source distribution and wheel
-into `dist/`. Without `--package`, uv builds the workspace's root, which isn't
-a package.
+into `dist/`. Without `--package`, `uv build` fails, since the workspace's
+root isn't a package.
 
 The benchmarks' tests check that their workloads have the TypeScript
 comparison's values, and that every codec in the comparison reads back what it
