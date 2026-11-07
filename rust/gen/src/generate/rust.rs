@@ -44,10 +44,10 @@ const KEYWORDS: [&str; 48] = [
 /// Keywords that can't be raw identifiers, which names take a `_` after
 const PATH_KEYWORDS: [&str; 3] = ["crate", "self", "super"];
 
-/// The method that messages and tables define beside their getters, which
-/// names take a `_` after too. Fields and methods don't share names, so the
-/// other methods don't clash with fields.
-const MEMBERS: [&str; 1] = ["new"];
+/// The associated functions that messages and tables define beside their
+/// getters, `new()` and versioned messages' `version_of()`, which getters
+/// would clash with, so names take a `_` after them too
+const MEMBERS: [&str; 2] = ["new", "version_of"];
 
 pub fn generate(
     schema: &Schema,
@@ -234,6 +234,17 @@ impl Generator<'_> {
             writer.close("}");
             writer.blank();
             writer.line("Ok(Self { bytes })");
+            writer.close("}");
+            writer.blank();
+
+            let mut docs = vec![
+                "Returns the format version in the header of `bytes`, without checking".to_owned(),
+                "it, so that an application can choose the reader of that version".to_owned(),
+            ];
+            docs.extend(errors_doc("if the header doesn't fit in `bytes`"));
+            rust_doc(writer, &docs);
+            writer.open("pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {");
+            writer.line("ByteBuffer::new(bytes, Self::LAYOUT).version()");
             writer.close("}");
         } else {
             rust_doc(writer, &[format!("Reads {} from `bytes`", article(name))]);

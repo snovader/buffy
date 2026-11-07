@@ -106,6 +106,26 @@ the same values from the same bytes, or fail alike. A vector item whose end
 leaves it only its offsets, for example, reads its fields from the bytes after
 it, which its parent reads within.
 
+## Evolution
+
+A table carries no count of its fields: the reader knows `n` from its
+format, and a reader that expects more fields than a table holds would read
+the extra offsets from the first value's bytes. So a format fixes its tables'
+fields, and a format whose fields change, such as that of messages that are
+stored or sent, gives each set of fields a version of its own in the header:
+
+- A versioned table's reader rejects every version but its own with its
+  decode error, even a newer version that only appends fields. An
+  application that reads several versions reads the version first, and then
+  reads the table with the reader of that version.
+- Every version should keep the same layout, so that the version lies in the
+  same slot, with the same width, in each of them, and an application can
+  read it before it knows which version a table holds.
+- A new version should only append fields to the previous version's, so that
+  each field keeps its index and type in every version that has it. A reader
+  that doesn't check the version then reads the fields that it knows from a
+  newer table's bytes alike.
+
 ## Validation
 
 Readers decode untrusted bytes. An implementation:

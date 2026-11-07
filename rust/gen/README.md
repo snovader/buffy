@@ -62,7 +62,13 @@ Each field is `name: type;`, of one of these types:
 | `[` a table's name `]`                                                   | A vector of tables        |
 
 Every field is required, and is read by its index, so its position is part of
-the format: a message that changes its fields needs another version.
+the format: a message that changes its fields needs another version, which
+should only append fields to the previous version's, as the format's
+[evolution](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
+describes. A versioned message's reader rejects every other version, so an
+application that reads several versions declares a message for each, reads
+the version first with any of them, and then constructs the message of that
+version, as [versions](#versions) shows.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
@@ -243,10 +249,10 @@ Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
-`constructor_` and `toString_` in TypeScript, `serialize_` and `int_` in
-Python, `hashCode_` and `serialize_` in Java, and `new_` in Rust. So does
-`then` in TypeScript and JavaScript, since a `then()` method would make a
-reader a thenable, which `await` calls and never settles. `MEMBERS` in each
+`constructor_` and `toString_` in TypeScript, `serialize_`, `int_` and
+`version_of_` in Python, `hashCode_` and `serialize_` in Java, and `new_` and
+`version_of_` in Rust. So does `then` in TypeScript and JavaScript, since a
+`then()` method would make a reader a thenable, which `await` calls and never settles. `MEMBERS` in each
 target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
@@ -301,6 +307,37 @@ let bytes = DocumentFields { x: 1.5, y: 2.0, name: "a", columns }.serialize()?;
 let document = Document::new(&bytes)?; // checks the version
 assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<f32>
 # Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### Versions
+
+A versioned message has a `FORMAT_VERSION`, which its writer writes and its
+reader checks, and a static function that returns the version in the header
+of bytes without checking it, which fails with the decode error when the
+bytes don't hold the header:
+
+| Target                 | Version of bytes                                             |
+| ---------------------- | ------------------------------------------------------------ |
+| TypeScript, JavaScript | `Document.versionOf(bytes)`, a `number`                      |
+| Python                 | `Document.version_of(data)`, an `int`                        |
+| Java                   | `Document.versionOf(bytes)`, a `long`                        |
+| Rust                   | `Document::version_of(&bytes)`, a `Result<u32, DecodeError>` |
+
+An application that reads two versions of a document, declared with the same
+header as `message DocumentV1 (sized, version: 1)` and
+`message Document (sized, version: 2)`, so that their versions lie in the
+same slot, dispatches on the version without constructing a reader of the
+wrong fields:
+
+```ts
+switch (Document.versionOf(bytes)) {
+    case DocumentV1.FORMAT_VERSION:
+        return fromV1(new DocumentV1(bytes));
+    case Document.FORMAT_VERSION:
+        return fromV2(new Document(bytes));
+    default:
+        throw new Error('Unknown document version');
+}
 ```
 
 ## Command

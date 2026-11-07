@@ -274,6 +274,22 @@ fn imports(
     writer.blank();
 }
 
+/// A versioned message's `versionOf()`, which reads the version in a header
+/// without checking it, so that an application can choose the reader of that
+/// version before it constructs one
+fn version_of(writer: &mut CodeWriter) {
+    writer.lines(&doc_comment(&[
+        "Returns the format version in the header of {@code bytes}, without checking it, so that an"
+            .to_owned(),
+        "application can choose the reader of that version".to_owned(),
+        String::new(),
+        "@throws DecodeException if the header doesn't fit in {@code bytes}".to_owned(),
+    ]));
+    writer.open("public static long versionOf(byte[] bytes) {");
+    writer.line("return new ByteBuffer(bytes, LAYOUT).getVersion();");
+    writer.close("}");
+}
+
 fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
     let name = &definition.name;
 
@@ -325,6 +341,11 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     }
     writer.close("}");
     writer.blank();
+
+    if layout.version.is_some() {
+        version_of(writer);
+        writer.blank();
+    }
 
     writer.lines(&javadoc(&[format!(
         "Writes {} with every field",

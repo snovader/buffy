@@ -110,6 +110,18 @@ export class Document {
     }
 
     /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(bytes, Document.#LAYOUT).getVersion();
+    }
+
+    /**
      * Writes a `Document` with every field
      *
      * @param {DocumentFields} fields

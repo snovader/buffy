@@ -30,7 +30,7 @@ const KEYWORDS: [&str; 38] = [
 /// `_` after too: the classes' own methods, the parameter of `serialize()`
 /// beside its keyword arguments, and the built-in types that getters return,
 /// which their annotations find in the class
-const MEMBERS: [&str; 11] = [
+const MEMBERS: [&str; 12] = [
     "cls",
     "float",
     "int",
@@ -41,6 +41,7 @@ const MEMBERS: [&str; 11] = [
     "serialize",
     "serialize_array",
     "str",
+    "version_of",
     "write",
 ];
 
@@ -265,6 +266,11 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     writer.dedent();
     writer.blank();
 
+    if layout.version.is_some() {
+        version_of(writer);
+        writer.blank();
+    }
+
     writer.line("@classmethod");
     writer.statement(
         &STYLE,
@@ -294,6 +300,25 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     writer.dedent();
 
     getters(writer, schema, definition, true);
+    writer.dedent();
+}
+
+/// A versioned message's `version_of()`, which reads the version in a header
+/// without checking it, so that an application can choose the reader of that
+/// version before it constructs one
+fn version_of(writer: &mut CodeWriter) {
+    writer.line("@classmethod");
+    writer.open("def version_of(cls, data: Buffer) -> int:");
+    docstring(
+        writer,
+        &[
+            "Returns the format version in the header of `data`, without checking".to_owned(),
+            "it, so that an application can choose the reader of that version.".to_owned(),
+            "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` if".to_owned(),
+            "the header doesn't fit in it.".to_owned(),
+        ],
+    );
+    writer.line("return ByteBuffer(data, cls._LAYOUT).get_version()");
     writer.dedent();
 }
 

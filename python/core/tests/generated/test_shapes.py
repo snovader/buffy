@@ -48,9 +48,8 @@ from tests.generated.shapes_tables import (
 )
 from tests.tables import build_table
 
-_OTHER_VERSIONS = integers(0, 0xFFFF_FFFF).filter(
-    lambda version: version != DOCUMENT_VERSION
-)
+_VERSIONS = integers(0, 0xFFFF_FFFF)
+_OTHER_VERSIONS = _VERSIONS.filter(lambda version: version != DOCUMENT_VERSION)
 
 # Integers of more digits than Python converts to a string by default, 4,300
 _BEYOND_THE_DIGIT_LIMIT = integers(2**15000, 2**15000 + 16)
@@ -122,6 +121,28 @@ class TestTablesBuiltByHand(unittest.TestCase):
         by_hand = bytes(build_table(describe_item_list(fields)).bytes())
 
         self.assertEqual(bytes(ItemList.serialize(**fields)), by_hand)
+
+
+class TestVersions(unittest.TestCase):
+    @SETTINGS
+    @given(document_fields, _VERSIONS)
+    def test_reads_a_documents_version_from_its_bytes_of_any_version(
+        self, fields: DocumentFields, version: int
+    ) -> None:
+        """An application reads the version to choose the reader of it"""
+        data = build_table(describe_document(fields, version)).bytes()
+
+        self.assertEqual(Document.version_of(data), version)
+
+    @SETTINGS
+    @given(document_fields, integers(0, 7))
+    def test_raises_decode_error_for_the_version_of_data_without_a_header(
+        self, fields: DocumentFields, length: int
+    ) -> None:
+        data = Document.serialize(**fields)[:length]
+
+        with self.assertRaises(DecodeError):
+            Document.version_of(data)
 
 
 class TestDecodeErrors(unittest.TestCase):
