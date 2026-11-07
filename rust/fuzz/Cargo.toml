@@ -1,0 +1,52 @@
+[package]
+name = "tafla-fuzz"
+version = "0.0.0"
+description = "Fuzz targets for tafla's reader and tafla-gen, run with cargo-fuzz"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# A workspace of its own, so that the libFuzzer runtime, which builds with a
+# C++ compiler and links only with cargo-fuzz's flags, stays out of the main
+# workspace's builds and tests
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+tafla = { path = "../core" }
+tafla-gen = { path = "../gen" }
+
+[[bin]]
+name = "byte_buffer"
+path = "fuzz_targets/byte_buffer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "conformance"
+path = "fuzz_targets/conformance.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gen"
+path = "fuzz_targets/gen.rs"
+test = false
+doc = false
+bench = false
+
+# Line tables, so that a crash's backtrace names its lines
+[profile.release]
+debug = 1
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

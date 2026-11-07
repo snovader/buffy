@@ -1,11 +1,12 @@
 //! The tests' one model of tables: the conformance suite's descriptions,
-//! which `conformance.rs` reads from `cases.json` and `strategy` generates,
+//! which `cases` parses from `cases.json` and `strategy` generates,
 //! with the builder and reader that every test builds and reads them with,
 //! and the sizer and writer that write them in place.
 
 #![allow(dead_code)]
 
 mod build;
+pub mod cases;
 pub mod description;
 pub mod read;
 pub mod strategy;

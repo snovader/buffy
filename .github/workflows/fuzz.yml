@@ -1,0 +1,93 @@
+name: Fuzz
+
+# Weekly, rather than on every change, since a run takes minutes of each
+# target's time to find anything. The Rust workflow lints the fuzz targets on
+# every change, so that they keep building.
+on:
+  schedule:
+    # Mondays at 04:17 UTC, off the hour that most scheduled workflows start
+    - cron: "17 4 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds to run each target for
+        type: number
+        default: 300
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Arbitrary bytes, read with every getter at every position
+          - target: byte_buffer
+            seeds: ../conformance/valid ../conformance/invalid
+            options: ""
+          # The suite's tables, mutated and read as its descriptions
+          - target: conformance
+            seeds: ../conformance/valid ../conformance/invalid
+            options: ""
+          # Arbitrary text, parsed, checked and generated from
+          - target: gen
+            seeds: ../schemas gen/tests/diagnostics
+            options: -dict=fuzz/gen.dict
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: nightly
+          cache-workspaces: rust/fuzz -> target
+          cache-key: fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # The corpus that earlier runs grew, so that each run starts where the
+      # last left off. A run saves its own under a new key.
+      - name: Restore the corpus
+        uses: actions/cache@v6
+        with:
+          path: rust/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Build the fuzz targets
+        run: cargo +nightly fuzz build
+
+      # A hang of 10 seconds on one input, or a run out of memory, fails as a
+      # crash does
+      - name: Run the fuzz target
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 300 }}
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo +nightly fuzz run ${{ matrix.target }} \
+              fuzz/corpus/${{ matrix.target }} ${{ matrix.seeds }} -- \
+              -max_total_time="$SECONDS_PER_TARGET" -timeout=10 ${{ matrix.options }}
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: rust/fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
