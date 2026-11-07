@@ -50,7 +50,6 @@ impl CodeWriter {
         self.depth += 1;
     }
 
-    #[cfg(any(feature = "python", feature = "java", feature = "rust"))]
     pub const fn dedent(&mut self) {
         self.depth -= 1;
     }
@@ -69,6 +68,12 @@ impl CodeWriter {
         for line in lines {
             self.line(line);
         }
+    }
+
+    /// Whether a line of `text` fits within the style's width at the current
+    /// depth
+    pub const fn fits(&self, style: &Style, text: &str) -> bool {
+        self.depth * self.indent.len() + text.len() <= style.width
     }
 
     /// Writes `prefix` + `expression` + `suffix`, broken over lines when it

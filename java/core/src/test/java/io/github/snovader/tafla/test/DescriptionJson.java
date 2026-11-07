@@ -50,6 +50,7 @@ final class DescriptionJson {
         var type = field.getString("type");
 
         return switch (type) {
+            case "bool" -> new BoolField(field.getBoolean("value"));
             case "string" -> new StringField(field.getString("value"));
             case "struct" -> new StructField(
                 field.getJsonArray("fields").stream().map(scalar -> readScalar(scalar.asJsonObject())).toList()
@@ -193,6 +194,10 @@ final class DescriptionJson {
             case ScalarField scalar -> Json.createObjectBuilder()
                 .add("type", scalar.type().jsonName())
                 .add("value", writeValue(scalar.type(), scalar.value()))
+                .build();
+            case BoolField bool -> Json.createObjectBuilder()
+                .add("type", "bool")
+                .add("value", bool.value())
                 .build();
             case ArrayField array -> Json.createObjectBuilder()
                 .add("type", array.type().jsonName() + "[]")

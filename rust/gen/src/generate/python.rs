@@ -30,7 +30,8 @@ const KEYWORDS: [&str; 38] = [
 /// `_` after too: the classes' own methods, the parameter of `serialize()`
 /// beside its keyword arguments, and the built-in types that getters return,
 /// which their annotations find in the class
-const MEMBERS: [&str; 12] = [
+const MEMBERS: [&str; 13] = [
+    "bool",
     "cls",
     "float",
     "int",
@@ -821,6 +822,10 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields[\"{}\"]", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => (
+                "set_uint8".to_owned(),
+                vec![position, text(format!("1 if {value} else 0"))],
+            ),
             FieldType::Scalar(scalar) => (
                 format!("set_{}", scalar.name()),
                 vec![position, text(value)],
@@ -892,6 +897,9 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         docstring(writer, &field.docs);
 
         match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => {
+                return_bool(writer, &call("self._buffer.get_uint8", vec![offset]));
+            }
             FieldType::Scalar(scalar) => {
                 let get = call(format!("self._buffer.get_{}", scalar.name()), vec![offset]);
                 writer.statement(&STYLE, "return ", &get, "");
@@ -1078,16 +1086,33 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
     }
 }
 
+/// Returns the bool that `read` reads from its byte, true when it isn't 0, in
+/// parentheses when it doesn't fit on a line, as Ruff breaks a comparison
+fn return_bool(writer: &mut CodeWriter, read: &Expr) {
+    let line = format!("return {} != 0", read.flat());
+    if writer.fits(&STYLE, &line) {
+        writer.line(line);
+    } else {
+        writer.open("return (");
+        writer.statement(&STYLE, "", read, " != 0");
+        writer.close(")");
+    }
+}
+
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
+        Scalar::Bool => "bool",
         Scalar::Float32 | Scalar::Float64 => "float",
         _ => "int",
     }
 }
 
 /// The `struct` module's format character, which is little-endian with `<`
+///
+/// `?` packs a bool's truth as 1 or 0, and unpacks any byte but 0 as `True`.
 const fn struct_code(scalar: Scalar) -> char {
     match scalar {
+        Scalar::Bool => '?',
         Scalar::Int8 => 'b',
         Scalar::Uint8 => 'B',
         Scalar::Int16 => 'h',

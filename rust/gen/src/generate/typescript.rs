@@ -174,6 +174,7 @@ impl Generator<'_> {
     /// `readUint32` or `writeUint32`, in the order that the runtime exports
     /// them
     fn struct_scalar_functions(&self, verb: &str) -> Vec<String> {
+        // A bool is read and written as the uint8 that stores it
         let mut scalars: Vec<Scalar> = Scalar::ALL
             .into_iter()
             .filter(|&scalar| {
@@ -182,7 +183,10 @@ impl Generator<'_> {
                     .iter()
                     .filter(|definition| definition.is_struct())
                     .flat_map(|definition| &definition.fields)
-                    .any(|field| field.field_type == FieldType::Scalar(scalar))
+                    .any(|field| match field.field_type {
+                        FieldType::Scalar(field_scalar) => field_scalar.stored() == scalar,
+                        _ => false,
+                    })
             })
             .collect();
         // `float32` before `float64`, `int8` before `int16`, and so on
@@ -485,7 +489,14 @@ impl Generator<'_> {
         let mut offset = 0;
         for field in &definition.fields {
             let position = struct_position(offset);
+            let target = format!("this.#{} = ", identifier(&field.name));
             let (read, size) = match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => {
+                    let read = call("readUint8", vec![text("bytes"), position]);
+                    assign_bool(writer, &target, &read);
+                    offset += 1;
+                    continue;
+                }
                 FieldType::Scalar(scalar) => (
                     call(
                         format!("read{}", scalar_method(scalar)),
@@ -502,12 +513,7 @@ impl Generator<'_> {
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             };
-            writer.statement(
-                &STYLE,
-                &format!("this.#{} = ", identifier(&field.name)),
-                &read,
-                ";",
-            );
+            writer.statement(&STYLE, &target, &read, ";");
             offset += size;
         }
         writer.close("}");
@@ -594,7 +600,13 @@ impl Generator<'_> {
             let value = format!("fields.{}", identifier(&field.name));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("writer.set{}({value});", scalar_method(scalar)));
+                    let value = stored_value(scalar, &value);
+                    writer.statement(
+                        &STYLE,
+                        "",
+                        &call(format!("writer.set{}", scalar_method(scalar)), vec![value]),
+                        ";",
+                    );
                 }
                 FieldType::Struct(index) => {
                     let inner = &self.schema.definition(index).name;
@@ -630,12 +642,12 @@ impl Generator<'_> {
         let mut offset = 0;
         for field in &definition.fields {
             let position = struct_position(offset);
-            let value = text(format!("fields.{}", identifier(&field.name)));
+            let value = format!("fields.{}", identifier(&field.name));
             let (write, size) = match field.field_type {
                 FieldType::Scalar(scalar) => (
                     call(
                         format!("write{}", scalar_method(scalar)),
-                        vec![text("bytes"), position, value],
+                        vec![text("bytes"), position, stored_value(scalar, &value)],
                     ),
                     usize::from(scalar.size()),
                 ),
@@ -644,7 +656,7 @@ impl Generator<'_> {
                     (
                         call(
                             format!("{}.writeAt", inner.name),
-                            vec![text("bytes"), position, value],
+                            vec![text("bytes"), position, text(value)],
                         ),
                         inner.struct_layout().size,
                     )
@@ -936,7 +948,7 @@ impl Generator<'_> {
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (
                     format!("set{}", scalar_method(scalar)),
-                    vec![position, text(value)],
+                    vec![position, stored_value(scalar, &value)],
                 ),
                 FieldType::Array(scalar) => (
                     format!("set{}Array", scalar_method(scalar)),
@@ -1034,7 +1046,11 @@ impl Generator<'_> {
                         format!("this.#buffer.get{}", scalar_method(scalar)),
                         vec![offset],
                     );
-                    writer.statement(&STYLE, "return ", &get, ";");
+                    if scalar == Scalar::Bool {
+                        return_bool(writer, &get);
+                    } else {
+                        writer.statement(&STYLE, "return ", &get, ";");
+                    }
                 }
                 FieldType::Array(scalar) => {
                     let get = call(
@@ -1359,10 +1375,45 @@ fn struct_position(offset: usize) -> Expr {
     }
 }
 
-/// `Float32` in `getFloat32()`
+/// `Float32` in `getFloat32()`, and `Uint8` for a bool, which a uint8 stores
 fn scalar_method(scalar: Scalar) -> String {
-    let name = scalar.name();
+    let name = scalar.stored().name();
     name[..1].to_ascii_uppercase() + &name[1..]
+}
+
+/// The value that a setter of a scalar takes: a bool's 1 or 0
+fn stored_value(scalar: Scalar, value: &str) -> Expr {
+    match scalar {
+        Scalar::Bool => text(format!("{value} ? 1 : 0")),
+        _ => text(value),
+    }
+}
+
+/// Returns the bool that `read` reads from its byte, true when it isn't 0, in
+/// parentheses when it doesn't fit on a line, as Biome breaks a comparison
+fn return_bool(writer: &mut CodeWriter, read: &Expr) {
+    let line = format!("return {} !== 0;", read.flat());
+    if writer.fits(&STYLE, &line) {
+        writer.line(line);
+    } else {
+        writer.open("return (");
+        writer.statement(&STYLE, "", read, " !== 0");
+        writer.close(");");
+    }
+}
+
+/// Assigns the bool that `read` reads from its byte to `target`, broken after
+/// the `=` when it doesn't fit on a line, as Biome breaks a comparison
+fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr) {
+    let line = format!("{target}{} !== 0;", read.flat());
+    if writer.fits(&STYLE, &line) {
+        writer.line(line);
+    } else {
+        writer.line(target.trim_end());
+        writer.indent();
+        writer.statement(&STYLE, "", read, " !== 0;");
+        writer.dedent();
+    }
 }
 
 /// The type that a getter returns
@@ -1411,6 +1462,7 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
 
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
+        Scalar::Bool => "boolean",
         Scalar::Int64 | Scalar::Uint64 => "bigint",
         _ => "number",
     }
@@ -1418,6 +1470,7 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 const fn typed_array(scalar: Scalar) -> &'static str {
     match scalar {
+        Scalar::Bool => panic!("the checker rejects arrays of bools"),
         Scalar::Int8 => "Int8Array",
         Scalar::Uint8 => "Uint8Array",
         Scalar::Int16 => "Int16Array",

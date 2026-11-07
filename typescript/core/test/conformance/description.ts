@@ -73,12 +73,22 @@ export interface StructArrayField {
 
 export type FieldDescription =
     | { type: ScalarType; value: JsonNumber }
+    | BoolField
     | { type: ArrayType; value: JsonNumber[] }
     | { type: 'string'; value: string }
     | { type: 'struct'; fields: StructScalar[] }
     | StructArrayField
     | TableField
     | { type: 'vector'; items: NestedTable[] };
+
+/**
+ * A bool, which the runtimes write as the uint8 1 or 0 and read as true when
+ * its byte isn't 0
+ */
+export interface BoolField {
+    type: 'bool';
+    value: boolean;
+}
 
 export type ArrayField = Extract<FieldDescription, { type: ArrayType }>;
 
@@ -131,8 +141,23 @@ export function corrupt(bytes: Uint8Array, corruption: Corruption): Uint8Array {
     return corrupted;
 }
 
+/**
+ * Bytes that differ from a valid case's but read the values that it
+ * describes, since readers accept more than writers write, such as any byte
+ * other than 0 as a true bool. They aren't rebuilt.
+ */
+export interface EquivalentCase {
+    name: string;
+    description: string;
+    file: string;
+    /** The name of the valid case whose table description reads the bytes */
+    case: string;
+    corruption: Corruption;
+}
+
 export interface Suite {
     valid: ValidCase[];
+    equivalent: EquivalentCase[];
     invalid: InvalidCase[];
 }
 

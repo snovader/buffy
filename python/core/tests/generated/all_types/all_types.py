@@ -9,7 +9,7 @@ from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
 
 
 class Scalars:
-    """A field of every scalar type"""
+    """A field of every scalar type, and a bool"""
 
     __slots__ = ("_buffer",)
 
@@ -22,7 +22,7 @@ class Scalars:
     @classmethod
     def serialize(cls, **fields: Unpack[ScalarsFields]) -> memoryview:
         """Writes a ``Scalars`` with every field"""
-        writer = TableWriter(10, cls._LAYOUT)
+        writer = TableWriter(11, cls._LAYOUT)
         writer.set_int8(0, fields["int8"])
         writer.set_uint8(1, fields["uint8"])
         writer.set_int16(2, fields["int16"])
@@ -33,6 +33,7 @@ class Scalars:
         writer.set_uint64(7, fields["uint64"])
         writer.set_float32(8, fields["float32"])
         writer.set_float64(9, fields["float64"])
+        writer.set_uint8(10, 1 if fields["bool_"] else 0)
 
         return writer.bytes()
 
@@ -66,6 +67,9 @@ class Scalars:
     def float64(self) -> float:
         return self._buffer.get_float64(self._buffer.root_offset(9))
 
+    def bool_(self) -> bool:
+        return self._buffer.get_uint8(self._buffer.root_offset(10)) != 0
+
 
 class ScalarsFields(TypedDict):
     """The fields of a ``Scalars``, to write"""
@@ -80,10 +84,11 @@ class ScalarsFields(TypedDict):
     uint64: int
     float32: float
     float64: float
+    bool_: bool
 
 
 class Arrays:
-    """An array of every scalar type"""
+    """An array of every scalar type but bool, which has none"""
 
     __slots__ = ("_buffer",)
 
@@ -848,13 +853,15 @@ class PointArray:
 
 @dataclass(frozen=True, slots=True)
 class Packed:
-    """A struct of every scalar type, at fixed offsets without padding"""
+    """A struct of every scalar type and a bool, at fixed offsets without
+    padding
+    """
 
-    SIZE: ClassVar[int] = 42
+    SIZE: ClassVar[int] = 43
     """The byte length of a ``Packed``"""
     ALIGNMENT: ClassVar[Literal[8]] = 8
     """The alignment of an array of a ``Packed``: its largest scalar's size"""
-    _STRUCT: ClassVar[Struct] = Struct("<bBhHiIqQfd")
+    _STRUCT: ClassVar[Struct] = Struct("<bBhHiIqQfd?")
 
     int8: int
     uint8: int
@@ -866,6 +873,7 @@ class Packed:
     uint64: int
     float32: float
     float64: float
+    bool_: bool
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -925,6 +933,7 @@ class Packed:
                 self.uint64,
                 self.float32,
                 self.float64,
+                self.bool_,
             )
         except (error, OverflowError) as cause:
             raise ValueError("Packed's values don't fit its fields") from cause
@@ -952,6 +961,7 @@ class Packed:
                     item.uint64,
                     item.float32,
                     item.float64,
+                    item.bool_,
                 )
         except (error, OverflowError) as cause:
             raise ValueError("Packed's values don't fit its fields") from cause

@@ -37,6 +37,10 @@ pub enum Field {
     U64(u64),
     F32(f32),
     F64(f64),
+    /// A bool, which the runtimes have no API for: it's written as the
+    /// uint8 1 or 0, and read as true when its byte isn't 0. It's a field
+    /// only, rather than a scalar of structs.
+    Bool(bool),
     I8Array(Vec<i8>),
     U8Array(Vec<u8>),
     I16Array(Vec<i16>),
@@ -228,6 +232,7 @@ impl PartialEq for Field {
             (Self::U32(a), Self::U32(b)) => a == b,
             (Self::I64(a), Self::I64(b)) => a == b,
             (Self::U64(a), Self::U64(b)) => a == b,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
             (Self::I8Array(a), Self::I8Array(b)) => a == b,
             (Self::U8Array(a), Self::U8Array(b)) => a == b,
             (Self::I16Array(a), Self::I16Array(b)) => a == b,

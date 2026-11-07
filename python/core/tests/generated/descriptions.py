@@ -31,6 +31,11 @@ def scalar(kind: str, value: float) -> Description:
     return {"type": kind, "value": to_json(kind, value)}
 
 
+def boolean(value: bool) -> Description:
+    """A bool, which tables hold as the uint8 1 or 0"""
+    return {"type": "bool", "value": value}
+
+
 def typed_array(kind: str, values: Buffer | Iterable[float]) -> Description:
     """An array of ``kind``'s elements, from any values that the generated code
     takes for it"""

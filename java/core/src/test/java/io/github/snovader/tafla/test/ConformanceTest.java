@@ -54,6 +54,16 @@ public class ConformanceTest {
         return SUITE.getJsonArray(kind).stream().map(value -> new Case(value.asJsonObject())).toList();
     }
 
+    /** {@return the valid case whose table description reads an equivalent or invalid case's bytes} */
+    private static Case validCaseOf(Case otherCase) {
+        var name = otherCase.description().getString("case");
+
+        return cases("valid").stream()
+            .filter(candidate -> candidate.name().equals(name))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("There's no valid case " + name));
+    }
+
     /** {@return the description of the valid case's table} */
     private static TableDescription tableOf(Case validCase) {
         return DescriptionJson.readTable(validCase.description().getJsonObject("table"));
@@ -62,6 +72,11 @@ public class ConformanceTest {
     @Provide
     Arbitrary<Case> validCases() {
         return Arbitraries.of(cases("valid"));
+    }
+
+    @Provide
+    Arbitrary<Case> equivalentCases() {
+        return Arbitraries.of(cases("equivalent"));
     }
 
     @Provide
@@ -81,17 +96,22 @@ public class ConformanceTest {
         assertArrayEquals(validCase.bytes(), Tables.build(tableOf(validCase)).bytes());
     }
 
+    /**
+     * Bytes that differ from a valid case's read the values that it describes, header included,
+     * since readers accept more than writers write, such as any byte other than 0 as a true bool
+     */
+    @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
+    void should_read_every_equivalent_table_as_its_valid_case(@ForAll("equivalentCases") Case equivalentCase) {
+        var table = tableOf(validCaseOf(equivalentCase));
+
+        assertEquals(table, TableReader.strict(equivalentCase.bytes(), table.layout()).readTable(table));
+    }
+
     @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
     void should_read_invalid_tables_up_to_the_field_that_throws(@ForAll("invalidCases") Case invalidCase) {
-        var description = invalidCase.description();
-        var validCase = cases("valid").stream()
-            .filter(candidate -> candidate.name().equals(description.getString("case")))
-            .findFirst()
-            .orElseThrow();
-
-        var table = tableOf(validCase);
+        var table = tableOf(validCaseOf(invalidCase));
         var fields = table.fields();
-        var field = description.getInt("field");
+        var field = invalidCase.description().getInt("field");
         var reader = TableReader.strict(invalidCase.bytes(), table.layout());
 
         for (int index = 0; index < field; index++) {

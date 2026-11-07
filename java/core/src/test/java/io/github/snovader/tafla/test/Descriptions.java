@@ -130,6 +130,7 @@ final class Descriptions {
     static long maxLength(FieldDescription field, int width) {
         return switch (field) {
             case ScalarField scalar -> scalar.type().size();
+            case BoolField ignored -> Byte.BYTES;
             case ArrayField array -> array.type().size() - 1 + width + (long) array.values().length * array.type().size();
             case StringField string -> width + (long) string.value().getBytes(StandardCharsets.UTF_8).length;
             case StructField struct -> StructBytes.size(struct.types());

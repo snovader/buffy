@@ -143,6 +143,7 @@ impl<const V: bool> Reader<'_, V> {
             Field::U64(_) => Field::U64(buffer.get_u64(position)?),
             Field::F32(_) => Field::F32(buffer.get_f32(position)?),
             Field::F64(_) => Field::F64(buffer.get_f64(position)?),
+            Field::Bool(_) => Field::Bool(buffer.get_u8(position)? != 0),
             Field::I8Array(_) => Field::I8Array(buffer.get_i8_array(position)?.to_vec()),
             Field::U8Array(_) => Field::U8Array(buffer.get_u8_array(position)?.to_vec()),
             Field::I16Array(_) => Field::I16Array(buffer.get_i16_array(position)?.to_vec()),

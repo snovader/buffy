@@ -25,7 +25,10 @@ export function writeSuite(suite: Suite): SuiteFiles {
         tables.set(file, bytes);
     }
 
-    for (const { file, case: name, corruption } of suite.invalid) {
+    for (const { file, case: name, corruption } of [
+        ...suite.equivalent,
+        ...suite.invalid
+    ]) {
         const bytes = valid.get(name);
         if (bytes === undefined) {
             throw new Error(`There's no valid case ${name}`);

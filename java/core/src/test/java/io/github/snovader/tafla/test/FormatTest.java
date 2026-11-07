@@ -158,12 +158,13 @@ public class FormatTest {
     }
 
     /**
-     * {@return the bytes of a scalar, array, string, struct or array of structs, as the JDK writes
-     * them little-endian}, or nothing for a nested table or vector
+     * {@return the bytes of a scalar, bool, array, string, struct or array of structs, as the JDK
+     * writes them little-endian}, or nothing for a nested table or vector
      */
     private static Optional<byte[]> littleEndian(FieldDescription field, int width) {
         return switch (field) {
             case ScalarField scalar -> Optional.of(littleEndian(scalar));
+            case BoolField bool -> Optional.of(new byte[] {(byte) bool.uint8()});
             case ArrayField array -> Optional.of(littleEndian(array, width));
             case StringField string -> Optional.of(littleEndian(string, width));
             case StructField struct -> Optional.of(littleEndian(struct));

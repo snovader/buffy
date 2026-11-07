@@ -61,6 +61,20 @@
             }
         },
         {
+            "name": "bools",
+            "description": "false and true, which writers write as the bytes 0 and 1, and two more true bools, whose bytes bool-nonzero changes",
+            "file": "valid/bools.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "bool", "value": false },
+                    { "type": "bool", "value": true },
+                    { "type": "bool", "value": true },
+                    { "type": "bool", "value": true }
+                ]
+            }
+        },
+        {
             "name": "integer-arrays",
             "description": "An array of every integer type, of its extremes, -1, 0, 1 and a value of distinct bytes",
             "file": "valid/integer-arrays.bin",
@@ -1307,6 +1321,15 @@
                 "version": 258,
                 "fields": []
             }
+        }
+    ],
+    "equivalent": [
+        {
+            "name": "bool-nonzero",
+            "description": "The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1",
+            "file": "equivalent/bool-nonzero.bin",
+            "case": "bools",
+            "corruption": { "kind": "overwrite", "at": 18, "bytes": [2, 128] }
         }
     ],
     "invalid": [

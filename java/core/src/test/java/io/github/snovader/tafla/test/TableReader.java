@@ -81,6 +81,7 @@ final class TableReader {
     private FieldDescription readField(int position, FieldDescription field) {
         return switch (field) {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
+            case BoolField ignored -> new BoolField(buffer.getUint8(position) != 0);
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
             case StringField ignored -> new StringField(buffer.getString(position));
             case StructField struct -> StructBytes.read(buffer, position, struct.types());

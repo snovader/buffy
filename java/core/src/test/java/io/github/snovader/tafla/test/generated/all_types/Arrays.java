@@ -5,7 +5,7 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** An array of every scalar type */
+/** An array of every scalar type but bool, which has none */
 public final class Arrays {
     private static final TableLayout LAYOUT = TableLayout.DEFAULT;
 

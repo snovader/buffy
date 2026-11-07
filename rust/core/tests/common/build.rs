@@ -52,6 +52,7 @@ impl Field {
             Self::U64(value) => builder.set_u64(*value),
             Self::F32(value) => builder.set_f32(*value),
             Self::F64(value) => builder.set_f64(*value),
+            Self::Bool(value) => builder.set_u8(u8::from(*value)),
             Self::I8Array(values) => builder.set_i8_array(values),
             Self::U8Array(values) => builder.set_u8_array(values),
             Self::I16Array(values) => builder.set_i16_array(values),

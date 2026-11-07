@@ -43,6 +43,16 @@ class TestConformance(unittest.TestCase):
                 built = bytes(build_table(case["table"]).bytes())
                 self.assertEqual(built, read_bytes(case["file"]))
 
+    def test_reads_every_equivalent_table_as_its_valid_case(self) -> None:
+        """Readers accept more than writers write, such as any byte other than
+        0 as a true bool, so these bytes read the valid case's values"""
+        for case in SUITE["equivalent"]:
+            with self.subTest(case["name"]):
+                table = VALID_CASES[case["case"]]["table"]
+                read = read_table(read_bytes(case["file"]), table)
+
+                self.assertEqual(comparable_table(read), comparable_table(table))
+
     def test_reads_invalid_tables_up_to_the_field_that_raises(self) -> None:
         for case in SUITE["invalid"]:
             with self.subTest(case["name"]):
@@ -59,8 +69,9 @@ class TestConformance(unittest.TestCase):
                 with self.assertRaises(DecodeError):
                     reader.read_root_field(case["field"], fields[case["field"]])
 
-    def test_finds_valid_and_invalid_cases(self) -> None:
+    def test_finds_valid_equivalent_and_invalid_cases(self) -> None:
         self.assertGreater(len(SUITE["valid"]), 0)
+        self.assertGreater(len(SUITE["equivalent"]), 0)
         self.assertGreater(len(SUITE["invalid"]), 0)
 
 

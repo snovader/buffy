@@ -4,7 +4,9 @@ Golden tables written by TypeScript tafla, the reference implementation. Every
 implementation of tafla reads each table back, compares its values with the
 table's description in `cases.json`, and rebuilds it with its own
 `TableBuilder`, byte for byte. Corrupted and truncated tables must fail with a
-decode error. That makes "one format, several implementations" a checked claim.
+decode error, and tables that differ from a valid one only in bytes that
+readers accept, such as a bool's, must read its values. That makes "one
+format, several implementations" a checked claim.
 
 | Implementation | Test                                                                         |
 | -------------- | ---------------------------------------------------------------------------- |
@@ -19,6 +21,7 @@ Each language's CI runs its test when this directory changes.
 
 - `cases.json`: the description of every case, described below
 - `valid/<name>.bin`: the table of each valid case
+- `equivalent/<name>.bin`: the changed table of each equivalent case
 - `invalid/<name>.bin`: the corrupted table of each invalid case
 - `generated/`: the tables that the code generated from the example schema
   `schemas/shapes.tafla` writes in every language, which
@@ -44,7 +47,8 @@ every implementation has to follow.
 
 ## Descriptions
 
-`cases.json` holds `{ "valid": [...], "invalid": [...] }`, and is ASCII: every
+`cases.json` holds `{ "valid": [...], "equivalent": [...], "invalid": [...] }`,
+and is ASCII: every
 other character in a string is a `\u` escape, with characters outside the
 Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
 
@@ -92,6 +96,7 @@ Each field has a `type`:
 | `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32` | `value`: a number                                                      | `setInt8()`, `setUint8()`, ... |
 | `int64`, `uint64`                                     | `value`: a decimal string                                              | `setInt64()`, `setUint64()`    |
 | `float32`, `float64`                                  | `value`: a number, or `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`   | `setFloat32()`, `setFloat64()` |
+| `bool`                                                | `value`: `true` or `false`                                             | `setUint8()`, with 1 or 0      |
 | `int8[]`, `uint8[]`, ..., `float64[]`                 | `value`: an array of values as the scalar type holds them              | `setInt8Array()`, ...          |
 | `string`                                              | `value`: a string                                                      | `setString()`                  |
 | `struct`                                              | `fields`: `{ "type", "value" }` for each scalar, as a scalar field     | `setStruct()`                  |
@@ -99,6 +104,10 @@ Each field has a `type`:
 | `table`                                               | `from` and `table`, a nested table, and `alignment` when one is passed | `setTable()`                   |
 | `vector`                                              | `items`: `{ "from", "table" }` for each item                           | `setVector()`                  |
 
+- A bool is the uint8 1 or 0, since the runtimes have no getters or setters
+  of bools; the code that tafla-gen generates writes and reads them so. Its
+  value is true when the byte read isn't 0. It's a field only, and never a
+  struct's scalar or an array's element.
 - 64-bit integers are strings, since JSON numbers lose precision past 2^53 in
   JavaScript and in other parsers.
 - Floats that JSON has no number for are named. Their bytes are what
@@ -131,6 +140,24 @@ without a header with `setTable()`.
 A table read from its own bytes, the root or a vector item, has its header
 checked too: its version must equal `version`, and when it's sized, its size
 must equal its byte length. A vector must hold as many items as `items`.
+
+### Equivalent cases
+
+```json
+{
+    "name": "bool-nonzero",
+    "description": "The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1",
+    "file": "equivalent/bool-nonzero.bin",
+    "case": "bools",
+    "corruption": { "kind": "overwrite", "at": 18, "bytes": [2, 128] }
+}
+```
+
+Bytes that differ from a valid case's but read the same values, since readers
+accept more than writers write. `case` names the valid case, whose table
+description reads the bytes as a valid table's, its header included, and
+`corruption` records how they differ, as an invalid case's does. They aren't
+rebuilt, since a writer writes the valid case's bytes.
 
 ### Invalid cases
 
@@ -165,7 +192,9 @@ An implementation's test loads `cases.json` and:
    their names; the Python, Java and Rust tests compare their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
-3. Reads every invalid table up to `field`, and checks that `field` fails with
+3. Reads every equivalent table as its valid case describes it, and compares
+   what it reads with the description.
+4. Reads every invalid table up to `field`, and checks that `field` fails with
    a decode error.
 
 ## Coverage
@@ -173,6 +202,7 @@ An implementation's test loads `cases.json` and:
 | What                                                       | Cases                                                                                               |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Every element type as a scalar                             | `integer-scalars`, `float-scalars`                                                                  |
+| Bools, and bytes other than 0 and 1 that read as true      | `bools`, `bool-nonzero`                                                                             |
 | Every element type as an array, and empty                  | `integer-arrays`, `float-arrays`, `empty-arrays`                                                    |
 | Offset types, without and with each header slot            | `offset-type-{uint8,uint16,uint32}`, with `-sized`, `-versioned` and `-sized-versioned`             |
 | Values of 128 and more in `uint8` offsets and lengths      | `offset-type-uint8-full`                                                                            |
@@ -199,6 +229,8 @@ It doesn't cover:
   NaN.
 - `StructWriter` and the write functions, which write records without a
   table.
+- Bools in structs, which are their uint8 to the runtimes. The tests of the
+  code that tafla-gen generates from `schemas/all_types.tafla` cover them.
 
 ## Implementation notes
 

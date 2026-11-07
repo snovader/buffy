@@ -13,6 +13,22 @@ sealed interface FieldDescription {
     }
 
     /**
+     * A bool, which the runtimes have no setter or getter of: writers write it as the uint8 1 or 0,
+     * and readers read it as true when its byte isn't 0
+     */
+    record BoolField(boolean value) implements FieldDescription {
+        /** {@return the uint8 that writers write the bool as} */
+        short uint8() {
+            return (short) (value ? 1 : 0);
+        }
+
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
+    /**
      * An array of integers or floats, each held as {@link ScalarType} describes. It compares its
      * elements, and nothing changes them: the array is passed to setters as it is, to be written
      * when the table is.

@@ -28,7 +28,7 @@ import {
     writeUint64
 } from 'tafla';
 
-/** A field of every scalar type */
+/** A field of every scalar type, and a bool */
 export class Scalars {
     static #LAYOUT = TableLayout.DEFAULT;
 
@@ -47,7 +47,7 @@ export class Scalars {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(10, Scalars.#LAYOUT);
+        const sizer = new TableSizer(11, Scalars.#LAYOUT);
         sizer.addInt8();
         sizer.addUint8();
         sizer.addInt16();
@@ -58,6 +58,7 @@ export class Scalars {
         sizer.addUint64();
         sizer.addFloat32();
         sizer.addFloat64();
+        sizer.addUint8();
 
         const writer = sizer.writer();
         writer.setInt8(0, fields.int8);
@@ -70,6 +71,7 @@ export class Scalars {
         writer.setUint64(7, fields.uint64);
         writer.setFloat32(8, fields.float32);
         writer.setFloat64(9, fields.float64);
+        writer.setUint8(10, fields.bool ? 1 : 0);
 
         return writer.bytes();
     }
@@ -123,6 +125,11 @@ export class Scalars {
     float64() {
         return this.#buffer.getFloat64(this.#buffer.rootOffset(9));
     }
+
+    /** @returns {boolean} */
+    bool() {
+        return this.#buffer.getUint8(this.#buffer.rootOffset(10)) !== 0;
+    }
 }
 
 /**
@@ -139,9 +146,10 @@ export class Scalars {
  * @property {bigint} uint64
  * @property {number} float32
  * @property {number} float64
+ * @property {boolean} bool
  */
 
-/** An array of every scalar type */
+/** An array of every scalar type but bool, which has none */
 export class Arrays {
     static #LAYOUT = TableLayout.DEFAULT;
 
@@ -1348,10 +1356,13 @@ export class PointArray {
     }
 }
 
-/** A struct of every scalar type, at fixed offsets without padding */
+/**
+ * A struct of every scalar type and a bool, at fixed offsets without
+ * padding
+ */
 export class Packed {
     /** The byte length of a `Packed` */
-    static SIZE = 42;
+    static SIZE = 43;
 
     /**
      * The alignment of an array of `Packed`: its largest scalar's size
@@ -1380,6 +1391,8 @@ export class Packed {
     #float32;
     /** @type {number} */
     #float64;
+    /** @type {boolean} */
+    #bool;
 
     /**
      * Reads a `Packed` at `offset` in `bytes`, eagerly, so that it
@@ -1400,6 +1413,7 @@ export class Packed {
         this.#uint64 = readUint64(bytes, offset + 22);
         this.#float32 = readFloat32(bytes, offset + 30);
         this.#float64 = readFloat64(bytes, offset + 34);
+        this.#bool = readUint8(bytes, offset + 42) !== 0;
     }
 
     /**
@@ -1449,6 +1463,7 @@ export class Packed {
         writer.setUint64(fields.uint64);
         writer.setFloat32(fields.float32);
         writer.setFloat64(fields.float64);
+        writer.setUint8(fields.bool ? 1 : 0);
     }
 
     /**
@@ -1471,6 +1486,7 @@ export class Packed {
         writeUint64(bytes, offset + 22, fields.uint64);
         writeFloat32(bytes, offset + 30, fields.float32);
         writeFloat64(bytes, offset + 34, fields.float64);
+        writeUint8(bytes, offset + 42, fields.bool ? 1 : 0);
     }
 
     /** @returns {number} */
@@ -1522,6 +1538,11 @@ export class Packed {
     float64() {
         return this.#float64;
     }
+
+    /** @returns {boolean} */
+    bool() {
+        return this.#bool;
+    }
 }
 
 /**
@@ -1538,6 +1559,7 @@ export class Packed {
  * @property {bigint} uint64
  * @property {number} float32
  * @property {number} float64
+ * @property {boolean} bool
  */
 
 /**

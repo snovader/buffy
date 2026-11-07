@@ -174,8 +174,16 @@ def set_field(builder: TableBuilder, field: Description) -> None:
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(builder, f"set_{element}_array")(_array_values(element, field))
+    elif kind == "bool":
+        builder.set_uint8(_bool_byte(field))
     else:
         getattr(builder, f"set_{kind}")(from_json(kind, field["value"]))
+
+
+def _bool_byte(field: Description) -> int:
+    """The byte that writers write for a bool, which tafla sets as a uint8: 1
+    for true and 0 for false. Readers read any byte other than 0 as true."""
+    return 1 if field["value"] else 0
 
 
 def _build_nested(nested: Description) -> TableBuilder | memoryview[int]:
@@ -249,6 +257,8 @@ def write_field(writer: TableWriter, index: int, field: Description) -> None:
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(writer, f"set_{element}_array")(index, _array_values(element, field))
+    elif kind == "bool":
+        writer.set_uint8(index, _bool_byte(field))
     else:
         getattr(writer, f"set_{kind}")(index, from_json(kind, field["value"]))
 
@@ -319,7 +329,7 @@ def comparable_table(table: Description) -> Description:
     every value in a form that compares exactly: 64-bit integers as ints, and
     floats as the bits of their float64, which a float32 widens to exactly, so
     that -0.0 differs from 0.0 and NaN equals the same NaN. Other values are
-    ints and strings in both forms already."""
+    bools, ints and strings in both forms already."""
     return {**table, "fields": [comparable_field(field) for field in table["fields"]]}
 
 
@@ -498,6 +508,9 @@ class TableReader:
             element = kind.removesuffix("[]")
             values = getattr(self.__buffer, f"get_{element}_array")(position)
             return {**field, "value": values.tolist()}
+
+        if kind == "bool":
+            return {**field, "value": self.__buffer.get_uint8(position) != 0}
 
         return {**field, "value": getattr(self.__buffer, f"get_{kind}")(position)}
 

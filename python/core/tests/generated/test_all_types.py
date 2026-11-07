@@ -6,7 +6,7 @@ import unittest
 from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists, one_of
 
-from tafla import DecodeError
+from tafla import ByteBuffer, DecodeError, TableLayout
 from tests.generated import SETTINGS
 from tests.generated.all_types.all_types import (
     Arrays,
@@ -181,6 +181,20 @@ class TestTablesBuiltByHand(unittest.TestCase):
         by_hand = bytes(build_table(describe_structs(fields)).bytes())
 
         self.assertEqual(bytes(Structs.serialize(**fields)), by_hand)
+
+    @SETTINGS
+    @given(scalars_fields, integers(2, 0xFF))
+    def test_reads_a_bool_of_any_byte_but_0_as_true(
+        self, fields: ScalarsFields, byte: int
+    ) -> None:
+        """The generated code writes a true bool as 1, but reads any byte other
+        than 0 as true"""
+        data = bytearray(Scalars.serialize(**fields))
+        # The bool is Scalars' field 10, in a table of the default layout
+        position = ByteBuffer(data, TableLayout.DEFAULT).root_offset(10)
+        data[position] = byte
+
+        self.assertIs(Scalars(data).bool_(), True)
 
 
 class TestDecodeErrors(unittest.TestCase):
@@ -373,7 +387,7 @@ class TestViews(unittest.TestCase):
         )
         structs = Structs(
             Structs.serialize(
-                packed=Packed(0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0),
+                packed=Packed(0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, False),
                 documented=[],
                 segment=Segment(point, point),
                 segments=[],
@@ -399,7 +413,7 @@ class TestStructs(unittest.TestCase):
         """An array of structs is aligned to the size of its structs' largest
         scalar"""
         cases: list[tuple[str, int, int, int, int]] = [
-            ("Packed", Packed.SIZE, Packed.ALIGNMENT, 42, 8),
+            ("Packed", Packed.SIZE, Packed.ALIGNMENT, 43, 8),
             ("Documented", Documented.SIZE, Documented.ALIGNMENT, 7, 4),
             ("Segment", Segment.SIZE, Segment.ALIGNMENT, 16, 4),
             ("Point", Point.SIZE, Point.ALIGNMENT, 8, 4),
@@ -421,11 +435,25 @@ class TestStructs(unittest.TestCase):
 
     @SETTINGS
     @given(packed_structs)
-    def test_writes_a_packed_little_endian_at_fixed_offsets_in_42_bytes(
+    def test_writes_a_packed_little_endian_at_fixed_offsets_in_43_bytes(
         self, packed: Packed
     ) -> None:
-        self.assertEqual(Packed.SIZE, 42)
+        self.assertEqual(Packed.SIZE, 43)
         self.assertEqual(packed.serialize(), packed_bytes(packed))
+
+    @SETTINGS
+    @given(packed_structs, integers(2, 0xFF))
+    def test_reads_a_packed_bool_of_any_byte_but_0_as_true(
+        self, packed: Packed, byte: int
+    ) -> None:
+        """A ``Packed`` writes a true bool as 1, but reads any byte other than
+        0 as true"""
+        data = bytearray(packed.serialize())
+        # The bool is a Packed's last byte, at offset 42
+        data[Packed.SIZE - 1] = byte
+
+        self.assertIs(Packed.read(data).bool_, True)
+        self.assertIs(Packed.read_array(data)[0].bool_, True)
 
     @SETTINGS
     @given(documented_structs)

@@ -8,7 +8,10 @@ import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-/** A struct of every scalar type, at fixed offsets without padding */
+/**
+ * A struct of every scalar type and a bool, at fixed offsets without
+ * padding
+ */
 public record Packed(
     byte int8,
     short uint8,
@@ -19,10 +22,11 @@ public record Packed(
     long int64,
     long uint64,
     float float32,
-    double float64
+    double float64,
+    boolean bool
 ) {
     /** The byte length of a {@code Packed} */
-    public static final int SIZE = 42;
+    public static final int SIZE = 43;
 
     /** The alignment of an array of a {@code Packed}: its largest scalar's size */
     public static final int ALIGNMENT = 8;
@@ -66,7 +70,8 @@ public record Packed(
             (long) INT64.get(bytes, offset + 14),
             (long) INT64.get(bytes, offset + 22),
             (float) FLOAT32.get(bytes, offset + 30),
-            (double) FLOAT64.get(bytes, offset + 34)
+            (double) FLOAT64.get(bytes, offset + 34),
+            bytes[offset + 42] != 0
         );
     }
 
@@ -97,7 +102,8 @@ public record Packed(
             view.getLong(offset + 14),
             view.getLong(offset + 22),
             view.getFloat(offset + 30),
-            view.getDouble(offset + 34)
+            view.getDouble(offset + 34),
+            view.get(offset + 42) != 0
         );
     }
 
@@ -130,5 +136,6 @@ public record Packed(
         INT64.set(bytes, offset + 22, uint64);
         FLOAT32.set(bytes, offset + 30, float32);
         FLOAT64.set(bytes, offset + 34, float64);
+        bytes[offset + 42] = (byte) (bool ? 1 : 0);
     }
 }
