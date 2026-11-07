@@ -1,7 +1,13 @@
 import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
-import { headerLength, maxLength, paddingTo, TableLayout } from './layout.ts';
+import {
+    assertAlignment,
+    headerLength,
+    maxLength,
+    padding,
+    TableLayout
+} from './layout.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
@@ -341,13 +347,13 @@ export class TableBuilder {
         alignment: ElementSize
     ): void {
         structCount(bytes.length, size);
+        assertAlignment(alignment);
 
-        const padding = paddingTo(this.#offset + this.#size, alignment);
         this.#addField(
             STRUCT_ARRAY,
             [bytes, size],
             this.#size + bytes.length,
-            padding
+            padding(this.#offset + this.#size, alignment)
         );
         this.#alignTo(alignment);
     }
@@ -377,8 +383,14 @@ export class TableBuilder {
             ? table.#alignment
             : SIZEOF_32
     ): void {
-        const padding = paddingTo(this.#offset, alignment);
-        this.#addField(TABLE, table, TableBuilder.#lengthOf(table), padding);
+        assertAlignment(alignment);
+
+        this.#addField(
+            TABLE,
+            table,
+            TableBuilder.#lengthOf(table),
+            padding(this.#offset, alignment)
+        );
         this.#alignTo(alignment);
     }
 
@@ -409,8 +421,12 @@ export class TableBuilder {
         byteLength: number,
         alignment: ElementSize
     ): void {
-        const padding = paddingTo(this.#offset + this.#size, alignment);
-        this.#addField(kind, values, this.#size + byteLength, padding);
+        this.#addField(
+            kind,
+            values,
+            this.#size + byteLength,
+            padding(this.#offset + this.#size, alignment)
+        );
         this.#alignTo(alignment);
     }
 

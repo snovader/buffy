@@ -172,10 +172,10 @@ Using the API wrongly raises other errors, whatever the bytes:
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
-  fit, or from ``bytes()``. It raises ``ValueError`` for a field set out of
-  order, twice or at an index outside its table, or an item end set out of
-  order or outside its vector, from the setter and without writing it, and
-  for fields or item ends left unset, from ``end_table()`` or ``bytes()``.
+  fit, or from ``bytes()``. It's the target of generated code, and doesn't
+  check that each field's index and each item end is its own: another writes
+  the offset into another slot, or raises ``ValueError`` where the bytes have
+  no such slot. Hand-written tables use ``TableBuilder``.
 - An alignment other than 1, 2, 4 or 8 raises ``ValueError`` from
   ``set_struct_array()`` and ``set_table()``.
 - A struct size less than 1 raises ``ValueError`` from

@@ -182,7 +182,9 @@ def padding_to(offset: int, alignment: ElementSize) -> int:
 
     Raises ``ValueError`` if ``alignment`` isn't 1, 2, 4 or 8.
     """
-    if alignment not in ALIGNMENTS:
+    # The type comes first, since 2.0 is in ALIGNMENTS and a list isn't
+    # hashable
+    if type(alignment) is not int or alignment not in ALIGNMENTS:
         raise alignment_error(alignment)
 
     return -offset % alignment

@@ -296,102 +296,28 @@ class TestValues(unittest.TestCase):
                     getattr(TableWriter(1), setter)(0, *arguments)
 
 
-# A setter of each kind, which writes field ``index`` of a writer
-SETTERS: list[tuple[str, Callable[[TableWriter, int], object]]] = [
-    ("set_uint8", lambda writer, index: writer.set_uint8(index, 1)),
-    ("set_float64", lambda writer, index: writer.set_float64(index, 0.5)),
-    ("set_string", lambda writer, index: writer.set_string(index, "a")),
-    ("set_struct", lambda writer, index: writer.set_struct(index, b"\x01")),
-    ("set_int32_array", lambda writer, index: writer.set_int32_array(index, [1])),
-    (
-        "set_struct_array",
-        lambda writer, index: writer.set_struct_array(index, b"\x01\x02", 2, 2),
-    ),
-    ("set_table", lambda writer, index: writer.set_table(index, 4)),
-    ("set_vector", lambda writer, index: writer.set_vector(index, 0)),
-]
-
-
-def two_uint8s(writer: TableWriter) -> bytes:
-    """Sets fields 0 and 1 of ``writer`` to the uint8s 1 and 2, and returns its
-    bytes"""
-    writer.set_uint8(0, 1)
-    writer.set_uint8(1, 2)
-    return bytes(writer.bytes())
-
-
 class TestIndices(unittest.TestCase):
-    @given(
-        integers().filter(lambda index: not 0 <= index < 2),
-        sampled_from(SETTERS),
-    )
-    def test_rejects_an_index_outside_the_tables_fields_and_writes_nothing(
-        self, index: int, setter: tuple[str, Callable[[TableWriter, int], object]]
-    ) -> None:
-        _, write = setter
-        writer = TableWriter(2)
-
-        with self.assertRaises(ValueError) as raised:
-            write(writer, index)
-
-        self.assertIn("to a table of 2", str(raised.exception))
-        self.assertEqual(two_uint8s(writer), two_uint8s(TableWriter(2)))
-
-    def test_names_the_field_past_the_tables_fields_as_tafla_rust_does(self) -> None:
-        writer = TableWriter(2)
-        writer.set_uint8(0, 1)
-        writer.set_uint8(1, 2)
-
-        with self.assertRaises(ValueError) as raised:
-            writer.set_uint8(2, 3)
-        self.assertEqual(str(raised.exception), "Can't add field 3 to a table of 2")
-
-    def test_rejects_an_index_of_a_nested_tables_parent_inside_it(self) -> None:
-        writer = TableWriter(3)
-        writer.set_table(0, 1)
-        parent = writer.start_table(1)
-
-        with self.assertRaises(ValueError) as raised:
-            writer.set_uint8(2, 1)
-        self.assertEqual(str(raised.exception), "Can't add field 3 to a table of 1")
-
-        writer.set_uint8(0, 1)
-        writer.end_table(parent)
-        writer.set_uint8(1, 2)
-        writer.set_uint8(2, 3)
-
-    def test_rejects_a_field_set_twice_or_out_of_order_and_writes_nothing(
+    def test_raises_value_error_for_an_index_or_item_that_has_no_slot_in_the_bytes(
         self,
     ) -> None:
-        for name, write in SETTERS:
-            with self.subTest(setter=name):
-                twice = TableWriter(2)
-                twice.set_uint8(0, 1)
-                with self.assertRaises(ValueError) as raised:
-                    write(twice, 0)
-                self.assertEqual(str(raised.exception), "Field 0 was already set")
-                twice.set_uint8(1, 2)
-
-                skipped = TableWriter(2)
-                with self.assertRaises(ValueError) as raised:
-                    write(skipped, 1)
-                self.assertEqual(
-                    str(raised.exception), "Field 0 wasn't set before field 1"
-                )
-
-                self.assertEqual(bytes(twice.bytes()), two_uint8s(skipped))
-
-    def test_raises_value_error_for_an_index_or_item_of_any_size(self) -> None:
         """Indices past the bytes, and past the C ssize_t that struct takes
-        positions as, which once raised OverflowError, and past the digits
-        that Python converts to a string"""
-        writes = [
-            *SETTERS,
+        positions as, which once raised OverflowError"""
+        writes: list[tuple[str, Callable[[TableWriter, int], object]]] = [
+            ("set_uint8", lambda writer, index: writer.set_uint8(index, 1)),
+            ("set_float64", lambda writer, index: writer.set_float64(index, 0.5)),
+            ("set_string", lambda writer, index: writer.set_string(index, "a")),
+            ("set_struct", lambda writer, index: writer.set_struct(index, b"\x01")),
+            (
+                "set_int32_array",
+                lambda writer, index: writer.set_int32_array(index, [1]),
+            ),
+            ("set_table", lambda writer, index: writer.set_table(index, 4)),
+            ("set_vector", lambda writer, index: writer.set_vector(index, 0)),
             ("set_item_end", lambda writer, item: writer.set_item_end(4, item)),
             ("set_item_end", lambda writer, vector: writer.set_item_end(vector, 0)),
         ]
 
-        for index in [16, 2**63, 2**100, 2**15000, -(2**100)]:
+        for index in [16, 2**63, 2**100, 2**15000]:
             for name, write in writes:
                 with self.subTest(write=name, bits=index.bit_length()):
                     writer = TableWriter(1)
@@ -402,98 +328,10 @@ class TestIndices(unittest.TestCase):
                         write(writer, index)
 
 
-class TestUnsetFields(unittest.TestCase):
-    def test_bytes_raises_for_a_table_with_fields_left_to_set(self) -> None:
-        writer = TableWriter(3)
-        writer.set_uint8(0, 1)
-
-        with self.assertRaises(ValueError) as raised:
-            writer.bytes()
-        self.assertEqual(
-            str(raised.exception), "Only 1 of the table's 3 fields were set"
-        )
-
-    def test_end_table_raises_for_a_nested_table_with_fields_left_to_set(
-        self,
-    ) -> None:
-        writer = TableWriter(1)
-        writer.set_table(0, 1)
-        parent = writer.start_table(2)
-        writer.set_uint8(0, 1)
-
-        with self.assertRaises(ValueError) as raised:
-            writer.end_table(parent)
-        self.assertEqual(
-            str(raised.exception), "Only 1 of the nested table's 2 fields were set"
-        )
-
-    def test_bytes_raises_for_a_nested_table_that_didnt_end(self) -> None:
-        writer = TableWriter(1)
-        writer.set_table(0, 1)
-        writer.start_table(0)
-
-        with self.assertRaises(ValueError) as raised:
-            writer.bytes()
-        self.assertEqual(str(raised.exception), "A nested table hasn't ended")
-
-    def test_raises_for_a_vector_item_whose_end_was_never_set(self) -> None:
-        def vector_of_two_items(writer: TableWriter) -> int:
-            vector = writer.set_vector(0, 2)
-            writer.end_table(writer.start_table(0))
-            writer.set_item_end(vector, 0)
-            writer.end_table(writer.start_table(0))
-            return vector
-
-        before_bytes = TableWriter(1)
-        vector_of_two_items(before_bytes)
-        with self.assertRaises(ValueError) as raised:
-            before_bytes.bytes()
-        self.assertEqual(
-            str(raised.exception), "Only 1 of the vector's 2 item ends were set"
-        )
-
-        before_a_field = TableWriter(2)
-        vector_of_two_items(before_a_field)
-        with self.assertRaises(ValueError) as raised:
-            before_a_field.set_uint8(1, 1)
-        self.assertEqual(
-            str(raised.exception), "Only 1 of the vector's 2 item ends were set"
-        )
-
-    def test_rejects_an_item_end_outside_the_vector_or_out_of_order(self) -> None:
-        writer = TableWriter(1)
-        vector = writer.set_vector(0, 2)
-        writer.end_table(writer.start_table(0))
-
-        cases = [
-            (vector, 2, "Can't end item 2 of a vector of 2"),
-            (vector, -1, "Can't end item -1 of a vector of 2"),
-            (vector, 1, "Item 0's end wasn't set before item 1's"),
-            (vector + 1, 0, f"No vector at {vector + 1} has items left to end"),
-        ]
-        for position, item, message in cases:
-            with self.subTest(item=item, vector=position):
-                with self.assertRaises(ValueError) as raised:
-                    writer.set_item_end(position, item)
-                self.assertEqual(str(raised.exception), message)
-
-        writer.set_item_end(vector, 0)
-        with self.assertRaises(ValueError) as raised:
-            writer.set_item_end(vector, 0)
-        self.assertEqual(str(raised.exception), "Item 0's end was already set")
-
-        writer.end_table(writer.start_table(0))
-        writer.set_item_end(vector, 1)
-        with self.assertRaises(ValueError) as raised:
-            writer.set_item_end(vector, 2)
-        self.assertEqual(
-            str(raised.exception), f"No vector at {vector} has items left to end"
-        )
-
-        # The rejected ends wrote nothing
-        builder = TableBuilder(1)
-        builder.set_vector([TableBuilder(0), TableBuilder(0)])
-        self.assertEqual(bytes(writer.bytes()), bytes(builder.bytes()))
+def second_uint8(writer: TableWriter) -> bytes:
+    """Sets field 1 of ``writer`` to the uint8 2, and returns its bytes"""
+    writer.set_uint8(1, 2)
+    return bytes(writer.bytes())
 
 
 class TestFailedSetters(unittest.TestCase):
@@ -520,30 +358,25 @@ class TestFailedSetters(unittest.TestCase):
         with self.assertRaises(ValueError):
             getattr(writer, setter)(0, value)
 
-        # Field 0 is still unset, rather than pointing at the next value
-        with self.assertRaises(ValueError) as raised:
-            writer.set_uint8(1, 2)
-        self.assertEqual(str(raised.exception), "Field 0 wasn't set before field 1")
-        self.assertEqual(two_uint8s(writer), two_uint8s(TableWriter(2, layout)))
+        # Field 0 is still absent, rather than pointing at field 1's value
+        self.assertEqual(second_uint8(writer), second_uint8(TableWriter(2, layout)))
 
 
 class TestAlignments(unittest.TestCase):
     def test_rejects_an_alignment_other_than_1_2_4_or_8_and_writes_nothing(
         self,
     ) -> None:
-        for alignment in [0, 3, -4, 16, 5]:
-            message = f"An alignment of {alignment} isn't 1, 2, 4 or 8 bytes"
+        for alignment in [0, 3, -4, 16, 5, 2.0, True, [2]]:
+            message = f"An alignment of {alignment!r} isn't 1, 2, 4 or 8 bytes"
             with self.subTest(alignment=alignment):
                 writer = TableWriter(2)
-                writer.set_uint8(0, 1)
                 with self.assertRaises(ValueError) as raised:
-                    writer.set_table(1, cast(Any, alignment))
+                    writer.set_table(0, cast(Any, alignment))
                 self.assertEqual(str(raised.exception), message)
                 with self.assertRaises(ValueError) as raised:
-                    writer.set_struct_array(1, b"\x01", 1, cast(Any, alignment))
+                    writer.set_struct_array(0, b"\x01", 1, cast(Any, alignment))
                 self.assertEqual(str(raised.exception), message)
-                writer.set_uint8(1, 2)
-                self.assertEqual(bytes(writer.bytes()), two_uint8s(TableWriter(2)))
+                self.assertEqual(second_uint8(writer), second_uint8(TableWriter(2)))
 
                 builder = TableBuilder(1)
                 with self.assertRaises(ValueError) as raised:

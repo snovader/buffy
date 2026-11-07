@@ -166,9 +166,9 @@ Using the API wrongly throws other errors, whatever the bytes:
   version, and its `byteLength()` and `writer()` throw a `RangeError` for a
   table too long for its offset type. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
-  counted, from `setString()` for a string longer than the one counted, and
-  from a setter for a field index outside its table's fields or an item end
-  outside its vector's items, before it writes them.
+  counted, and from `setString()` for a string longer than the one counted.
+  It's the target of generated code, and trusts each field's index and each
+  item end to be its own; hand-written tables use `TableBuilder`.
 - A struct size that isn't a positive integer, for an array of structs, and
   an alignment other than 1, 2, 4 or 8 throw a `RangeError`.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.

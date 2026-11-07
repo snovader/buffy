@@ -185,12 +185,13 @@ export function assertCount(count: number): void {
 }
 
 /**
- * The bytes that bring `offset`, from a table's start, to a multiple of
- * `alignment`, which arrays, structs and nested tables are padded to
+ * Checks an alignment that a caller gave, which arrays of structs and nested
+ * tables are padded to. An array's alignment is its element size, which
+ * needs no check.
  *
  * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
  */
-export function paddingTo(offset: number, alignment: ElementSize): number {
+export function assertAlignment(alignment: ElementSize): void {
     if (
         !(
             alignment === SIZEOF_8 ||
@@ -199,17 +200,19 @@ export function paddingTo(offset: number, alignment: ElementSize): number {
             alignment === SIZEOF_64
         )
     ) {
-        throw alignmentError(alignment);
+        throw new RangeError(
+            `An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`
+        );
     }
-
-    const remainder = offset % alignment;
-    return remainder === 0 ? 0 : alignment - remainder;
 }
 
-function alignmentError(alignment: number): RangeError {
-    return new RangeError(
-        `An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`
-    );
+/**
+ * The bytes that bring `offset`, from a table's start, to a multiple of
+ * `alignment`, which is 1, 2, 4 or 8
+ */
+export function padding(offset: number, alignment: ElementSize): number {
+    const remainder = offset % alignment;
+    return remainder === 0 ? 0 : alignment - remainder;
 }
 
 /**

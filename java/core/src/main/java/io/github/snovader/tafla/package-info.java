@@ -157,9 +157,9 @@
  *     {@code writer()} throw one for a table too long for its offset type, before allocating it.
  *     {@code TableWriter} never writes outside the sized bytes: a field that would end past them
  *     throws an {@link IndexOutOfBoundsException}, and {@code bytes()} an
- *     {@code IllegalStateException} for fields that didn't fill them. It throws an
- *     {@code IllegalArgumentException} for a field index outside its table's fields and an item
- *     outside its vector's items, and writes nothing.</li>
+ *     {@code IllegalStateException} for fields that didn't fill them. It's the target of
+ *     generated code, and trusts each field's index and each item end to be its own; hand-written
+ *     tables use {@code TableBuilder}.</li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
  *     versioned.</li>
  * </ul>
