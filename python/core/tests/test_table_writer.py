@@ -242,6 +242,43 @@ class TestValues(unittest.TestCase):
                 with self.assertRaises(error):
                     getattr(writer, setter)(0, value)
 
+    def test_converts_values_as_the_package_docstring_states(self) -> None:
+        nan = float("nan")
+        raised: list[tuple[str, object, type[Exception]]] = [
+            ("set_uint8", 300, ValueError),
+            ("set_uint8", -1, ValueError),
+            ("set_uint8_array", [300], OverflowError),
+            ("set_uint8", 1.5, ValueError),
+            ("set_uint8", nan, ValueError),
+            ("set_uint8_array", [1.5], TypeError),
+            ("set_uint8_array", [nan], TypeError),
+            ("set_float32", 1e300, ValueError),
+            ("set_string", "\ud800", UnicodeEncodeError),
+        ]
+        for setter, value, error in raised:
+            with self.subTest(setter=setter, value=value):
+                builder = TableBuilder(1)
+                with self.assertRaises(error):
+                    getattr(builder, setter)(value)
+                    builder.finalize()
+                with self.assertRaises(error):
+                    getattr(TableWriter(1), setter)(0, value)
+
+        # A float32 array writes infinity of the value's sign, as array("f")
+        # converts it, and rounds a float within range to the nearest float32
+        written: list[tuple[str, object, bytes]] = [
+            ("set_float32_array", [1e300, -1e300], b"\x00\x00\x80\x7f\x00\x00\x80\xff"),
+            ("set_float32", 0.1, b"\xcd\xcc\xcc\x3d"),
+        ]
+        for setter, value, expected in written:
+            with self.subTest(setter=setter, value=value):
+                builder = TableBuilder(1)
+                getattr(builder, setter)(value)
+                writer = TableWriter(1)
+                getattr(writer, setter)(0, value)
+                self.assertEqual(bytes(writer.bytes()), bytes(builder.bytes()))
+                self.assertTrue(bytes(writer.bytes()).endswith(expected))
+
     def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
         self,
     ) -> None:
@@ -289,6 +326,65 @@ class TestIndices(unittest.TestCase):
 
                     with self.assertRaises(ValueError):
                         write(writer, index)
+
+
+def second_uint8(writer: TableWriter) -> bytes:
+    """Sets field 1 of ``writer`` to the uint8 2, and returns its bytes"""
+    writer.set_uint8(1, 2)
+    return bytes(writer.bytes())
+
+
+class TestFailedSetters(unittest.TestCase):
+    @given(
+        sampled_from(
+            [
+                ("set_uint8", 256),
+                ("set_int8", -129),
+                ("set_uint16", -1),
+                ("set_int32", 2**31),
+                ("set_uint64", 2**64),
+                ("set_float32", 1e39),
+            ]
+        ),
+        sampled_from(["uint8", "uint16", "uint32"]),
+    )
+    def test_a_scalar_that_doesnt_fit_leaves_the_table_as_it_was(
+        self, case: tuple[str, float], offset_type: OffsetType
+    ) -> None:
+        setter, value = case
+        layout = TableLayout(offset_type=offset_type)
+        writer = TableWriter(2, layout)
+
+        with self.assertRaises(ValueError):
+            getattr(writer, setter)(0, value)
+
+        # Field 0 is still absent, rather than pointing at field 1's value
+        self.assertEqual(second_uint8(writer), second_uint8(TableWriter(2, layout)))
+
+
+class TestAlignments(unittest.TestCase):
+    def test_rejects_an_alignment_other_than_1_2_4_or_8_and_writes_nothing(
+        self,
+    ) -> None:
+        for alignment in [0, 3, -4, 16, 5, 2.0, True, [2]]:
+            message = f"An alignment of {alignment!r} isn't 1, 2, 4 or 8 bytes"
+            with self.subTest(alignment=alignment):
+                writer = TableWriter(2)
+                with self.assertRaises(ValueError) as raised:
+                    writer.set_table(0, cast(Any, alignment))
+                self.assertEqual(str(raised.exception), message)
+                with self.assertRaises(ValueError) as raised:
+                    writer.set_struct_array(0, b"\x01", 1, cast(Any, alignment))
+                self.assertEqual(str(raised.exception), message)
+                self.assertEqual(second_uint8(writer), second_uint8(TableWriter(2)))
+
+                builder = TableBuilder(1)
+                with self.assertRaises(ValueError) as raised:
+                    builder.set_table(b"", cast(Any, alignment))
+                self.assertEqual(str(raised.exception), message)
+                with self.assertRaises(ValueError) as raised:
+                    builder.set_struct_array(b"\x01", 1, cast(Any, alignment))
+                self.assertEqual(str(raised.exception), message)
 
 
 if __name__ == "__main__":

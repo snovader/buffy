@@ -13,7 +13,14 @@ import {
     setUint64Elements
 } from './elements.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
-import { assertCount, headerLength, maxLength, TableLayout } from './layout.ts';
+import {
+    assertAlignment,
+    assertCount,
+    headerLength,
+    maxLength,
+    padding,
+    TableLayout
+} from './layout.ts';
 import type { OffsetSize, ElementSize } from './types.ts';
 
 /**
@@ -218,12 +225,17 @@ export class TableSizer {
     }
 
     /**
-     * Adds a struct of `size` bytes
+     * Adds a struct of `size` bytes, which may be 0
      *
-     * @throws {RangeError} If `size` isn't a positive integer.
+     * @throws {RangeError} If `size` isn't a non-negative integer.
      */
     addStruct(size: number): void {
-        assertStructSize(size);
+        if (!(Number.isSafeInteger(size) && size >= 0)) {
+            throw new RangeError(
+                `A struct's size must be a non-negative integer, not ${size}`
+            );
+        }
+
         this.#position += size;
     }
 
@@ -231,19 +243,23 @@ export class TableSizer {
      * Adds `count` structs of `size` bytes, padded so that they start at a
      * multiple of `alignment` from the start of the table
      *
-     * @throws {RangeError} If `count` isn't a non-negative integer, or `size`
-     * a positive one.
+     * @throws {RangeError} If `count` isn't a non-negative integer, `size` a
+     * positive one, or `alignment` 1, 2, 4 or 8.
      */
     addStructArray(count: number, size: number, alignment: ElementSize): void {
         assertStructSize(size);
+        assertAlignment(alignment);
         this.#addArray(count, size, alignment);
     }
 
     /**
      * Adds a nested table, padded to start at a multiple of `alignment`,
      * whose fields then follow between `startTable()` and `endTable()`
+     *
+     * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
      */
     addTable(alignment: ElementSize): void {
+        assertAlignment(alignment);
         this.#position += padding(this.#position - this.#table, alignment);
     }
 
@@ -285,10 +301,12 @@ export class TableSizer {
  * nested tables are padded as `TableBuilder` pads them, so the two write the
  * same bytes for the same fields.
  *
- * Counts that aren't non-negative integers throw a `RangeError`, before the
- * writer moves. The index of each field and the item of each end must be
- * their own: another writes the offset or end into another slot of the
- * bytes.
+ * Counts that aren't non-negative integers, and alignments other than 1, 2,
+ * 4 or 8, throw a `RangeError` before the writer moves. The writer is the
+ * target of generated code, and trusts the index of each field and the item
+ * of each end to be their own, as the generated code passes them; it doesn't
+ * check them. Another writes the offset or end into another slot of the
+ * bytes. Hand-written tables use `TableBuilder`, which checks them.
  *
  * Every write stays within the bytes, even when they're part of a larger
  * buffer. A field that doesn't fit in them, as when it's longer than the one
@@ -615,8 +633,8 @@ export class TableWriter {
      * after another, padded so that they start at a multiple of `alignment`
      * from the start of the table
      *
-     * @throws {RangeError} If `size` isn't a positive integer, or `bytes`
-     * aren't a whole number of structs.
+     * @throws {RangeError} If `size` isn't a positive integer, `bytes` aren't
+     * a whole number of structs, or `alignment` isn't 1, 2, 4 or 8.
      */
     setStructArray(
         index: number,
@@ -625,6 +643,7 @@ export class TableWriter {
         alignment: ElementSize
     ): void {
         const count = structCount(bytes.length, size);
+        assertAlignment(alignment);
         const elements = this.#arrayElements(count, size, alignment);
 
         this.#bytes.set(bytes, elements);
@@ -635,8 +654,11 @@ export class TableWriter {
      * Writes the offset of a nested table, padded to start at a multiple of
      * `alignment`, whose fields then follow between `startTable()` and
      * `endTable()`
+     *
+     * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
      */
     setTable(index: number, alignment: ElementSize): void {
+        assertAlignment(alignment);
         this.#pad(padding(this.#position - this.#table, alignment));
         this.#setOffset(index);
     }
@@ -808,10 +830,4 @@ function tooLong(bytes: Uint8Array, end: number): RangeError {
     return new RangeError(
         `The fields need ${end} bytes, more than the table's ${bytes.length}`
     );
-}
-
-/** The bytes that bring `offset` to a multiple of `alignment` */
-function padding(offset: number, alignment: ElementSize): number {
-    const remainder = offset % alignment;
-    return remainder === 0 ? 0 : alignment - remainder;
 }

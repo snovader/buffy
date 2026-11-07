@@ -19,8 +19,8 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// order writes each where the sizer counted it.
 ///
 /// Adding a field doesn't fail: [`TableSizer::writer()`] returns the error
-/// of a table too long for its layout's offset type, as `TableBuilder`'s
-/// setter of the field would have.
+/// of a table too long for its layout's offset type, or of an array of
+/// 0-byte structs, as `TableBuilder`'s setter of the field would have.
 ///
 /// ```
 /// use tafla::{ByteBuffer, TableLayout, TableSizer};
@@ -56,8 +56,9 @@ pub struct TableSizer {
     /// The root's fields added so far, the last of which a table too long
     /// for its offsets names
     root_fields: usize,
-    /// The error of the first root field that made the table too long
-    too_long: Option<BuildError>,
+    /// The first error: of an array of 0-byte structs, or of the first root
+    /// field that made the table too long
+    error: Option<BuildError>,
 }
 
 macro_rules! scalar_adders {
@@ -128,7 +129,7 @@ impl TableSizer {
             position: u64::from(header),
             table: 0,
             root_fields: 0,
-            too_long: None,
+            error: None,
         }
     }
 
@@ -140,8 +141,10 @@ impl TableSizer {
     /// offset type: longer than 255 bytes, 64 KiB or 4 GiB. It names the root
     /// field that made it too long, and the length that the root's fields up
     /// to it make the table, as `TableBuilder`'s setter of the field returns.
+    /// [`BuildError::NotWholeStructs`] if an array of 0-byte structs was
+    /// added, unless a field before it made the table too long.
     pub fn byte_length(&self) -> Result<usize, BuildError> {
-        if let Some(error) = self.too_long {
+        if let Some(error) = self.error {
             return Err(error);
         }
 
@@ -161,8 +164,8 @@ impl TableSizer {
     ///
     /// # Errors
     ///
-    /// The [`BuildError::TooLong`] of [`TableSizer::byte_length()`], before
-    /// allocating the bytes.
+    /// The [`BuildError::TooLong`] or [`BuildError::NotWholeStructs`] of
+    /// [`TableSizer::byte_length()`], before allocating the bytes.
     pub fn writer(&self) -> Result<TableWriter, BuildError> {
         let length = self.byte_length()?;
 
@@ -237,9 +240,17 @@ impl TableSizer {
     }
 
     /// Adds an array of `count` structs of `size` bytes each, padded so that
-    /// they start at a multiple of `alignment` from the start of the table
+    /// they start at a multiple of `alignment` from the start of the table.
+    ///
+    /// [`TableSizer::writer()`] returns [`BuildError::NotWholeStructs`] if
+    /// `size` is 0, as `TableBuilder::set_struct_array()` does.
     #[inline]
     pub fn add_struct_array(&mut self, count: usize, size: usize, alignment: Alignment) {
+        if size == 0 {
+            self.error
+                .get_or_insert(BuildError::NotWholeStructs { length: 0, size });
+        }
+
         let byte_length = (count as u64).saturating_mul(size as u64);
         self.add_array(byte_length, alignment);
     }
@@ -300,8 +311,8 @@ impl TableSizer {
             return;
         }
 
-        if self.too_long.is_none() && self.position > u64::from(self.offset_type.max_value()) {
-            self.too_long = Some(BuildError::TooLong {
+        if self.error.is_none() && self.position > u64::from(self.offset_type.max_value()) {
+            self.error = Some(BuildError::TooLong {
                 index: self.root_fields.saturating_sub(1),
                 length: self.position,
                 offset_type: self.offset_type,
