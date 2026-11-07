@@ -134,7 +134,11 @@ fn test_arrays_in_place_when_aligned() {
         let float64s = buffer
             .get_f64_array(buffer.root_offset(1).unwrap())
             .unwrap();
-        let in_place = cfg!(target_endian = "little") && byte_offset == 0;
+        // The array lies a multiple of 8 bytes from the table's start, and
+        // is in place where the host aligns f64 to the table's offset: only
+        // at 0 on most hosts, and at 0 and 4 on i686, which aligns it to 4
+        let in_place =
+            cfg!(target_endian = "little") && byte_offset.is_multiple_of(align_of::<f64>());
 
         assert_eq!(float64s.as_slice().is_some(), in_place);
         assert_eq!(matches!(float64s.to_cow(), Cow::Borrowed(_)), in_place);
