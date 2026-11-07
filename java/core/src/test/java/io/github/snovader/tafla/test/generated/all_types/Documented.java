@@ -14,6 +14,11 @@ import java.nio.ByteOrder;
  * It can hold Markdown's {@code code spans}, non-ASCII text such as å, 世界 and
  * 🦀, and text that closes a comment or string in some language: *&#47;, """,
  * a backslash \ and a trailing quote"
+ *
+ * Javadoc and {@code JSDoc} read it as text, with HTML's &lt;b&gt;, &amp;amp; and &amp;,
+ * Javadoc's {&#64;link Object} and {@code {@code x}}, Java's Unicode escape &#92;u000A,
+ * and a tag at the start of a line:
+ * &#64;deprecated
  */
 public record Documented(short one, int two, long undocumented) {
     /** The byte length of a {@code Documented} */

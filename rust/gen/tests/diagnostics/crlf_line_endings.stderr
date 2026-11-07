@@ -1,0 +1,5 @@
+error: unknown type `flaot64`
+ --> crlf_line_endings.tafla:4:8
+  |
+4 |     x: flaot64;
+  |        ^^^^^^^ did you mean `float64`?

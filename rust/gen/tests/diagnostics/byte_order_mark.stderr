@@ -1,0 +1,5 @@
+error: unknown type `flaot64`
+ --> byte_order_mark.tafla:1:20
+  |
+1 | message Point { x: flaot64; } // After a byte-order mark, which columns leave out
+  |                    ^^^^^^^ did you mean `float64`?

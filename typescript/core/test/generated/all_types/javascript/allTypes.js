@@ -1546,6 +1546,11 @@ export class Packed {
  * It can hold Markdown's `code spans`, non-ASCII text such as å, 世界 and
  * 🦀, and text that closes a comment or string in some language: *&#47;, """,
  * a backslash \ and a trailing quote"
+ *
+ * Javadoc and `JSDoc` read it as text, with HTML's <b>, &amp; and &,
+ * Javadoc's {&#64;link Object} and `{@code x}`, Java's Unicode escape \u000A,
+ * and a tag at the start of a line:
+ * &#64;deprecated
  */
 export class Documented {
     /** The byte length of a `Documented` */

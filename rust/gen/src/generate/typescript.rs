@@ -3,7 +3,9 @@
 //! written from interfaces of their fields. Structs are read eagerly.
 
 use super::prose::article;
-use super::writer::{CodeWriter, Expr, Style, call, comment_text, doc_comment, text};
+use super::writer::{
+    CodeWriter, Expr, Style, call, comment_text, doc_comment, escape_outside_code_spans, text,
+};
 use super::{GeneratedFile, Options};
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
@@ -201,7 +203,7 @@ impl Generator<'_> {
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
         let name = &definition.name;
 
-        writer.lines(&doc_comment(&definition.docs));
+        writer.lines(&doc_comment(&schema_docs(&definition.docs)));
         writer.open(format!("export class {name} {{"));
 
         if let Some(version) = layout.version {
@@ -304,7 +306,7 @@ impl Generator<'_> {
         let definition = self.schema.definition(index);
         let name = &definition.name;
 
-        writer.lines(&doc_comment(&definition.docs));
+        writer.lines(&doc_comment(&schema_docs(&definition.docs)));
         writer.open(format!("export class {name} {{"));
         // A static of JavaScript is a number, rather than the literal that
         // addTable() and setTable() take, without its type
@@ -424,7 +426,7 @@ impl Generator<'_> {
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
 
-        writer.lines(&doc_comment(&definition.docs));
+        writer.lines(&doc_comment(&schema_docs(&definition.docs)));
         writer.open(format!("export class {name} {{"));
         writer.lines(&doc_comment(&[format!("The byte length of a `{name}`")]));
         writer.line(format!(
@@ -654,7 +656,7 @@ impl Generator<'_> {
             writer.blank();
             self.getter_doc(
                 writer,
-                &field.docs,
+                &schema_docs(&field.docs),
                 &value_type(field.field_type, self.schema),
             );
             writer.open(format!(
@@ -841,7 +843,7 @@ impl Generator<'_> {
             writer.lines(&doc_comment(&[summary]));
             writer.open(format!("export interface {name} {{"));
             for field in &definition.fields {
-                writer.lines(&doc_comment(&field.docs));
+                writer.lines(&doc_comment(&schema_docs(&field.docs)));
                 writer.line(format!(
                     "{}: {};",
                     identifier(&field.name),
@@ -856,7 +858,7 @@ impl Generator<'_> {
                 format!("@typedef {{object}} {name}"),
             ];
             for field in &definition.fields {
-                let description = field.docs.join(" ");
+                let description = schema_docs(&field.docs).join(" ");
                 let property = format!(
                     "@property {{{}}} {} {description}",
                     input_type(field.field_type, self.schema),
@@ -1015,7 +1017,7 @@ impl Generator<'_> {
             let view = view_type(field.field_type, self.schema).map(|view| (view, offset.clone()));
 
             writer.blank();
-            self.getter_doc(writer, &field.docs, &return_type);
+            self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
             writer.open(format!(
                 "{field_name}(){} {{",
                 self.annotation(&return_type)
@@ -1114,7 +1116,7 @@ impl Generator<'_> {
         view: &str,
         offset: Expr,
     ) {
-        let mut docs = field.docs.clone();
+        let mut docs = schema_docs(&field.docs);
         if !docs.is_empty() {
             docs.push(String::new());
         }
@@ -1267,6 +1269,16 @@ impl Generator<'_> {
 fn writer_fits(_writer: &CodeWriter, line: &str) -> bool {
     // Getters are indented once, in a class
     STYLE.indent.len() + line.len() <= STYLE.width
+}
+
+/// A schema's documentation for `JSDoc`, with `@` outside code spans as an
+/// HTML entity, which editors render as `@`, so that it can't start a tag,
+/// such as `@deprecated` or `@internal`, which TypeScript reads, or `@type`,
+/// which would change the type of JavaScript
+fn schema_docs(docs: &[String]) -> Vec<String> {
+    docs.iter()
+        .map(|line| escape_outside_code_spans(line, |text| text.replace('@', "&#64;")))
+        .collect()
 }
 
 fn identifier(name: &str) -> String {

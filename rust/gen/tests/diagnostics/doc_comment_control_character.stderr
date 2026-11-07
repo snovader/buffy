@@ -1,0 +1,5 @@
+error: a doc comment can't hold U+000D
+ --> doc_comment_control_character.tafla:2:12
+  |
+2 | /// A point�message Other { x: uint8; }
+  |            ^ the generated code would carry it in a comment, which it would end or garble

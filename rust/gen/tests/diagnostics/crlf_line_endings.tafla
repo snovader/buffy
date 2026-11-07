@@ -1,0 +1,5 @@
+// Lines that end with CR LF, which neither doc comments nor errors keep
+/// A point
+message Point {
+    x: flaot64;
+}

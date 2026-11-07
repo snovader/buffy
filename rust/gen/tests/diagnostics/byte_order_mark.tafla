@@ -1,0 +1,1 @@
+﻿message Point { x: flaot64; } // After a byte-order mark, which columns leave out

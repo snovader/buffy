@@ -1,0 +1,5 @@
+error: unexpected character U+FEFF
+ --> misplaced_byte_order_mark.tafla:2:16
+  |
+2 | message Point {� x: float64; }
+  |                ^

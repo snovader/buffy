@@ -66,7 +66,15 @@ the format: a message that changes its fields needs another version.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
-markup. `//` comments are left out.
+markup. Javadoc and `JSDoc` read the rest as text: Javadoc's HTML writes `&`,
+`<`, `>` and `@` as entities, and `JSDoc` writes `@` as one, so that a line
+such as `@deprecated` can't become a tag. A doc comment can't hold a control
+character other than a tab, a line or paragraph separator, or a control of
+the direction of text, which would end or garble the generated comments.
+`//` comments are left out.
+
+A schema is UTF-8. It may start with a byte-order mark, which is skipped, and
+its lines may end with `\r\n`.
 
 The grammar, where `NAME` is ASCII letters, digits and `_` that don't start
 with a digit, and `INTEGER` is decimal digits:
@@ -301,10 +309,23 @@ assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<
 tafla-gen <typescript|javascript|python|java|rust> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
-`ts`, `js`, `py` and `rs` abbreviate the targets. The command writes each
-schema's files under `--out`, which is the current directory by default, and
-names the schema by its path in their header. It prints the errors of the
-schemas that have any, and then fails.
+`ts`, `js`, `py` and `rs` abbreviate the targets. Options may come before,
+between or after the schemas, and `--` ends them, so that every argument
+after it is a schema. The command writes each schema's files under `--out`,
+which is the current directory by default, and names the schema by its path
+in their header. It prints the errors of the schemas that have any to stderr
+and writes none of their files, but writes the files of the others, and then
+fails. `-h` or `--help` prints the usage, the targets and the options, and
+`-V` or `--version` the version, both to stdout.
+
+| Exit code | When                                                                                                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | Every schema generated its files                                                                                                                                |
+| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, or a file can't be written                                                  |
+| 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, or a `--package` that isn't a Java package |
+
+With wrong arguments, the command prints the error and its usage to stderr,
+and writes nothing.
 
 A file is named after its schema up to the schema's first dot, so schemas can
 write the same file, such as `a/shapes.tafla` and `b/shapes.tafla`, or
@@ -413,8 +434,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   scalars through more than 1,024 fields and chains of tables or structs
   more than 64 deep fail with errors that point at them, and the command writes and prints what the library generates and
   finds.
-- `tests/cli.rs` and `tests/compile.rs`: the command and the library's
-  options.
+- `tests/cli.rs` and `tests/compile.rs`: the command, its arguments,
+  output and exit codes, and the library's options.
 - `tests/members.rs`: fields named after the generated code's members take a
   `_` in the targets where the names clash.
 - `tests/generated_<schema>.rs`: the golden Rust, compiled against

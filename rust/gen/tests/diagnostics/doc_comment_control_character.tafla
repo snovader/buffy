@@ -1,0 +1,3 @@
+// A carriage return that ends no line, which rustc rejects in a doc comment
+/// A pointmessage Other { x: uint8; }
+message Point { x: float64; }

@@ -1,5 +1,7 @@
 use std::fmt::Write;
 
+use crate::lexer::{BYTE_ORDER_MARK, garbles_text};
+
 /// Tabs are rendered as this many spaces, as rustc renders them, so that the
 /// carets line up under the text whatever a terminal's tab stops are
 const TAB: &str = "    ";
@@ -46,18 +48,28 @@ impl Diagnostic {
 
     /// Renders the error with the line it points at, as compilers print them
     pub fn render(&self, file_name: &str, source: &str) -> String {
-        let (line, column) = line_and_column(source, self.span.start);
+        // A byte-order mark at the start isn't part of the first line, which
+        // it would shift the columns of, as the lexer skips it
+        let skipped = if source.starts_with(BYTE_ORDER_MARK) {
+            BYTE_ORDER_MARK.len_utf8()
+        } else {
+            0
+        };
+        let source = &source[skipped..];
+        let start = self.span.start.saturating_sub(skipped);
+        let end = self.span.end.saturating_sub(skipped).max(start);
+
+        let (line, column) = line_and_column(source, start);
         let text = source.lines().nth(line - 1).unwrap_or("");
         let indent = columns(text.chars().take(column - 1));
-        let width =
-            columns(source[self.span.start..self.span.end.max(self.span.start)].chars()).max(1);
+        let width = columns(source[start..end].chars()).max(1);
         let gutter = " ".repeat(line.to_string().len());
 
         let mut rendered = String::new();
         let _ = writeln!(rendered, "error: {}", self.message);
         let _ = writeln!(rendered, "{gutter}--> {file_name}:{line}:{column}");
         let _ = writeln!(rendered, "{gutter} |");
-        let _ = writeln!(rendered, "{line} | {}", text.replace('\t', TAB));
+        let _ = writeln!(rendered, "{line} | {}", displayed(text));
         let _ = write!(
             rendered,
             "{gutter} | {}{}",
@@ -71,6 +83,24 @@ impl Diagnostic {
 
         rendered
     }
+}
+
+/// A line as it's printed: with tabs as spaces, and replacement characters
+/// for the characters that would garble the terminal, such as a lone carriage
+/// return, and for a byte-order mark, which takes no column, so that the
+/// carets line up and point at something
+fn displayed(text: &str) -> String {
+    let mut displayed = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '\t' => displayed.push_str(TAB),
+            character if character == BYTE_ORDER_MARK || garbles_text(character) => {
+                displayed.push(char::REPLACEMENT_CHARACTER);
+            }
+            character => displayed.push(character),
+        }
+    }
+    displayed
 }
 
 /// How many columns characters take in the rendered line

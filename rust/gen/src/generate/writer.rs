@@ -234,6 +234,26 @@ pub fn doc_comment(docs: &[String]) -> Vec<String> {
     }
 }
 
+/// A line of a schema's documentation with its text outside Markdown's code
+/// spans escaped, and its code spans as they are. A code span starts at
+/// every other backtick, and ends at the next or at the end of the line, as
+/// Java's `{@code ...}` does.
+#[cfg(any(feature = "typescript", feature = "java"))]
+pub fn escape_outside_code_spans(line: &str, escape: impl Fn(&str) -> String) -> String {
+    let mut escaped = String::with_capacity(line.len());
+    for (index, part) in line.split('`').enumerate() {
+        if index > 0 {
+            escaped.push('`');
+        }
+        if index % 2 == 0 {
+            escaped.push_str(&escape(part));
+        } else {
+            escaped.push_str(part);
+        }
+    }
+    escaped
+}
+
 /// Text for a `/* ... */` comment, with `*/` written as an HTML entity, which
 /// `JSDoc` and Javadoc render as the characters, so that it doesn't end the
 /// comment
