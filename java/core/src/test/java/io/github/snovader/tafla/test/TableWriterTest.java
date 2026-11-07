@@ -289,6 +289,174 @@ public class TableWriterTest {
         assertArrayEquals(new byte[] {4, 0, 0, 0, 0, 0, 0, 0}, writer.bytes());
     }
 
+    @Example
+    void a_struct_of_0_bytes_is_sized_and_written_as_TableBuilder_builds_it() {
+        var sizer = new TableSizer(2);
+        sizer.addStruct(0);
+        sizer.addUint8();
+        var writer = sizer.writer();
+        writer.setStruct(0, new byte[0]);
+        writer.setUint8(1, (short) 7);
+
+        var builder = new TableBuilder(2);
+        builder.setStruct(new byte[0]);
+        builder.setUint8((short) 7);
+        assertArrayEquals(builder.bytes(), writer.bytes());
+    }
+
+    @Property
+    void an_index_outside_the_tables_fields_throws_IllegalArgumentException_and_writes_nothing(
+        @ForAll("outsideIndices") int index,
+        @ForAll("fieldKinds") FieldKind kind
+    ) {
+        writeAround(kind, writer -> {
+            var exception = assertThrows(IllegalArgumentException.class, () -> kind.set().accept(writer, index));
+            assertEquals(String.format("Can't add field %d to a table of 3", index + 1L), exception.getMessage());
+        });
+    }
+
+    @Example
+    void a_nested_tables_indices_are_checked_against_its_own_fields() {
+        var sizer = new TableSizer(3);
+        sizer.addTable(1);
+        var sizerParent = sizer.startTable(1);
+        sizer.addUint8();
+        sizer.endTable(sizerParent);
+        sizer.addUint8();
+        sizer.addUint8();
+
+        var writer = sizer.writer();
+        writer.setTable(0, 1);
+        var parent = writer.startTable(1);
+        var exception = assertThrows(IllegalArgumentException.class, () -> writer.setUint8(2, (short) 1));
+        assertEquals("Can't add field 3 to a table of 1", exception.getMessage());
+        writer.setUint8(0, (short) 1);
+        writer.endTable(parent);
+        writer.setUint8(1, (short) 2);
+        writer.setUint8(2, (short) 3);
+
+        var nested = new TableBuilder(1);
+        nested.setUint8((short) 1);
+        var builder = new TableBuilder(3);
+        builder.setTable(nested, 1);
+        builder.setUint8((short) 2);
+        builder.setUint8((short) 3);
+        assertArrayEquals(builder.bytes(), writer.bytes());
+    }
+
+    @Property
+    void an_item_end_outside_the_vectors_items_throws_IllegalArgumentException_and_writes_nothing(
+        @ForAll OffsetType offsetType,
+        @ForAll("outsideItems") int item
+    ) {
+        var layout = TableLayout.builder().offsetType(offsetType).build();
+        var sizer = new TableSizer(1, layout);
+        sizer.addVector(2);
+        for (var i = 0; i < 2; i++) {
+            sizer.endTable(sizer.startTable(0));
+        }
+
+        var writer = sizer.writer();
+        var vector = writer.setVector(0, 2);
+        for (var i = 0; i < 2; i++) {
+            writer.endTable(writer.startTable(0));
+            var exception = assertThrows(IllegalArgumentException.class, () -> writer.setItemEnd(vector, item));
+            assertEquals(String.format("Can't end item %d of a vector of 2", item), exception.getMessage());
+            writer.setItemEnd(vector, i);
+        }
+
+        var builder = new TableBuilder(1, layout);
+        builder.setVector(List.of(new TableBuilder(0), new TableBuilder(0)));
+        assertArrayEquals(builder.bytes(), writer.bytes());
+    }
+
+    /** A field of a kind of setter, which a test sizes, writes and builds */
+    record FieldKind(
+        String name,
+        Consumer<TableSizer> add,
+        ObjIntConsumer<TableWriter> set,
+        Consumer<TableBuilder> build
+    ) {
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    private static final byte[] STRUCT = {1, 2, 3, 4};
+
+    @Provide
+    Arbitrary<FieldKind> fieldKinds() {
+        return Arbitraries.of(
+            new FieldKind("uint8", TableSizer::addUint8, (writer, index) -> writer.setUint8(index, (short) 1),
+                builder -> builder.setUint8((short) 1)),
+            new FieldKind("int64", TableSizer::addInt64, (writer, index) -> writer.setInt64(index, -2),
+                builder -> builder.setInt64(-2)),
+            new FieldKind("float64", TableSizer::addFloat64, (writer, index) -> writer.setFloat64(index, 0.5),
+                builder -> builder.setFloat64(0.5)),
+            new FieldKind("string", sizer -> sizer.addString("🦀"), (writer, index) -> writer.setString(index, "🦀"),
+                builder -> builder.setString("🦀")),
+            new FieldKind("struct", sizer -> sizer.addStruct(STRUCT.length),
+                (writer, index) -> writer.setStruct(index, STRUCT), builder -> builder.setStruct(STRUCT)),
+            new FieldKind("int32[]", sizer -> sizer.addInt32Array(2),
+                (writer, index) -> writer.setInt32Array(index, new int[] {3, 4}),
+                builder -> builder.setInt32Array(new int[] {3, 4})),
+            new FieldKind("struct[]", sizer -> sizer.addStructArray(1, STRUCT.length, 4),
+                (writer, index) -> writer.setStructArray(index, STRUCT, STRUCT.length, 4),
+                builder -> builder.setStructArray(STRUCT, STRUCT.length, 4)),
+            new FieldKind("vector", sizer -> sizer.addVector(0), (writer, index) -> writer.setVector(index, 0),
+                builder -> builder.setVector(List.of())),
+            new FieldKind(
+                "table",
+                sizer -> {
+                    sizer.addTable(8);
+                    sizer.endTable(sizer.startTable(0));
+                },
+                (writer, index) -> {
+                    writer.setTable(index, 8);
+                    writer.endTable(writer.startTable(0));
+                },
+                builder -> builder.setTable(new TableBuilder(0), 8)
+            )
+        );
+    }
+
+    /** {@return indices outside a table's 3 fields} */
+    @Provide
+    Arbitrary<Integer> outsideIndices() {
+        return Arbitraries.oneOf(Arbitraries.integers().lessOrEqual(-1), Arbitraries.integers().greaterOrEqual(3));
+    }
+
+    /** {@return items outside a vector's 2 items} */
+    @Provide
+    Arbitrary<Integer> outsideItems() {
+        return Arbitraries.oneOf(Arbitraries.integers().lessOrEqual(-1), Arbitraries.integers().greaterOrEqual(2));
+    }
+
+    /**
+     * Writes a table of a uint8, a field of {@code kind} and a uint8, calling {@code before} once
+     * the first uint8 is written, and checks that it holds the bytes that {@link TableBuilder}
+     * builds
+     */
+    private static void writeAround(FieldKind kind, Consumer<TableWriter> before) {
+        var sizer = new TableSizer(3);
+        sizer.addUint8();
+        kind.add().accept(sizer);
+        sizer.addUint8();
+
+        var writer = sizer.writer();
+        writer.setUint8(0, (short) 9);
+        before.accept(writer);
+        kind.set().accept(writer, 1);
+        writer.setUint8(2, (short) 8);
+
+        var builder = new TableBuilder(3);
+        builder.setUint8((short) 9);
+        kind.build().accept(builder);
+        builder.setUint8((short) 8);
+        assertArrayEquals(builder.bytes(), writer.bytes());
+    }
+
     @Provide
     Arbitrary<TableDescription> inPlaceTables() {
         return Arbitraries.oneOf(Descriptions.tables(), Descriptions.nestingTables())

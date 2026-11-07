@@ -1,5 +1,5 @@
-import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
-import type { OffsetSize, OffsetType } from './types.ts';
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
+import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
     /** Whether the header starts with the table's total byte length */
@@ -182,6 +182,34 @@ export function assertCount(count: number): void {
             `A count must be a non-negative integer, not ${count}`
         );
     }
+}
+
+/**
+ * The bytes that bring `offset`, from a table's start, to a multiple of
+ * `alignment`, which arrays, structs and nested tables are padded to
+ *
+ * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
+ */
+export function paddingTo(offset: number, alignment: ElementSize): number {
+    if (
+        !(
+            alignment === SIZEOF_8 ||
+            alignment === SIZEOF_16 ||
+            alignment === SIZEOF_32 ||
+            alignment === SIZEOF_64
+        )
+    ) {
+        throw alignmentError(alignment);
+    }
+
+    const remainder = offset % alignment;
+    return remainder === 0 ? 0 : alignment - remainder;
+}
+
+function alignmentError(alignment: number): RangeError {
+    return new RangeError(
+        `An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`
+    );
 }
 
 /**

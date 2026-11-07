@@ -20,9 +20,11 @@ import java.util.*;
  * <p>Fields that differ from those that the sizer added, such as values that changed in between,
  * never write outside the table's bytes. A field that would end past them throws an
  * {@link IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()}
- * throws an {@link IllegalStateException} for fields that didn't fill them. The index of each field
- * and the item of each end must be their own: another writes the offset or end into another slot
- * of the bytes, or throws an {@code IndexOutOfBoundsException}.</p>
+ * throws an {@link IllegalStateException} for fields that didn't fill them. A field index outside
+ * its table's fields, and an item outside its vector's items, throw an
+ * {@link IllegalArgumentException} before the writer writes or moves. Each field's index and each
+ * end's item must still be their own: another within range writes the offset or end into another
+ * slot of the bytes.</p>
  */
 public final class TableWriter {
     private final byte[] bytes;
@@ -35,6 +37,8 @@ public final class TableWriter {
     private int table = 0;
     /** The position of that table's first offset, after the root's header */
     private int slots;
+    /** The number of that table's fields */
+    private int fields;
     /** The long strings that the sizer encoded, in order */
     private final List<TableSizer.EncodedString> encodedStrings;
     /** The index in them of the next long string */
@@ -57,6 +61,7 @@ public final class TableWriter {
         this.offsetSize = layout.offsetSize();
         this.headerSize = layout.headerSize();
         this.slots = headerSize;
+        this.fields = fields;
         this.position = headerSize + fields * offsetSize;
 
         var slot = 0;
@@ -90,26 +95,31 @@ public final class TableWriter {
      * Starts the fields of a nested table or vector item of {@code fields} fields, after its
      * parent's {@link #setTable} or {@link #setVector}.
      *
-     * @return the parent's start, which {@link #endTable} takes back
+     * @return the parent's start and number of fields, which {@link #endTable} takes back
      * @throws IllegalArgumentException if {@code fields} is negative
      * @throws IndexOutOfBoundsException if the table's offsets end past the bytes
      */
-    public int startTable(int fields) {
-        var parent = table;
+    // The parent's number of fields is returned with its start, as Rust's WriterParent holds them,
+    // rather than kept on a stack of the writer's: an int[] of them made writing a vector of 100
+    // tables that each nest another 30% slower, and a document with one nested table 8% slower
+    public long startTable(int fields) {
+        var parent = (long) this.fields << Integer.SIZE | table;
         var start = position;
         skip((long) TableSizer.checkCount(fields) * offsetSize);
 
         table = start;
         slots = start;
+        this.fields = fields;
 
         return parent;
     }
 
     /** Ends the fields of the table that {@link #startTable} started */
-    public void endTable(int parent) {
-        table = parent;
+    public void endTable(long parent) {
+        table = (int) parent;
+        fields = (int) (parent >>> Integer.SIZE);
         // Only the root starts at 0, and only its offsets follow a header
-        slots = parent == 0 ? headerSize : parent;
+        slots = table == 0 ? headerSize : table;
     }
 
     public void setInt8(int index, byte value) {
@@ -266,7 +276,8 @@ public final class TableWriter {
      *
      * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
      * @throws IllegalArgumentException if {@code size} is less than 1, {@code bytes} aren't a whole
-     *     number of structs, or the alignment isn't 1, 2, 4 or 8
+     *     number of structs, or the alignment isn't 1, 2, 4 or 8, or {@code index} is outside the
+     *     table's fields
      */
     public void setStructArray(int index, byte[] bytes, int size, int alignment) {
         startArray(index, ByteBuffer.structCount(bytes.length, size), alignment);
@@ -280,11 +291,13 @@ public final class TableWriter {
      * whose fields then follow between {@link #startTable} and {@link #endTable}
      *
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
-     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8, or {@code index} is
+     *     outside the table's fields
      */
     public void setTable(int index, int alignment) {
-        position += TableLayout.padding(position - table, alignment);
-        setOffset(index);
+        var start = position + TableLayout.padding(position - table, alignment);
+        setOffset(index, start);
+        position = start;
     }
 
     /**
@@ -306,8 +319,18 @@ public final class TableWriter {
         return vector;
     }
 
-    /** Writes the end of item {@code item} of the vector, which was just written */
+    /**
+     * Writes the end of item {@code item} of the vector, which was just written
+     *
+     * @throws IllegalArgumentException if {@code item} is outside the count that the vector's
+     *     {@link #setVector} wrote
+     */
     public void setItemEnd(int vector, int item) {
+        var count = getLength(vector);
+        if (item < 0 || item >= count) {
+            throw itemError(item, count);
+        }
+
         setLength(vector + (item + 1) * offsetSize, position - vector);
     }
 
@@ -329,10 +352,10 @@ public final class TableWriter {
 
     /** Pads the array so that its elements, after the count, are aligned, and writes the count */
     private void startArray(int index, int count, int alignment) {
-        position += TableLayout.padding(position + offsetSize - table, alignment);
-        setOffset(index);
-        setLength(position, count);
-        position += offsetSize;
+        var start = position + TableLayout.padding(position + offsetSize - table, alignment);
+        setOffset(index, start);
+        setLength(start, count);
+        position = start + offsetSize;
     }
 
     /**
@@ -351,8 +374,42 @@ public final class TableWriter {
         position = (int) end;
     }
 
+    /** Writes the offset of field {@code index}, which starts at the position */
     private void setOffset(int index) {
-        setLength(slots + index * offsetSize, position - table);
+        setOffset(index, position);
+    }
+
+    /**
+     * Writes the offset of field {@code index}, which starts at {@code start}
+     *
+     * @throws IllegalArgumentException if {@code index} is outside the table's fields, without
+     *     writing it
+     */
+    private void setOffset(int index, int start) {
+        if (index < 0 || index >= fields) {
+            throw indexError(index);
+        }
+
+        setLength(slots + index * offsetSize, start - table);
+    }
+
+    private IllegalArgumentException indexError(int index) {
+        return new IllegalArgumentException(String.format("Can't add field %d to a table of %d", index + 1L, fields));
+    }
+
+    private static IllegalArgumentException itemError(int item, long count) {
+        return new IllegalArgumentException(String.format("Can't end item %d of a vector of %d", item, count));
+    }
+
+    /** Reads the count or length at {@code position}, unsigned */
+    private long getLength(int position) {
+        return switch (offsetSize) {
+            case Byte.BYTES -> bytes[position] & 0xFFL;
+
+            case Short.BYTES -> (short) Elements.INT16.get(bytes, position) & 0xFFFFL;
+
+            default -> (int) Elements.INT32.get(bytes, position) & 0xFFFF_FFFFL;
+        };
     }
 
     /** Writes an offset, length, count or header slot at {@code position} */

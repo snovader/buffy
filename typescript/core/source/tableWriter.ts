@@ -13,7 +13,13 @@ import {
     setUint64Elements
 } from './elements.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
-import { assertCount, headerLength, maxLength, TableLayout } from './layout.ts';
+import {
+    assertCount,
+    headerLength,
+    maxLength,
+    paddingTo,
+    TableLayout
+} from './layout.ts';
 import type { OffsetSize, ElementSize } from './types.ts';
 
 /**
@@ -218,12 +224,17 @@ export class TableSizer {
     }
 
     /**
-     * Adds a struct of `size` bytes
+     * Adds a struct of `size` bytes, which may be 0
      *
-     * @throws {RangeError} If `size` isn't a positive integer.
+     * @throws {RangeError} If `size` isn't a non-negative integer.
      */
     addStruct(size: number): void {
-        assertStructSize(size);
+        if (!(Number.isSafeInteger(size) && size >= 0)) {
+            throw new RangeError(
+                `A struct's size must be a non-negative integer, not ${size}`
+            );
+        }
+
         this.#position += size;
     }
 
@@ -231,8 +242,8 @@ export class TableSizer {
      * Adds `count` structs of `size` bytes, padded so that they start at a
      * multiple of `alignment` from the start of the table
      *
-     * @throws {RangeError} If `count` isn't a non-negative integer, or `size`
-     * a positive one.
+     * @throws {RangeError} If `count` isn't a non-negative integer, `size` a
+     * positive one, or `alignment` 1, 2, 4 or 8.
      */
     addStructArray(count: number, size: number, alignment: ElementSize): void {
         assertStructSize(size);
@@ -242,9 +253,11 @@ export class TableSizer {
     /**
      * Adds a nested table, padded to start at a multiple of `alignment`,
      * whose fields then follow between `startTable()` and `endTable()`
+     *
+     * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
      */
     addTable(alignment: ElementSize): void {
-        this.#position += padding(this.#position - this.#table, alignment);
+        this.#position += paddingTo(this.#position - this.#table, alignment);
     }
 
     /**
@@ -267,7 +280,7 @@ export class TableSizer {
 
         const start = this.#position + this.#size;
         this.#position =
-            start + padding(start - this.#table, alignment) + count * size;
+            start + paddingTo(start - this.#table, alignment) + count * size;
     }
 }
 
@@ -285,10 +298,11 @@ export class TableSizer {
  * nested tables are padded as `TableBuilder` pads them, so the two write the
  * same bytes for the same fields.
  *
- * Counts that aren't non-negative integers throw a `RangeError`, before the
- * writer moves. The index of each field and the item of each end must be
- * their own: another writes the offset or end into another slot of the
- * bytes.
+ * Counts that aren't non-negative integers, field indices outside their
+ * table's fields, item ends outside their vector's items, and alignments
+ * other than 1, 2, 4 or 8 throw a `RangeError`, before the writer moves.
+ * Each field's index and each end's item must still be their own: another
+ * within range writes the offset or end into another slot of the bytes.
  *
  * Every write stays within the bytes, even when they're part of a larger
  * buffer. A field that doesn't fit in them, as when it's longer than the one
@@ -322,6 +336,14 @@ export class TableWriter {
     #table = 0;
     /** The position of that table's first offset, after the root's header */
     #slots: number;
+    /** The number of that table's fields */
+    #fields: number;
+    /**
+     * The numbers of fields of the tables that it's nested in, created with
+     * the first nested table, so that writing a table without one allocates
+     * nothing more
+     */
+    #parentFields: number[] | undefined;
 
     /**
      * Writes the header of a table of `fields` fields into `bytes`, which
@@ -360,6 +382,7 @@ export class TableWriter {
         this.#size = size;
         this.#headerSize = layout.headerSize();
         this.#slots = this.#headerSize;
+        this.#fields = fields;
         this.#position = header;
 
         let slot = 0;
@@ -403,6 +426,12 @@ export class TableWriter {
         this.#table = this.#position;
         this.#slots = this.#position;
         this.#position += fields * this.#size;
+        if (this.#parentFields === undefined) {
+            this.#parentFields = [this.#fields];
+        } else {
+            this.#parentFields.push(this.#fields);
+        }
+        this.#fields = fields;
 
         return parent;
     }
@@ -412,6 +441,8 @@ export class TableWriter {
         this.#table = parent;
         // Only the root starts at 0, and only its offsets follow a header
         this.#slots = parent === 0 ? this.#headerSize : parent;
+        // A table that didn't start has no fields to write
+        this.#fields = this.#parentFields?.pop() ?? 0;
     }
 
     // A scalar is converted and copied into the bytes before its offset is
@@ -615,8 +646,8 @@ export class TableWriter {
      * after another, padded so that they start at a multiple of `alignment`
      * from the start of the table
      *
-     * @throws {RangeError} If `size` isn't a positive integer, or `bytes`
-     * aren't a whole number of structs.
+     * @throws {RangeError} If `size` isn't a positive integer, `bytes` aren't
+     * a whole number of structs, or `alignment` isn't 1, 2, 4 or 8.
      */
     setStructArray(
         index: number,
@@ -635,10 +666,13 @@ export class TableWriter {
      * Writes the offset of a nested table, padded to start at a multiple of
      * `alignment`, whose fields then follow between `startTable()` and
      * `endTable()`
+     *
+     * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
      */
     setTable(index: number, alignment: ElementSize): void {
-        this.#pad(padding(this.#position - this.#table, alignment));
-        this.#setOffset(index);
+        const padding = paddingTo(this.#position - this.#table, alignment);
+        this.#setOffsetAt(index, this.#position + padding);
+        this.#pad(padding);
     }
 
     /**
@@ -661,8 +695,20 @@ export class TableWriter {
         return vector;
     }
 
-    /** Writes the end of item `item` of the vector, which was just written */
+    /**
+     * Writes the end of item `item` of the vector, which was just written
+     *
+     * @throws {RangeError} If `item` isn't an integer from 0 to the count
+     * that the vector's `setVector()` wrote, less 1.
+     */
     setItemEnd(vector: number, item: number): void {
+        const count = this.#getLength(vector);
+        if (!(item >>> 0 === item && item < count)) {
+            throw new RangeError(
+                `Can't end item ${item} of a vector of ${count}`
+            );
+        }
+
         this.#setLength(
             vector + (item + 1) * this.#size,
             this.#position - vector
@@ -680,7 +726,7 @@ export class TableWriter {
         alignment: ElementSize
     ): number {
         const start = this.#position + this.#size;
-        const elements = start + padding(start - this.#table, alignment);
+        const elements = start + paddingTo(start - this.#table, alignment);
         assertFits(this.#bytes, elements + count * elementSize);
 
         return elements;
@@ -696,9 +742,10 @@ export class TableWriter {
         elements: number,
         byteLength: number
     ): void {
-        this.#pad(elements - this.#size - this.#position);
-        this.#setOffset(index);
-        this.#setLength(this.#position, count);
+        const start = elements - this.#size;
+        this.#setOffsetAt(index, start);
+        this.#pad(start - this.#position);
+        this.#setLength(start, count);
         this.#position = elements + byteLength;
     }
 
@@ -713,10 +760,43 @@ export class TableWriter {
         this.#position = position + length;
     }
 
+    /** Writes the offset of field `index`, which starts at the position */
     #setOffset(index: number): void {
-        this.#setLength(
-            this.#slots + index * this.#size,
-            this.#position - this.#table
+        this.#setOffsetAt(index, this.#position);
+    }
+
+    /**
+     * Writes the offset of field `index`, which starts at `start`
+     *
+     * @throws {RangeError} If `index` isn't an integer from 0 to the table's
+     * fields, less 1, without writing it.
+     */
+    #setOffsetAt(index: number, start: number): void {
+        const fields = this.#fields;
+        if (!(index >>> 0 === index && index < fields)) {
+            throw indexError(index, fields);
+        }
+
+        this.#setLength(this.#slots + index * this.#size, start - this.#table);
+    }
+
+    /** Reads the count or length at `position`, little-endian */
+    #getLength(position: number): number {
+        const bytes = this.#bytes;
+        if (this.#size === SIZEOF_8) {
+            return bytes[position];
+        }
+
+        const low = bytes[position] | (bytes[position + 1] << 8);
+        if (this.#size === SIZEOF_16) {
+            return low;
+        }
+
+        return (
+            (low |
+                (bytes[position + 2] << 16) |
+                (bytes[position + 3] << 24)) >>>
+            0
         );
     }
 
@@ -810,8 +890,8 @@ function tooLong(bytes: Uint8Array, end: number): RangeError {
     );
 }
 
-/** The bytes that bring `offset` to a multiple of `alignment` */
-function padding(offset: number, alignment: ElementSize): number {
-    const remainder = offset % alignment;
-    return remainder === 0 ? 0 : alignment - remainder;
+function indexError(index: number, fields: number): RangeError {
+    return new RangeError(
+        `Can't add field ${index + 1} to a table of ${fields}`
+    );
 }

@@ -131,12 +131,14 @@
  *     number of structs. A field that would make the table too long for its offset type throws an
  *     {@code IllegalArgumentException} from its setter and isn't added.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
- *     constructor, and one for a negative count, a struct size below 1 and an alignment other
- *     than 1, 2, 4 or 8. Its {@code byteLength()} and {@code writer()} throw one for a table too
- *     long for its offset type, before allocating it. {@code TableWriter} never writes outside the
- *     sized bytes: a field that would end past them throws an
- *     {@link IndexOutOfBoundsException}, and {@code bytes()} an {@code IllegalStateException}
- *     for fields that didn't fill them.</li>
+ *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
+ *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and
+ *     {@code writer()} throw one for a table too long for its offset type, before allocating it.
+ *     {@code TableWriter} never writes outside the sized bytes: a field that would end past them
+ *     throws an {@link IndexOutOfBoundsException}, and {@code bytes()} an
+ *     {@code IllegalStateException} for fields that didn't fill them. It throws an
+ *     {@code IllegalArgumentException} for a field index outside its table's fields and an item
+ *     outside its vector's items, and writes nothing.</li>
  *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
  *     </li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't

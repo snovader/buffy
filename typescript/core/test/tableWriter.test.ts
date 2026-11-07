@@ -254,13 +254,261 @@ describe('counts and sizes', () => {
     );
 
     it.each([0, -2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-        'should reject a struct of %s bytes',
+        'should reject an array of structs of %s bytes, as the writer does',
         size => {
-            const sizer = new TableSizer(1);
             const error = new RangeError(`A struct's size must be a positive integer, not ${size}`);
 
-            expect(() => sizer.addStruct(size)).toThrow(error);
-            expect(() => sizer.addStructArray(1, size, 1)).toThrow(error);
+            expect(() => new TableSizer(1).addStructArray(1, size, 1)).toThrow(error);
+            expect(() =>
+                new TableSizer(1).writer().setStructArray(0, new Uint8Array(0), size, 1)
+            ).toThrow(error);
+        }
+    );
+
+    it.each([-2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'should reject a struct of %s bytes',
+        size => {
+            expect(() => new TableSizer(1).addStruct(size)).toThrow(
+                new RangeError(`A struct's size must be a non-negative integer, not ${size}`)
+            );
+        }
+    );
+
+    it('should write a struct of 0 bytes as TableBuilder does', () => {
+        const sizer = new TableSizer(2);
+        sizer.addStruct(0);
+        sizer.addUint8();
+        const writer = sizer.writer();
+        writer.setStruct(0, new Uint8Array(0));
+        writer.setUint8(1, 7);
+
+        const builder = new TableBuilder(2);
+        builder.setStruct(new Uint8Array(0));
+        builder.setUint8(7);
+        expect(writer.bytes()).toStrictEqual(builder.bytes());
+    });
+});
+
+/** A field of each kind of setter, which a test sizes, writes and builds */
+interface FieldKind {
+    name: string;
+    add(sizer: TableSizer): void;
+    set(writer: TableWriter, index: number): void;
+    build(builder: TableBuilder): void;
+}
+
+const STRUCT = Uint8Array.of(1, 2, 3, 4);
+
+const FIELD_KINDS: readonly FieldKind[] = [
+    {
+        name: 'uint8',
+        add: sizer => sizer.addUint8(),
+        set: (writer, index) => writer.setUint8(index, 1),
+        build: builder => builder.setUint8(1)
+    },
+    {
+        name: 'int64',
+        add: sizer => sizer.addInt64(),
+        set: (writer, index) => writer.setInt64(index, -2n),
+        build: builder => builder.setInt64(-2n)
+    },
+    {
+        name: 'float64',
+        add: sizer => sizer.addFloat64(),
+        set: (writer, index) => writer.setFloat64(index, 0.5),
+        build: builder => builder.setFloat64(0.5)
+    },
+    {
+        name: 'string',
+        add: sizer => sizer.addString('🦀'),
+        set: (writer, index) => writer.setString(index, '🦀'),
+        build: builder => builder.setString('🦀')
+    },
+    {
+        name: 'struct',
+        add: sizer => sizer.addStruct(STRUCT.length),
+        set: (writer, index) => writer.setStruct(index, STRUCT),
+        build: builder => builder.setStruct(STRUCT)
+    },
+    {
+        name: 'int32[]',
+        add: sizer => sizer.addInt32Array(2),
+        set: (writer, index) => writer.setInt32Array(index, [3, 4]),
+        build: builder => builder.setInt32Array([3, 4])
+    },
+    {
+        name: 'struct[]',
+        add: sizer => sizer.addStructArray(1, STRUCT.length, 4),
+        set: (writer, index) => writer.setStructArray(index, STRUCT, STRUCT.length, 4),
+        build: builder => builder.setStructArray(STRUCT, STRUCT.length, 4)
+    },
+    {
+        name: 'vector',
+        add: sizer => sizer.addVector(0),
+        set: (writer, index) => {
+            writer.setVector(index, 0);
+        },
+        build: builder => builder.setVector([])
+    },
+    {
+        name: 'table',
+        add: sizer => {
+            sizer.addTable(8);
+            sizer.endTable(sizer.startTable(0));
+        },
+        set: (writer, index) => {
+            writer.setTable(index, 8);
+            writer.endTable(writer.startTable(0));
+        },
+        build: builder => builder.setTable(new TableBuilder(0), 8)
+    }
+];
+
+/**
+ * Writes a table of a uint8, a field of `kind` and a uint8, calling `before`
+ * once the first uint8 is written, and returns its bytes, which it checks
+ * are TableBuilder's
+ */
+function writeAround(kind: FieldKind, before: (writer: TableWriter) => void): Uint8Array {
+    const sizer = new TableSizer(3);
+    sizer.addUint8();
+    kind.add(sizer);
+    sizer.addUint8();
+
+    const writer = sizer.writer();
+    writer.setUint8(0, 9);
+    before(writer);
+    kind.set(writer, 1);
+    writer.setUint8(2, 8);
+
+    const builder = new TableBuilder(3);
+    builder.setUint8(9);
+    kind.build(builder);
+    builder.setUint8(8);
+    expect(writer.bytes()).toStrictEqual(builder.bytes());
+
+    return writer.bytes();
+}
+
+describe('field indices', () => {
+    // Indices outside the table's 3 fields: negative, past them, and
+    // fractional or not finite
+    const outsideIndices = fc.oneof(
+        fc.integer({ max: -1 }),
+        fc.integer({ min: 3 }),
+        fc.double().filter(index => !Number.isInteger(index))
+    );
+
+    it.prop([outsideIndices, fc.constantFrom(...FIELD_KINDS)])(
+        "should reject an index outside the table's fields, and leave the writer where it was",
+        (index, kind) => {
+            writeAround(kind, writer => {
+                expect(() => kind.set(writer, index)).toThrow(
+                    new RangeError(`Can't add field ${index + 1} to a table of 3`)
+                );
+            });
+        }
+    );
+
+    it("should check a nested table's indices against its own fields", () => {
+        const sizer = new TableSizer(3);
+        sizer.addTable(1);
+        const sizerParent = sizer.startTable(1);
+        sizer.addUint8();
+        sizer.endTable(sizerParent);
+        sizer.addUint8();
+        sizer.addUint8();
+
+        const writer = sizer.writer();
+        writer.setTable(0, 1);
+        const parent = writer.startTable(1);
+        expect(() => writer.setUint8(2, 1)).toThrow(
+            new RangeError("Can't add field 3 to a table of 1")
+        );
+        writer.setUint8(0, 1);
+        writer.endTable(parent);
+        writer.setUint8(1, 2);
+        writer.setUint8(2, 3);
+
+        const nested = new TableBuilder(1);
+        nested.setUint8(1);
+        const builder = new TableBuilder(3);
+        builder.setTable(nested, 1);
+        builder.setUint8(2);
+        builder.setUint8(3);
+        expect(writer.bytes()).toStrictEqual(builder.bytes());
+    });
+});
+
+describe('vector item ends', () => {
+    it.each(
+        OFFSET_TYPES.flatMap(offsetType =>
+            [2, 3, -1, 0.5, Number.NaN].map(item => [offsetType, item] as const)
+        )
+    )(
+        "should reject in %s offsets an end of item %s, outside the vector's 2 items",
+        (offsetType, item) => {
+            const layout = TableLayout.create({ offsetType });
+            const sizer = new TableSizer(1, layout);
+            sizer.addVector(2);
+            for (let i = 0; i < 2; i++) {
+                sizer.endTable(sizer.startTable(0));
+            }
+
+            const writer = sizer.writer();
+            const vector = writer.setVector(0, 2);
+            for (let i = 0; i < 2; i++) {
+                writer.endTable(writer.startTable(0));
+                expect(() => writer.setItemEnd(vector, item)).toThrow(
+                    new RangeError(`Can't end item ${item} of a vector of 2`)
+                );
+                writer.setItemEnd(vector, i);
+            }
+
+            const builder = new TableBuilder(1, layout);
+            builder.setVector([new TableBuilder(0), new TableBuilder(0)]);
+            expect(writer.bytes()).toStrictEqual(builder.bytes());
+        }
+    );
+});
+
+describe('alignments', () => {
+    const ALIGNMENTS = [0, 3, -4, 16, 1.5, Number.NaN];
+
+    it.each(ALIGNMENTS)(
+        'should reject an alignment of %s from the sizer and builder',
+        alignment => {
+            const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
+            const invalid = alignment as 1;
+
+            expect(() => new TableSizer(1).addTable(invalid)).toThrow(error);
+            expect(() => new TableSizer(1).addStructArray(1, 4, invalid)).toThrow(error);
+            expect(() => new TableBuilder(1).setTable(new Uint8Array(0), invalid)).toThrow(error);
+            expect(() => new TableBuilder(1).setStructArray(STRUCT, 4, invalid)).toThrow(error);
+        }
+    );
+
+    it.each(
+        ALIGNMENTS.flatMap(alignment =>
+            FIELD_KINDS.filter(kind => kind.name === 'table' || kind.name === 'struct[]').map(
+                kind => [alignment, kind] as const
+            )
+        )
+    )(
+        'should reject an alignment of %s from the writer, and leave it where it was',
+        (alignment, kind) => {
+            const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
+            const invalid = alignment as 1;
+
+            writeAround(kind, writer => {
+                if (kind.name === 'table') {
+                    expect(() => writer.setTable(1, invalid)).toThrow(error);
+                } else {
+                    expect(() => writer.setStructArray(1, STRUCT, STRUCT.length, invalid)).toThrow(
+                        error
+                    );
+                }
+            });
         }
     );
 });

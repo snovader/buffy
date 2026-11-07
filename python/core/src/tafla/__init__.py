@@ -144,16 +144,22 @@ Using the API wrongly raises other errors, whatever the bytes:
   the table too long for its ``offset_type`` raises ``ValueError`` from its
   setter and isn't added. A value that its type can't hold raises
   ``OverflowError`` or ``TypeError`` from an array setter, and ``ValueError``
-  from ``finalize()`` for a scalar. A string with a lone surrogate raises
+  from ``finalize()`` for a scalar. Float32 arrays are the exception: they
+  convert as ``array("f")`` does, which writes a finite value past float32's
+  range as an infinity of its sign, where ``set_float32()`` raises
+  ``ValueError`` for it. A string with a lone surrogate raises
   ``UnicodeEncodeError`` from ``set_string()``. A version missing from or
   given for a layout, or a field set after ``finalize()``, raises
   ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
-  fit, or from ``bytes()``. It doesn't check that each field's index is its
-  own: another writes the offset into another slot, or raises ``ValueError``
-  where the bytes have no such slot.
+  fit, or from ``bytes()``. It raises ``ValueError`` for a field set out of
+  order, twice or at an index outside its table, or an item end set out of
+  order or outside its vector, from the setter and without writing it, and
+  for fields or item ends left unset, from ``end_table()`` or ``bytes()``.
+- An alignment other than 1, 2, 4 or 8 raises ``ValueError`` from
+  ``set_struct_array()`` and ``set_table()``.
 - A struct size less than 1 raises ``ValueError`` from
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.

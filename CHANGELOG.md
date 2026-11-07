@@ -49,6 +49,8 @@ first commits, for code built from its source before the release.
 - Every implementation reads a vector item in place within its message, as
   the format now specifies, including an item whose offsets point past its
   end.
+- Java's `TableWriter.startTable()` returns a `long`, which holds the parent's
+  start and number of fields, rather than an `int`, and `endTable()` takes it.
 - TypeScript's `ByteBuffer.getVectorOffsets()` returns a `number[]` rather
   than a `Uint32Array`, so that positions past 4 GiB are exact.
 - Generated fields that clash with the generated code's members, or that are
@@ -69,6 +71,16 @@ first commits, for code built from its source before the release.
   buffer, and Python's on huge positions and non-contiguous buffers.
 - Python's `get_vector_offsets()` returns positions past 4 GiB rather than
   overflowing.
+- `TableWriter` rejects a field index outside its table's fields and an item
+  end outside its vector's items in TypeScript, Python and Java, as Rust's
+  does, rather than overwriting another slot. Python's `TableWriter`, which
+  has no sizer, also raises `ValueError` for a field or item end set twice,
+  out of order or never, and a scalar setter that raises leaves the table as
+  it was.
+- TypeScript and Python reject an alignment other than 1, 2, 4 or 8, as Java
+  does, rather than padding to it or dividing by zero.
+- Every `TableSizer` accepts a struct of 0 bytes and rejects an array of
+  0-byte structs, as the builders and writers do.
 - Python raises `ValueError` for a float32 too large for its type, and
   generated Python structs reject negative offsets and out-of-range values.
 - tafla-gen rejects fields whose names are the same in camelCase, names that

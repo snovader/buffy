@@ -1,7 +1,7 @@
 import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encode } from './encoding.ts';
-import { headerLength, maxLength, TableLayout } from './layout.ts';
+import { headerLength, maxLength, paddingTo, TableLayout } from './layout.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
@@ -332,8 +332,8 @@ export class TableBuilder {
      * `alignment` from the start of the table, which is the size of the
      * structs' largest scalar.
      *
-     * @throws {RangeError} If `size` isn't a positive integer, or `bytes`
-     * aren't a whole number of structs.
+     * @throws {RangeError} If `size` isn't a positive integer, `bytes` aren't
+     * a whole number of structs, or `alignment` isn't 1, 2, 4 or 8.
      */
     setStructArray(
         bytes: Uint8Array,
@@ -342,7 +342,7 @@ export class TableBuilder {
     ): void {
         structCount(bytes.length, size);
 
-        const padding = getPadding(this.#offset + this.#size, alignment);
+        const padding = paddingTo(this.#offset + this.#size, alignment);
         this.#addField(
             STRUCT_ARRAY,
             [bytes, size],
@@ -368,7 +368,8 @@ export class TableBuilder {
      * alignment of its arrays and nested tables, or 1 if it has neither. For bytes, the default of 4 suits tables of 8-, 16-
      * and 32-bit elements; pass 8 for a table with 64-bit arrays.
      *
-     * @throws {RangeError} If the builder has fields left to set.
+     * @throws {RangeError} If the builder has fields left to set, or
+     * `alignment` isn't 1, 2, 4 or 8.
      */
     setTable(
         table: TableBuilder | Uint8Array,
@@ -376,7 +377,7 @@ export class TableBuilder {
             ? table.#alignment
             : SIZEOF_32
     ): void {
-        const padding = getPadding(this.#offset, alignment);
+        const padding = paddingTo(this.#offset, alignment);
         this.#addField(TABLE, table, TableBuilder.#lengthOf(table), padding);
         this.#alignTo(alignment);
     }
@@ -408,7 +409,7 @@ export class TableBuilder {
         byteLength: number,
         alignment: ElementSize
     ): void {
-        const padding = getPadding(this.#offset + this.#size, alignment);
+        const padding = paddingTo(this.#offset + this.#size, alignment);
         this.#addField(kind, values, this.#size + byteLength, padding);
         this.#alignTo(alignment);
     }
@@ -701,9 +702,4 @@ function tooLong(
     return new RangeError(
         `Field ${index + 1} makes the table ${length} bytes, too long for ${offsetType} offsets`
     );
-}
-
-function getPadding(offset: number, alignment: ElementSize): number {
-    const remainder = offset % alignment;
-    return remainder === 0 ? 0 : alignment - remainder;
 }

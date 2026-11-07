@@ -1,6 +1,6 @@
 from typing import ClassVar, Literal, cast, overload, override
 
-from .types import OffsetSize, OffsetType
+from .types import ElementSize, OffsetSize, OffsetType
 
 # The offset size of each offset type
 OFFSET_SIZES: dict[OffsetType, OffsetSize] = {
@@ -169,3 +169,25 @@ def header_length(fields: int, layout: TableLayout, version: int | None) -> int:
         )
 
     return length
+
+
+# The alignments that arrays, structs and nested tables are padded to: the
+# sizes of the scalars
+ALIGNMENTS = frozenset((1, 2, 4, 8))
+
+
+def padding_to(offset: int, alignment: ElementSize) -> int:
+    """Returns the bytes that bring ``offset`` from a table's start to a
+    multiple of ``alignment``.
+
+    Raises ``ValueError`` if ``alignment`` isn't 1, 2, 4 or 8.
+    """
+    if alignment not in ALIGNMENTS:
+        raise alignment_error(alignment)
+
+    return -offset % alignment
+
+
+def alignment_error(alignment: object) -> ValueError:
+    """The error of an alignment that isn't 1, 2, 4 or 8"""
+    return ValueError(f"An alignment of {alignment!r} isn't 1, 2, 4 or 8 bytes")

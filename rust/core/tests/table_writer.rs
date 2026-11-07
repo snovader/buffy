@@ -543,6 +543,34 @@ fn test_fails_for_an_item_past_its_vectors_items() {
 }
 
 #[test]
+fn test_rejects_an_array_of_0_byte_structs_from_the_sizer_as_table_builder_does() {
+    let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
+    sizer.add_struct_array(2, 0, Alignment::One);
+
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let error = builder
+        .set_struct_array(Vec::new(), 0, Alignment::One)
+        .unwrap_err();
+    assert_eq!(sizer.byte_length(), Err(error));
+    assert_eq!(sizer.writer().unwrap_err(), error);
+}
+
+#[test]
+fn test_sizes_and_writes_a_struct_of_0_bytes_as_table_builder_builds_it() {
+    let mut sizer = TableSizer::new(2, TableLayout::DEFAULT).unwrap();
+    sizer.add_struct(0);
+    sizer.add_u8();
+    let mut writer = sizer.writer().unwrap();
+    writer.set_struct(0, &[]);
+    writer.set_u8(1, 7);
+
+    let mut builder = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    builder.set_struct(&[][..]).unwrap();
+    builder.set_u8(7).unwrap();
+    assert_eq!(writer.into_bytes(), builder.to_bytes());
+}
+
+#[test]
 fn test_fails_for_bytes_that_arent_whole_structs_as_table_builder_does() {
     for (length, size) in [(5, 2), (4, 0), (0, 0)] {
         let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
