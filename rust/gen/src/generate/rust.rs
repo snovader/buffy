@@ -486,7 +486,7 @@ impl Generator<'_> {
         }
         match definition.kind {
             Kind::Message(layout) => self.serialize(writer, definition, layout),
-            Kind::Table => self.nested_size_and_write(writer, definition),
+            Kind::Table => self.nested_size_and_write(writer, index),
             Kind::Struct(_) => unreachable!("structs are written by their own methods"),
         }
         writer.close("}");
@@ -530,7 +530,8 @@ impl Generator<'_> {
 
     /// The alignment of a nested table, and the methods with which its
     /// parent sizes and writes it
-    fn nested_size_and_write(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn nested_size_and_write(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
         let fields = integer(&definition.fields.len());
         // The length of a table of scalars and structs doesn't depend on
@@ -554,7 +555,7 @@ impl Generator<'_> {
         );
         writer.line(format!(
             "pub const ALIGNMENT: Alignment = Alignment::{};",
-            alignment_variant(self.schema.table_alignment(definition))
+            alignment_variant(self.schema.table_alignment(index))
         ));
         writer.blank();
 

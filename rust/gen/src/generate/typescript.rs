@@ -53,7 +53,7 @@ pub fn generate(
         writer.blank();
         match definition.kind {
             Kind::Message(layout) => generator.message(&mut writer, definition, layout),
-            Kind::Table => generator.table(&mut writer, definition),
+            Kind::Table => generator.table(&mut writer, index),
             Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
         writer.blank();
@@ -300,14 +300,15 @@ impl Generator<'_> {
         writer.close("}");
     }
 
-    fn table(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn table(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
 
         writer.lines(&doc_comment(&definition.docs));
         writer.open(format!("export class {name} {{"));
         // A static of JavaScript is a number, rather than the literal that
         // addTable() and setTable() take, without its type
-        let alignment = self.schema.table_alignment(definition);
+        let alignment = self.schema.table_alignment(index);
         self.doc(
             writer,
             &[

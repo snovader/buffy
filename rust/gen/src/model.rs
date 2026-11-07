@@ -7,6 +7,12 @@
 pub struct Schema {
     /// In declaration order, which the generators keep
     pub definitions: Vec<Definition>,
+    /// Whether a vector or an array of structs holds each definition, by its
+    /// index, found once rather than by a search of every field per definition
+    items: Vec<bool>,
+    /// The alignment of each message and table, by its index, and 1 for each
+    /// struct, whose layout has its alignment
+    table_alignments: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -166,6 +172,36 @@ impl Scalar {
 }
 
 impl Schema {
+    /// The schema of checked definitions, whose fields' indices are their
+    /// positions in `definitions`. It finds what the generators ask of each
+    /// definition once, so that generating code takes time in proportion to
+    /// the schema.
+    pub fn new(definitions: Vec<Definition>) -> Self {
+        let mut items = vec![false; definitions.len()];
+        for field in definitions.iter().flat_map(|definition| &definition.fields) {
+            if let FieldType::Vector(item) | FieldType::StructArray(item) = field.field_type {
+                items[item] = true;
+            }
+        }
+
+        let mut alignments = vec![None; definitions.len()];
+        let table_alignments = (0..definitions.len())
+            .map(|index| {
+                if definitions[index].is_struct() {
+                    1
+                } else {
+                    alignment_within(&definitions, index, &mut alignments)
+                }
+            })
+            .collect();
+
+        Self {
+            definitions,
+            items,
+            table_alignments,
+        }
+    }
+
     pub fn definition(&self, index: usize) -> &Definition {
         &self.definitions[index]
     }
@@ -173,15 +209,7 @@ impl Schema {
     /// Whether a vector or an array of structs holds the definition at
     /// `index`, so that the generators write a view of its items
     pub fn is_item(&self, index: usize) -> bool {
-        self.definitions
-            .iter()
-            .flat_map(|definition| &definition.fields)
-            .any(|field| {
-                matches!(
-                    field.field_type,
-                    FieldType::Vector(item) | FieldType::StructArray(item) if item == index
-                )
-            })
+        self.items[index]
     }
 
     /// The scalars of a struct in order, those of the structs in it in their
@@ -202,46 +230,43 @@ impl Schema {
         }
     }
 
-    /// The alignment that a parent pads a nested table to, so that its
-    /// arrays are aligned from the parent's start too: the largest alignment
-    /// of its arrays, of scalars and of structs, and of the tables nested in
-    /// it, or 1 if it has none. A vector's items aren't padded, so they don't
-    /// count.
-    pub fn table_alignment(&self, definition: &Definition) -> u8 {
-        let mut alignments = vec![None; self.definitions.len()];
-        self.alignment_within(definition, &mut alignments)
+    /// The alignment that a parent pads the nested table at `index` to, so
+    /// that its arrays are aligned from the parent's start too: the largest
+    /// alignment of its arrays, of scalars and of structs, and of the tables
+    /// nested in it, or 1 if it has none. A vector's items aren't padded, so
+    /// they don't count.
+    pub fn table_alignment(&self, index: usize) -> u8 {
+        self.table_alignments[index]
+    }
+}
+
+/// The alignment of the message or table at `index`, as
+/// [`Schema::table_alignment()`] describes it, with those of the tables
+/// nested in it by index in `alignments` once they're known, since a table
+/// may nest another in many fields, and that one the next, and so on
+fn alignment_within(definitions: &[Definition], index: usize, alignments: &mut [Option<u8>]) -> u8 {
+    if let Some(alignment) = alignments[index] {
+        return alignment;
     }
 
-    /// A table's alignment, with those of the tables nested in it by index
-    /// in `alignments` once they're known, since a table may nest another in
-    /// many fields, and that one the next, and so on
-    fn alignment_within(&self, definition: &Definition, alignments: &mut [Option<u8>]) -> u8 {
-        let mut largest = 1;
-        for field in &definition.fields {
-            let alignment = match field.field_type {
-                FieldType::Array(scalar) => scalar.size(),
-                FieldType::StructArray(index) => self.definition(index).struct_layout().alignment,
-                // Tables nest in place only acyclically and at most 64 deep,
-                // which the checker ensures, so this ends soon
-                FieldType::Table(index) => {
-                    if let Some(alignment) = alignments[index] {
-                        alignment
-                    } else {
-                        let alignment = self.alignment_within(self.definition(index), alignments);
-                        alignments[index] = Some(alignment);
-                        alignment
-                    }
-                }
-                FieldType::Scalar(_)
-                | FieldType::String
-                | FieldType::Struct(_)
-                | FieldType::Vector(_) => 1,
-            };
-            largest = largest.max(alignment);
-        }
-
-        largest
+    let mut largest = 1;
+    for field in &definitions[index].fields {
+        let alignment = match field.field_type {
+            FieldType::Array(scalar) => scalar.size(),
+            FieldType::StructArray(item) => definitions[item].struct_layout().alignment,
+            // Tables nest in place only acyclically and at most 64 deep,
+            // which the checker ensures, so this ends soon
+            FieldType::Table(nested) => alignment_within(definitions, nested, alignments),
+            FieldType::Scalar(_)
+            | FieldType::String
+            | FieldType::Struct(_)
+            | FieldType::Vector(_) => 1,
+        };
+        largest = largest.max(alignment);
     }
+
+    alignments[index] = Some(largest);
+    largest
 }
 
 impl Definition {

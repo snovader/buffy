@@ -1,0 +1,17 @@
+error: `S7` has too many scalars for a struct
+  --> struct_scalars.tafla:16:8
+   |
+16 | struct S7 { a: S6; b: S6; }
+   |        ^^ the paths to a struct's scalars, such as `start.x`, take at most 1024 fields in all, and those of `S7` take 2048
+
+error: `Edged` has too many scalars for a struct
+  --> struct_scalars.tafla:43:8
+   |
+43 | struct Edged {
+   |        ^^^^^ the paths to a struct's scalars, such as `start.x`, take at most 1024 fields in all, and those of `Edged` take 1025
+
+error: `Wrapped` has too many scalars for a struct
+  --> struct_scalars.tafla:51:8
+   |
+51 | struct Wrapped {
+   |        ^^^^^^^ the paths to a struct's scalars, such as `start.x`, take at most 1024 fields in all, and those of `Wrapped` take 1536

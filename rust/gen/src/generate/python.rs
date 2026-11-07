@@ -61,7 +61,7 @@ pub fn generate(
         writer.blanks(2);
         match definition.kind {
             Kind::Message(layout) => message(&mut writer, schema, definition, layout),
-            Kind::Table => table(&mut writer, schema, definition),
+            Kind::Table => table(&mut writer, schema, index),
             Kind::Struct(_) => structure(&mut writer, schema, definition),
         }
 
@@ -297,7 +297,8 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     writer.dedent();
 }
 
-fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
+    let definition = schema.definition(index);
     let name = &definition.name;
 
     writer.open(format!("class {name}:"));
@@ -308,7 +309,7 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     writer.line("__slots__ = (\"_buffer\", \"_position\")");
     writer.blank();
 
-    let alignment = schema.table_alignment(definition);
+    let alignment = schema.table_alignment(index);
     writer.line(format!("ALIGNMENT: Final = {alignment}"));
     docstring(
         writer,

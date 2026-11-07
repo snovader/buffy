@@ -118,6 +118,15 @@ or read its tables, or a target couldn't generate its code:
   `double`, and every other field one.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
+- The paths from a struct to its scalars take at most 1,024 fields in all: a
+  struct whose field `start` holds a struct of `x` and `y` reaches them as
+  `start.x` and `start.y`, through 4 fields. The generated Python and Rust
+  read and write each scalar through its path, indented as deep as it lies,
+  so that 17 lines of structs that each hold two of the one before would
+  otherwise generate 70 MB of Python. A struct at the limit, such as one of
+  32 structs of 16 scalars, generates about 75 KB. It holds at most 1,024
+  scalars, and a struct that nests others 64 deep holds its scalars in the
+  innermost.
 - Messages and tables nest in place at most 64 deep, one within another and
   the outermost included, and structs too, since the generated code writes
   nested tables by calling their writers, and nests the reads and writes of
@@ -394,13 +403,14 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   copies of the schema are the same.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
-  structs fail with an error on the WebAssembly module's stack, and no
-  declaration can take a name that the generated code imports.
+  structs fail with an error on the WebAssembly module's stack, structs whose
+  paths to their scalars take 1,024 fields generate code for every target,
+  and no declaration can take a name that the generated code imports.
 - `tests/properties.rs`: any input parses or fails with errors that render,
   any schema that the checker accepts generates code for every target,
-  structs that contain themselves or take more than 65,536 bytes and chains
-  of tables or structs more than 64 deep fail with errors that point at
-  them, and the command writes and prints what the library generates and
+  structs that contain themselves, take more than 65,536 bytes or reach their
+  scalars through more than 1,024 fields and chains of tables or structs
+  more than 64 deep fail with errors that point at them, and the command writes and prints what the library generates and
   finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command and the library's
   options.
