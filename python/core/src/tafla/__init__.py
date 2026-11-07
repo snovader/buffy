@@ -106,6 +106,30 @@ Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off:
   and to write, so a table of two float64s, an int64 and a 16-byte string took
   2.6 µs, far more than allocating and copying its 60 bytes.
 
+Conversions
+-----------
+
+``TableBuilder`` and ``TableWriter`` convert each value to its field's type
+as ``struct`` and ``array`` convert it, and raise for one they can't write. A
+scalar's error comes from ``TableWriter``'s setter, and from
+``TableBuilder.finalize()`` or ``bytes()``; an array's from its setter:
+
+==========================================  ===================================
+Value                                       Written as
+==========================================  ===================================
+An integer outside its field's range        ``ValueError`` from a scalar,
+                                            ``OverflowError`` from an array
+A fraction or NaN for an integer field      ``ValueError`` from a scalar,
+                                            ``TypeError`` from an array
+A float too large for a float32             ``ValueError`` from a scalar, and
+                                            infinity of its sign in an array,
+                                            as ``array("f")`` converts it.
+                                            Other floats round to the nearest
+                                            float32.
+A lone surrogate in a string                ``UnicodeEncodeError``, a
+                                            ``ValueError``
+==========================================  ===================================
+
 Validation and errors
 ---------------------
 
@@ -142,17 +166,16 @@ Using the API wrongly raises other errors, whatever the bytes:
   created with, a version that doesn't fit, or an array or table given as a
   buffer whose length changed before ``finalize()``. A field that would make
   the table too long for its ``offset_type`` raises ``ValueError`` from its
-  setter and isn't added. A value that its type can't hold raises
-  ``OverflowError`` or ``TypeError`` from an array setter, and ``ValueError``
-  from ``finalize()`` for a scalar. A string with a lone surrogate raises
-  ``UnicodeEncodeError`` from ``set_string()``. A version missing from or
-  given for a layout, or a field set after ``finalize()``, raises
-  ``TypeError``.
+  setter and isn't added. A value that its field's type can't hold raises
+  as Conversions lists. A version missing from or given for a layout, or a
+  field set after ``finalize()``, raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
   fit, or from ``bytes()``. It doesn't check the order of its calls, as the
   next section describes.
+- An alignment other than 1, 2, 4 or 8 raises ``ValueError`` from
+  ``set_struct_array()`` and ``set_table()``.
 - A struct size less than 1 raises ``ValueError`` from
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.

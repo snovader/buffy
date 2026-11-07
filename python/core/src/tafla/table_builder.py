@@ -4,7 +4,7 @@ from typing import Any, Literal, overload
 from .byte_buffer import ByteBuffer, byte_view, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
-from .layout import MAX_LENGTHS, TableLayout, header_length
+from .layout import MAX_LENGTHS, TableLayout, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[[ByteBuffer, Any], None]
@@ -215,7 +215,8 @@ class TableBuilder:
         """Sets an array field. A contiguous buffer of float32s in the host's
         byte order, such as ``array("f")``, is copied as bytes; anything else,
         such as a list, is converted as ``array("f", values)`` would, which
-        takes several times as long."""
+        takes several times as long and writes a finite value past float32's
+        range as an infinity of its sign."""
         self.__add_array("f", SIZEOF_32, ByteBuffer.set_float32_array, values)
 
     def set_float64_array(self, values: Buffer | Iterable[float]) -> None:
@@ -249,7 +250,7 @@ class TableBuilder:
         """
         byte_length = byte_view(data).nbytes
         struct_count(byte_length, size)
-        padding = _padding(self.__offset + self.__size, alignment)
+        padding = padding_to(self.__offset + self.__size, alignment)
 
         self.__add_field(
             _write_struct_array,
@@ -293,7 +294,7 @@ class TableBuilder:
         if alignment is None:
             alignment = default_alignment
 
-        padding = _padding(self.__offset, alignment)
+        padding = padding_to(self.__offset, alignment)
         self.__add_field(write, value, byte_length, padding)
         self.__align_to(alignment)
 
@@ -329,7 +330,7 @@ class TableBuilder:
         """Pads the array so that its elements, after the length, are aligned"""
         elements = as_elements(type_code, values)
         byte_length = memoryview(elements).nbytes
-        padding = _padding(self.__offset + self.__size, item_size)
+        padding = padding_to(self.__offset + self.__size, item_size)
 
         self.__add_field(
             _write_array,
@@ -486,8 +487,3 @@ def _check_length(recorded: int, current: int) -> None:
         raise ValueError(
             f"Field length changed from {recorded} to {current} bytes after it was set"
         )
-
-
-def _padding(offset: int, alignment: ElementSize) -> int:
-    remainder = offset % alignment
-    return 0 if remainder == 0 else alignment - remainder

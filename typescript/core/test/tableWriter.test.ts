@@ -255,13 +255,129 @@ describe('counts and sizes', () => {
     );
 
     it.each([0, -2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-        'should reject a struct of %s bytes',
+        'should reject an array of structs of %s bytes, as the writer does',
         size => {
-            const sizer = new TableSizer(1);
             const error = new RangeError(`A struct's size must be a positive integer, not ${size}`);
 
-            expect(() => sizer.addStruct(size)).toThrow(error);
-            expect(() => sizer.addStructArray(1, size, 1)).toThrow(error);
+            expect(() => new TableSizer(1).addStructArray(1, size, 1)).toThrow(error);
+            expect(() =>
+                new TableSizer(1).writer().setStructArray(0, new Uint8Array(0), size, 1)
+            ).toThrow(error);
+        }
+    );
+
+    it.each([-2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'should reject a struct of %s bytes',
+        size => {
+            expect(() => new TableSizer(1).addStruct(size)).toThrow(
+                new RangeError(`A struct's size must be a non-negative integer, not ${size}`)
+            );
+        }
+    );
+
+    it('should write a struct of 0 bytes as TableBuilder does', () => {
+        const sizer = new TableSizer(2);
+        sizer.addStruct(0);
+        sizer.addUint8();
+        const writer = sizer.writer();
+        writer.setStruct(0, new Uint8Array(0));
+        writer.setUint8(1, 7);
+
+        const builder = new TableBuilder(2);
+        builder.setStruct(new Uint8Array(0));
+        builder.setUint8(7);
+        expect(writer.bytes()).toStrictEqual(builder.bytes());
+    });
+});
+
+/** A field padded to an alignment, which a test sizes, writes and builds */
+interface FieldKind {
+    name: string;
+    add(sizer: TableSizer): void;
+    set(writer: TableWriter, index: number): void;
+    build(builder: TableBuilder): void;
+}
+
+const STRUCT = Uint8Array.of(1, 2, 3, 4);
+
+const ALIGNED_KINDS: readonly FieldKind[] = [
+    {
+        name: 'struct[]',
+        add: sizer => sizer.addStructArray(1, STRUCT.length, 4),
+        set: (writer, index) => writer.setStructArray(index, STRUCT, STRUCT.length, 4),
+        build: builder => builder.setStructArray(STRUCT, STRUCT.length, 4)
+    },
+    {
+        name: 'table',
+        add: sizer => {
+            sizer.addTable(8);
+            sizer.endTable(sizer.startTable(0));
+        },
+        set: (writer, index) => {
+            writer.setTable(index, 8);
+            writer.endTable(writer.startTable(0));
+        },
+        build: builder => builder.setTable(new TableBuilder(0), 8)
+    }
+];
+
+/**
+ * Writes a table of a uint8, a field of `kind` and a uint8, calling `before`
+ * once the first uint8 is written, and returns its bytes, which it checks
+ * are TableBuilder's
+ */
+function writeAround(kind: FieldKind, before: (writer: TableWriter) => void): Uint8Array {
+    const sizer = new TableSizer(3);
+    sizer.addUint8();
+    kind.add(sizer);
+    sizer.addUint8();
+
+    const writer = sizer.writer();
+    writer.setUint8(0, 9);
+    before(writer);
+    kind.set(writer, 1);
+    writer.setUint8(2, 8);
+
+    const builder = new TableBuilder(3);
+    builder.setUint8(9);
+    kind.build(builder);
+    builder.setUint8(8);
+    expect(writer.bytes()).toStrictEqual(builder.bytes());
+
+    return writer.bytes();
+}
+
+describe('alignments', () => {
+    const ALIGNMENTS = [0, 3, -4, 16, 1.5, Number.NaN];
+
+    it.each(ALIGNMENTS)(
+        'should reject an alignment of %s from the sizer and builder',
+        alignment => {
+            const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
+            const invalid = alignment as 1;
+
+            expect(() => new TableSizer(1).addTable(invalid)).toThrow(error);
+            expect(() => new TableSizer(1).addStructArray(1, 4, invalid)).toThrow(error);
+            expect(() => new TableBuilder(1).setTable(new Uint8Array(0), invalid)).toThrow(error);
+            expect(() => new TableBuilder(1).setStructArray(STRUCT, 4, invalid)).toThrow(error);
+        }
+    );
+
+    it.each(ALIGNMENTS.flatMap(alignment => ALIGNED_KINDS.map(kind => [alignment, kind] as const)))(
+        'should reject an alignment of %s from the writer, and leave it where it was',
+        (alignment, kind) => {
+            const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
+            const invalid = alignment as 1;
+
+            writeAround(kind, writer => {
+                if (kind.name === 'table') {
+                    expect(() => writer.setTable(1, invalid)).toThrow(error);
+                } else {
+                    expect(() => writer.setStructArray(1, STRUCT, STRUCT.length, invalid)).toThrow(
+                        error
+                    );
+                }
+            });
         }
     );
 });
@@ -536,3 +652,135 @@ function filled(bytes: Uint8Array, fill: number): Uint8Array {
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
     return left.length === right.length && left.every((byte, index) => byte === right[index]);
 }
+
+describe("conversions, as the README's table states them", () => {
+    /** The bytes of field 0's value, from a builder and a writer of one field */
+    function written(
+        add: (sizer: TableSizer) => void,
+        set: (writer: TableWriter) => void,
+        build: (builder: TableBuilder) => void
+    ): number[] {
+        const sizer = new TableSizer(1);
+        add(sizer);
+        const writer = sizer.writer();
+        set(writer);
+
+        const builder = new TableBuilder(1);
+        build(builder);
+        expect(writer.bytes()).toStrictEqual(builder.bytes());
+
+        return Array.from(builder.bytes().subarray(4));
+    }
+
+    it('should wrap an integer outside its field’s range', () => {
+        for (const [value, byte] of [
+            [300, 44],
+            [-1, 255]
+        ]) {
+            expect(
+                written(
+                    sizer => sizer.addUint8(),
+                    writer => writer.setUint8(0, value),
+                    builder => builder.setUint8(value)
+                )
+            ).toStrictEqual([byte]);
+        }
+        expect(
+            written(
+                sizer => sizer.addUint8Array(2),
+                writer => writer.setUint8Array(0, [300, -1]),
+                builder => builder.setUint8Array([300, -1])
+            )
+        ).toStrictEqual([2, 0, 0, 0, 44, 255]);
+        expect(
+            written(
+                sizer => sizer.addUint64(),
+                writer => writer.setUint64(0, 2n ** 64n + 5n),
+                builder => builder.setUint64(2n ** 64n + 5n)
+            )
+        ).toStrictEqual([5, 0, 0, 0, 0, 0, 0, 0]);
+    });
+
+    it('should truncate a fraction or NaN for an integer field', () => {
+        expect(
+            written(
+                sizer => sizer.addUint8Array(2),
+                writer => writer.setUint8Array(0, [1.5, Number.NaN]),
+                builder => builder.setUint8Array([1.5, Number.NaN])
+            )
+        ).toStrictEqual([2, 0, 0, 0, 1, 0]);
+        for (const [value, byte] of [
+            [1.5, 1],
+            [Number.NaN, 0]
+        ]) {
+            expect(
+                written(
+                    sizer => sizer.addUint8(),
+                    writer => writer.setUint8(0, value),
+                    builder => builder.setUint8(value)
+                )
+            ).toStrictEqual([byte]);
+        }
+    });
+
+    it('should write a number too large for a float32 as infinity', () => {
+        // Little-endian, as the format writes them on every host
+        const infinity = [0x00, 0x00, 0x80, 0x7f];
+        const negativeInfinity = [0x00, 0x00, 0x80, 0xff];
+
+        expect(
+            written(
+                sizer => sizer.addFloat32(),
+                writer => writer.setFloat32(0, 1e300),
+                builder => builder.setFloat32(1e300)
+            )
+        ).toStrictEqual(infinity);
+        expect(
+            written(
+                sizer => sizer.addFloat32Array(1),
+                writer => writer.setFloat32Array(0, [-1e300]),
+                builder => builder.setFloat32Array([-1e300])
+            )
+        ).toStrictEqual([1, 0, 0, 0, ...negativeInfinity]);
+    });
+
+    it('should write a lone surrogate as U+FFFD', () => {
+        expect(
+            written(
+                sizer => sizer.addString('\ud800'),
+                writer => writer.setString(0, '\ud800'),
+                builder => builder.setString('\ud800')
+            )
+        ).toStrictEqual([3, 0, 0, 0, 0xef, 0xbf, 0xbd]);
+    });
+
+    it('should throw TypeError for a number for a 64-bit integer, or a bigint for another type', () => {
+        const writer = (add: (sizer: TableSizer) => void): TableWriter => {
+            const sizer = new TableSizer(1);
+            add(sizer);
+            return sizer.writer();
+        };
+
+        const builder = (set: (builder: TableBuilder) => void): TableBuilder => {
+            const built = new TableBuilder(1);
+            set(built);
+            return built;
+        };
+
+        expect(() => builder(built => built.setInt64(1 as unknown as bigint)).bytes()).toThrow(
+            TypeError
+        );
+        expect(() =>
+            writer(sizer => sizer.addUint64()).setUint64(0, 1 as unknown as bigint)
+        ).toThrow(TypeError);
+        expect(() =>
+            builder(built => built.setUint8Array([1n] as unknown as number[])).bytes()
+        ).toThrow(TypeError);
+        expect(() =>
+            writer(sizer => sizer.addFloat64()).setFloat64(0, 1n as unknown as number)
+        ).toThrow(TypeError);
+        expect(() =>
+            writer(sizer => sizer.addInt64Array(1)).setInt64Array(0, [1] as unknown as bigint[])
+        ).toThrow(TypeError);
+    });
+});

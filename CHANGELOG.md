@@ -72,6 +72,12 @@ first commits, for code built from its source before the release.
   buffer, and Python's on huge positions and non-contiguous buffers.
 - Python's `get_vector_offsets()` returns positions past 4 GiB rather than
   overflowing.
+- A scalar setter of Python's `TableWriter` that raises leaves the table as
+  it was, rather than pointing the field's offset at the next field's value.
+- TypeScript and Python reject an alignment other than 1, 2, 4 or 8, as Java
+  does, rather than padding to it or dividing by zero.
+- Every `TableSizer` accepts a struct of 0 bytes and rejects an array of
+  0-byte structs, as the builders and writers do.
 - Python raises `ValueError` for a float32 too large for its type, and
   generated Python structs reject negative offsets and out-of-range values.
 - tafla-gen rejects fields whose names are the same in camelCase, names that

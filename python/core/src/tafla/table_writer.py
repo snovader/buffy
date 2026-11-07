@@ -6,7 +6,14 @@ from .byte_buffer import struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
 from .errors import describe_int
-from .layout import MAX_LENGTHS, OFFSET_TYPES, TableLayout, header_length
+from .layout import (
+    ALIGNMENTS,
+    MAX_LENGTHS,
+    OFFSET_TYPES,
+    TableLayout,
+    alignment_error,
+    header_length,
+)
 from .structs import (
     float32,
     float64,
@@ -68,8 +75,9 @@ class TableWriter:
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
     them, without copying them. A table too long for the layout's
     ``offset_type`` raises ``ValueError``, from the setter whose offset or count
-    doesn't fit or from ``bytes()``. A writer that raised has written part of
-    its table, and is of no further use.
+    doesn't fit or from ``bytes()``. A scalar setter that raised wrote nothing,
+    but another setter that raised may have written part of its field, after
+    which the writer is of no further use.
     """
 
     __slots__ = [
@@ -165,103 +173,125 @@ class TableWriter:
     # shared helper's call made writing a Point a fifth slower. struct raises
     # _PACK_ERRORS, none of which is a ValueError, and __scalar_error() turns
     # them into ValueError, as ByteBuffer does. It's the offset that doesn't
-    # fit when the table is longer than its offset type addresses.
+    # fit when the table is longer than its offset type addresses. Each packs
+    # its value before it writes the offset, so a setter that raises writes
+    # nothing.
 
     def set_int8(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = int8.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += int8.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_uint8(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = uint8.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += uint8.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_int16(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = int16.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += int16.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_uint16(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = uint16.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += uint16.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_int32(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = int32.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += int32.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_uint32(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = uint32.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += uint32.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_int64(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = int64.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += int64.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_uint64(self, index: int, value: int) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = uint64.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += uint64.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_float32(self, index: int, value: float) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = float32.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += float32.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     def set_float64(self, index: int, value: float) -> None:
         data = self.__data
         offset = len(data) - self.__table
         try:
+            packed = float64.pack(value)
             self.__length.pack_into(data, self.__slots + index * self.__size, offset)
-            data += float64.pack(value)
         except _PACK_ERRORS as error:
             raise self.__scalar_error(value, offset, error) from error
+
+        data += packed
 
     # Each array is converted as TableBuilder converts it: a contiguous buffer
     # of the field's element type is copied as bytes, and anything else, such
     # as a list, converted as array() converts an iterable, which raises
-    # OverflowError for a value out of range and TypeError for one of another
-    # type.
+    # OverflowError for an integer out of range and TypeError for a value of
+    # another type, and converts a float past float32's range to an infinity.
 
     def set_int8_array(self, index: int, values: Buffer | Iterable[int]) -> None:
         self.__set_array(index, "b", SIZEOF_8, values)
@@ -316,11 +346,13 @@ class TableWriter:
         one after another, padded so that they start at a multiple of
         ``alignment`` from the start of the table.
 
-        Raises ``ValueError`` if ``size`` is less than 1, or ``data`` isn't a
-        whole number of structs.
+        Raises ``ValueError`` if ``size`` is less than 1, ``data`` isn't a
+        whole number of structs, or ``alignment`` isn't 1, 2, 4 or 8.
         """
         byte_length = memoryview(data).nbytes
         count = struct_count(byte_length, size)
+        if type(alignment) is not int or alignment not in ALIGNMENTS:
+            raise alignment_error(alignment)
 
         self.__start_array(index, count, byte_length, alignment)
         self.__data += data
@@ -328,7 +360,17 @@ class TableWriter:
     def set_table(self, index: int, alignment: ElementSize) -> None:
         """Writes the offset of a nested table, padded to start at a multiple
         of ``alignment``, whose fields then follow between ``start_table()``
-        and ``end_table()``"""
+        and ``end_table()``.
+
+        Raises ``ValueError`` if ``alignment`` isn't 1, 2, 4 or 8.
+        """
+        # Checked inline, as in set_struct_array(), rather than by
+        # padding_to(), whose call made writing a vector of 100 tables that
+        # each nest another 3% slower. The type comes first, since 2.0 is in
+        # ALIGNMENTS and a list isn't hashable.
+        if type(alignment) is not int or alignment not in ALIGNMENTS:
+            raise alignment_error(alignment)
+
         self.__pad(len(self.__data), alignment)
         self.__set_offset(index)
 
@@ -380,10 +422,12 @@ class TableWriter:
 
     def __pad(self, position: int, alignment: ElementSize) -> None:
         """Pads so that ``position`` lies at a multiple of ``alignment`` from
-        the start of the table"""
-        remainder = (position - self.__table) % alignment
-        if remainder:
-            self.__data += _PADDING[alignment - remainder]
+        the start of the table. The setters check a caller's alignment, and
+        an array's is its element size.
+        """
+        padding = (self.__table - position) % alignment
+        if padding:
+            self.__data += _PADDING[padding]
 
     def __set_offset(self, index: int) -> None:
         """Writes the offset of field ``index``, which is the table's end"""

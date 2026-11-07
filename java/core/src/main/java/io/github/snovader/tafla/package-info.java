@@ -97,6 +97,27 @@
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>
  *
+ * <h2>Conversions</h2>
+ *
+ * <p>Each setter takes a Java type that holds its field's values: a signed field's own type, such
+ * as {@code int} for an {@code int32}, the next wider type for an unsigned field, such as
+ * {@code short} for a {@code uint8}, and {@code float} for a {@code float32}. A cast converts a
+ * wider value to it, and the setters convert the rest:</p>
+ *
+ * <table>
+ *   <caption>How values convert to their field's type</caption>
+ *   <tr><th scope="col">Value</th><th scope="col">Written as</th></tr>
+ *   <tr><td>An integer outside its field's range</td>
+ *     <td>An unsigned setter writes its low bits, as a cast would: 300 as a {@code uint8} is 44,
+ *     and -1 is 255. A signed setter's value is the caller's cast.</td></tr>
+ *   <tr><td>A fraction or NaN for an integer field</td>
+ *     <td>Not expressible: integer setters take integer types.</td></tr>
+ *   <tr><td>A {@code double} too large for a {@code float32}</td>
+ *     <td>The caller's cast to {@code float}, which makes it infinity of its sign and rounds
+ *     other values to the nearest {@code float}.</td></tr>
+ *   <tr><td>A lone surrogate in a string</td><td>U+FFFD.</td></tr>
+ * </table>
+ *
  * <h2>Validation and errors</h2>
  *
  * <p>Validation is always on:</p>
@@ -131,14 +152,14 @@
  *     number of structs. A field that would make the table too long for its offset type throws an
  *     {@code IllegalArgumentException} from its setter and isn't added.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
- *     constructor, and one for a negative count, a struct size below 1 and an alignment other
- *     than 1, 2, 4 or 8. Its {@code byteLength()} and {@code writer()} throw one for a table too
- *     long for its offset type, before allocating it. {@code TableWriter} never writes outside the
- *     sized bytes: a field that would end past them throws an
- *     {@link IndexOutOfBoundsException}, and {@code bytes()} an {@code IllegalStateException}
- *     for fields that didn't fill them.</li>
- *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
- *     </li>
+ *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
+ *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and
+ *     {@code writer()} throw one for a table too long for its offset type, before allocating it.
+ *     {@code TableWriter} never writes outside the sized bytes: a field that would end past them
+ *     throws an {@link IndexOutOfBoundsException}, and {@code bytes()} an
+ *     {@code IllegalStateException} for fields that didn't fill them. It's the target of
+ *     generated code, and trusts each field's index and each item end to be its own; hand-written
+ *     tables use {@code TableBuilder}.</li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
  *     versioned.</li>
  * </ul>

@@ -139,6 +139,19 @@ byte; its README describes them. This package writes them, and
   flatbuffers, protobufjs and msgpackr, and tafla read it 2–3 times as fast
   as they did.
 
+## Conversions
+
+Builders and writers convert each value to its field's type as `DataView`'s
+setters and typed arrays convert it:
+
+| Value                                                                   | Written as                                                                                                                          |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| An integer outside its field's range                                    | Wrapped, as `DataView`'s setters wrap it: 300 as a `uint8` is 44, and -1 is 255. A `bigint` outside its 64-bit type wraps the same. |
+| A fraction or `NaN` for an integer field                                | Truncated: 1.5 is 1, and `NaN` is 0.                                                                                                |
+| A number too large for a `float32`                                      | Infinity of its sign. Other numbers round to the nearest `float32`.                                                                 |
+| A lone surrogate in a string                                            | U+FFFD.                                                                                                                             |
+| A `number` for an `int64` or `uint64`, or a `bigint` for any other type | Throws a `TypeError`, from a writer's setter or a builder's `finalize()`.                                                           |
+
 ## Validation and errors
 
 Validation is always on:
@@ -172,6 +185,10 @@ Using the API wrongly throws other errors, whatever the bytes:
   table too long for its offset type. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
   counted, and from `setString()` for a string longer than the one counted.
+  It's the target of generated code, and trusts each field's index and each
+  item end to be its own; hand-written tables use `TableBuilder`.
+- A struct size that isn't a positive integer, for an array of structs, and
+  an alignment other than 1, 2, 4 or 8 throw a `RangeError`.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.
 - `getVectorOffset()` throws a `RangeError` for an index outside the vector,
   once its count has been checked against the bytes.
