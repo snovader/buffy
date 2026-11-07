@@ -76,6 +76,11 @@ jobs:
       - name: Run formatting check
         run: cargo fmt --all -- --check
 
+      # The fuzz targets are a workspace of their own, which the fuzz workflow
+      # builds weekly
+      - name: Run formatting check of the fuzz targets
+        run: cargo fmt --all --manifest-path fuzz/Cargo.toml -- --check
+
   lint:
     name: Lint
     needs: changes
@@ -93,10 +98,18 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: clippy
-          cache-workspaces: rust -> target
+          cache-workspaces: |
+            rust -> target
+            rust/fuzz -> target
 
       - name: Run lint check
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # On stable, without cargo-fuzz's instrumentation, so that a change to
+      # the runtime or the generator that breaks the fuzz targets fails here
+      # rather than in the weekly fuzz workflow
+      - name: Run lint check of the fuzz targets
+        run: cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.toolchain }})
@@ -126,8 +139,8 @@ jobs:
       - name: Run tests
         run: cargo +${{ matrix.toolchain }} test
 
-  big-endian:
-    name: Test (big-endian, Miri)
+  miri:
+    name: Test (${{ matrix.name }}, Miri)
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -135,6 +148,17 @@ jobs:
     defaults:
       run:
         working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Checks the runtime's unsafe code for undefined behavior, with
+          # arrays read in place where they're aligned
+          - name: host
+            target: x86_64-unknown-linux-gnu
+          # Reads every array through its byte-swapping path
+          - name: big-endian
+            target: powerpc-unknown-linux-gnu
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
@@ -145,19 +169,51 @@ jobs:
           toolchain: nightly
           components: miri, rust-src
           cache-workspaces: rust -> target
-          cache-key: miri
+          cache-key: miri-${{ matrix.name }}
 
       # The runtime only: the generator reads and writes no bytes in either
-      # order, and would take long under Miri
-      - name: Run tests on a big-endian target
-        run: cargo +nightly miri test -p tafla --target powerpc-unknown-linux-gnu
+      # order, has no unsafe code, and would take long under Miri
+      - name: Run tests under Miri
+        run: cargo +nightly miri test -p tafla --target ${{ matrix.target }}
 
       # Miri isolates the tests from the file system, so the conformance suite
       # is ignored above
-      - name: Run the conformance suite on a big-endian target
+      - name: Run the conformance suite under Miri
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
-        run: cargo +nightly miri test -p tafla --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
+        run: cargo +nightly miri test -p tafla --target ${{ matrix.target }} --test conformance -- --include-ignored
+
+  # A 32-bit usize, as in the generator's WebAssembly module and 32-bit
+  # hosts, where positions plus lengths can overflow and a u32 length doesn't
+  # always fit
+  i686:
+    name: Test (32-bit)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: i686-unknown-linux-gnu
+          cache-workspaces: rust -> target
+          cache-key: i686
+
+      # The 32-bit C runtime that the linker needs, so that the tests run
+      # natively on the 64-bit runner
+      - name: Install the 32-bit C runtime
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends gcc-multilib
+
+      # The runtime's tests, including the conformance suite
+      - name: Run tests on a 32-bit target
+        run: cargo test -p tafla --target i686-unknown-linux-gnu
 
   benchmark:
     name: Benchmark
@@ -235,7 +291,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Rust.
   checks:
     name: Rust checks
-    needs: [changes, formatting, lint, test, big-endian, benchmark, wasm]
+    needs: [changes, formatting, lint, test, miri, i686, benchmark, wasm]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
