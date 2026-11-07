@@ -2,7 +2,7 @@
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`.
 
-use super::prose::indefinite_article;
+use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
@@ -1015,12 +1015,6 @@ fn identifier(name: &str) -> String {
     } else {
         name.to_owned()
     }
-}
-
-/// "a `Name`" or "an `Name`", in a docstring
-fn article(name: &str) -> String {
-    let article = indefinite_article(name);
-    format!("{article} `{name}`")
 }
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {

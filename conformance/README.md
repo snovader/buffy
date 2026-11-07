@@ -79,8 +79,8 @@ Basic Multilingual Plane as surrogate pairs, which JSON parsers combine.
 `file` is relative to `cases.json`. A table has:
 
 - `layout`: `sized`, `versioned` and `offsetType`, the offset type: `uint8`,
-  `uint16` or `uint32`, as `SPEC.md` defines it. A `TableLayout` takes these. Every layout is written out in
-  full.
+  `uint16` or `uint32`, as `SPEC.md` defines it. A `TableLayout` takes these.
+  Every layout is written out in full.
 - `version`: the version in the header, present only when `versioned`.
 - `fields`: in the order that they're set, which is the order of their
   offsets in the header.
@@ -120,10 +120,10 @@ Each field has a `type`:
 
 Reading a field starts from its offset, from `rootOffset(index)` for a field of
 the root and `fieldOffset(position, index)` for a field of a nested table read
-in place. A nested table that has no header and its
-parent's offset type is read in place, within its parent's bytes, as `SPEC.md` describes:
-a vector item from its position, from `getVectorOffsets()`. Any other is read
-as a table of its own, with a buffer of its own layout: a vector item from its
+in place. A nested table that has no header and its parent's offset type is
+read in place, within its parent's bytes, as `SPEC.md` describes: a vector
+item from its position, from `getVectorOffsets()`. Any other is read as a
+table of its own, with a buffer of its own layout: a vector item from its
 bytes, from `getVector()`, and a table field from its position to the end of
 its parent, since its length isn't written. The suite only nests tables
 without a header with `setTable()`.

@@ -202,7 +202,7 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
 /**
  * Sizes and writes a table with `TableSizer` and `TableWriter`, as its
  * description sets it out. They write tables nested in it in place, so those
- * must have no header and its offset size, as {@link nestedInPlace} makes
+ * must have no header and its offset type, as {@link nestedInPlace} makes
  * them.
  */
 export function writeTable(table: TableDescription): Uint8Array {
@@ -228,7 +228,7 @@ export function writeTableInto(
 /**
  * Returns the description with every table nested in it made one that a
  * `TableWriter` writes in place: from its builder, without a header, and
- * with the root's offset size
+ * with the root's offset type
  */
 export function nestedInPlace(table: TableDescription): TableDescription {
     const { offsetType } = table.layout;
@@ -777,9 +777,9 @@ export class DescriptionMismatch extends Error {
  * theirs, so that they equal the descriptions when the bytes hold the values.
  *
  * A nested table, from `setTable()` or in a vector, is read in place when it
- * has no header and its offsets are as wide as its parent's. Any other is read
- * as a table of its own: a vector item from its bytes, and a field from its
- * position to the end of its parent.
+ * has no header and its parent's offset type. Any other is read as a table of
+ * its own: a vector item from its bytes, and a field from its position to the
+ * end of its parent.
  */
 export class TableReader {
     readonly #buffer: ByteBuffer;

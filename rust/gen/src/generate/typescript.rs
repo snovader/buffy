@@ -2,7 +2,7 @@
 //! and tables are classes that read fields lazily from their bytes, and are
 //! written from interfaces of their fields. Structs are read eagerly.
 
-use super::prose::indefinite_article;
+use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, comment_text, doc_comment, text};
 use super::{GeneratedFile, Options};
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
@@ -1275,12 +1275,6 @@ fn identifier(name: &str) -> String {
     } else {
         name
     }
-}
-
-/// "a `Name`" or "an `Name`", in a comment
-fn article(name: &str) -> String {
-    let article = indefinite_article(name);
-    format!("{article} `{name}`")
 }
 
 fn layout_expression(layout: Layout) -> Expr {

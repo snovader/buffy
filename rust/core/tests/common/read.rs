@@ -4,7 +4,7 @@
 //! values.
 //!
 //! A nested table, from `set_table()` or in a vector, is read in place when
-//! it has no header and offsets as wide as its parent's: a field from its
+//! it has no header and its parent's offset type: a field from its
 //! position in its parent's bytes, and a vector item from the bytes that
 //! `Vector::iter_in_place()` returns, which end where its parent's do. Any
 //! other is read as a table of its own: a field from its position to the end
@@ -246,7 +246,7 @@ impl<const V: bool> Reader<'_, V> {
     }
 
     /// Whether a nested table is read in place: it has no header, and its
-    /// offsets are as wide as its parent's
+    /// parent's offset type
     fn reads_in_place(&self, table: &Table) -> bool {
         let layout = &table.layout;
 

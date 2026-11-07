@@ -199,7 +199,7 @@ export const STRUCT_ARRAY_FIELDS: fc.Arbitrary<FieldDescription> =
 /** A table's layout, and its version when it's versioned */
 type Header = Pick<TableDescription, 'layout' | 'version'>;
 
-/** Every layout of the offset sizes, with versions that fit their slots */
+/** Every layout of the offset types, with versions that fit their slots */
 function headers(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
     return fc.oneof(
         ...offsetTypes.map(offsetType =>
@@ -222,7 +222,7 @@ function headerOf(layout: LayoutDescription, version: number): Header {
 
 /**
  * The layouts of a table nested with `setTable()`, which has no header. One
- * with its parent's offset size is read in place, and any other from its
+ * with its parent's offset type is read in place, and any other from its
  * position, as the conformance suite reads them.
  */
 function headerless(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
@@ -233,7 +233,7 @@ function headerless(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
     );
 }
 
-/** Layouts of every header and offset size */
+/** Layouts of every header and offset type */
 export const LAYOUTS: fc.Arbitrary<LayoutDescription> = headers(
     OFFSET_TYPES
 ).map(({ layout }) => layout);
@@ -323,7 +323,7 @@ function tablesOf(
 
 /**
  * Whether a table and the tables nested in it are short enough for their
- * offset sizes, as their builders judge. The builder-limit properties check
+ * offset types, as their builders judge. The builder-limit properties check
  * that the builders reject the fields that make tables too long, at the
  * limit.
  */
@@ -341,7 +341,7 @@ export function fitsItsLayout(table: TableDescription): boolean {
 }
 
 export interface TableOptions {
-    /** The offset sizes of the table, and not of the tables nested in it */
+    /** The offset types of the table, and not of the tables nested in it */
     offsetTypes?: readonly OffsetType[];
     /** Whether the table has no header, as `setTable()` requires */
     headerless?: boolean;

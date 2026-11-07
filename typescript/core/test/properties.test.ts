@@ -463,7 +463,7 @@ describe('builder limits', () => {
     );
 
     it.prop([tablesWithLastFields])(
-        'should build a table as long as its offset size addresses, and reject a field one byte longer',
+        'should build a table as long as its offset type addresses, and reject a field one byte longer',
         ({ table, last }) => {
             const { offsetType } = table.layout;
             const max = MAX_VALUES[offsetType];

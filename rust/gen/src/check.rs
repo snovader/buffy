@@ -420,7 +420,7 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
             ),
             ("offset_size", value) => errors.push(
                 Diagnostic::new("unknown attribute `offset_size`", attribute.name.span)
-                    .with_help(offset_size_help(value.as_ref())),
+                    .with_help(offset_type_help(value.as_ref())),
             ),
             (other, _) => errors.push(
                 Diagnostic::new(format!("unknown attribute `{other}`"), attribute.name.span)
@@ -464,18 +464,27 @@ fn offset_type(value: &AttributeValue) -> Result<OffsetType, Diagnostic> {
 
     Err(
         Diagnostic::new(format!("`{found}` isn't an offset type"), value.span())
-            .with_help("the offset types are `uint8`, `uint16` and `uint32`"),
+            .with_help(offset_type_help(Some(value))),
     )
 }
 
-/// Points `offset_size`, which took the offset type's width in bits, to
-/// `offset_type`, with the type of that width when it's one
-fn offset_size_help(value: Option<&AttributeValue>) -> String {
-    match value {
-        Some(AttributeValue::Integer(bits @ (8 | 16 | 32), _)) => {
-            format!("`offset_type` names the offset type, such as `offset_type: uint{bits}`")
-        }
-        _ => "`offset_type` names the offset type: `uint8`, `uint16` or `uint32`".to_owned(),
+/// Points a value of `offset_size`, or one of `offset_type` that isn't an
+/// offset type, to the offset types. A width in bits, which `offset_size`
+/// took, gets the type of that width, such as `uint16` for 16.
+fn offset_type_help(value: Option<&AttributeValue>) -> String {
+    let of_width = match value {
+        Some(AttributeValue::Integer(8, _)) => Some(OffsetType::Uint8),
+        Some(AttributeValue::Integer(16, _)) => Some(OffsetType::Uint16),
+        Some(AttributeValue::Integer(32, _)) => Some(OffsetType::Uint32),
+        _ => None,
+    };
+
+    match of_width {
+        Some(offset_type) => format!(
+            "`offset_type` names the offset type, such as `offset_type: {}`",
+            offset_type.name()
+        ),
+        None => "`offset_type` names the offset type: `uint8`, `uint16` or `uint32`".to_owned(),
     }
 }
 

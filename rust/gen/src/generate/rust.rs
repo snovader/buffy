@@ -1243,9 +1243,9 @@ fn integer(value: &impl Display) -> String {
     grouped
 }
 
+/// "a [`Name`]" or "an [`Name`]", the name linked in documentation
 fn article(name: &str) -> String {
-    let article = indefinite_article(name);
-    format!("{article} [`{name}`]")
+    format!("{} [`{name}`]", indefinite_article(name))
 }
 
 /// The Rust type, which also names the crate's getters and setters

@@ -59,17 +59,27 @@ export class TableLayout<Versioned extends boolean = boolean> {
     }
 
     /**
+     * @throws {TypeError} If `options` has another option than `sized`,
+     * `versioned` and `offsetType`, such as a misspelled one.
      * @throws {RangeError} If `offsetType` isn't `'uint8'`, `'uint16'` or
      * `'uint32'`.
      */
     static create<Versioned extends boolean = false>({
         sized = false,
         versioned = false as Versioned,
-        offsetType = 'uint32'
+        offsetType = 'uint32',
+        ...others
     }: TableLayoutOptions<Versioned> = {}): TableLayout<Versioned> {
-        if (!Object.hasOwn(OFFSET_SIZES, offsetType)) {
-            throw new RangeError(`${String(offsetType)} isn't an offset type`);
+        // An option that isn't read would leave its default in its place,
+        // and readers of the intended layout would misread the table
+        const [other] = Object.keys(others);
+        if (other !== undefined) {
+            throw new TypeError(
+                `TableLayout.create() takes sized, versioned and offsetType, not ${other}`
+            );
         }
+
+        assertOffsetType(offsetType);
 
         return new TableLayout(sized, versioned, offsetType);
     }
@@ -171,6 +181,24 @@ export function assertCount(count: number): void {
         throw new RangeError(
             `A count must be a non-negative integer, not ${count}`
         );
+    }
+}
+
+/**
+ * Checks that `value` is one of the offset types. It must be the string itself:
+ * `Object.hasOwn()` would also find `['uint8']`, which converts to its key.
+ *
+ * @throws {RangeError} If it isn't.
+ */
+function assertOffsetType(value: unknown): asserts value is OffsetType {
+    if (typeof value !== 'string') {
+        throw new RangeError(
+            `An offset type must be a string such as 'uint16', not a value of type ${typeof value}`
+        );
+    }
+
+    if (!Object.hasOwn(OFFSET_SIZES, value)) {
+        throw new RangeError(`${value} isn't an offset type`);
     }
 }
 

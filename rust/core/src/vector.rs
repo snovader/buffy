@@ -11,7 +11,7 @@ use crate::{DecodeError, OffsetType, byte_buffer::read_slot};
 /// [`Vector::get_in_place()`] find any item from its end and the one before
 /// it, without reading the others.
 ///
-/// An item that has no header and offsets as wide as its parent's is read in
+/// An item that has no header and its parent's offset type is read in
 /// place: from the bytes that [`Vector::get_in_place()`] returns, which start
 /// where it does and end where its parent's do, with a `ByteBuffer` of its
 /// parent's offset type, at position 0. Its reads may reach past its end, as

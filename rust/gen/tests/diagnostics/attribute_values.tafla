@@ -18,6 +18,10 @@ message Bits (offset_type: 16) {
     x: float64;
 }
 
+message Odd (offset_type: 12) {
+    x: float64;
+}
+
 message Signed (offset_type: int16) {
     x: float64;
 }

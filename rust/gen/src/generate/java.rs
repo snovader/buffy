@@ -7,7 +7,7 @@
 use std::fmt::Write;
 
 use super::java_package::KEYWORDS;
-use super::prose::indefinite_article;
+use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, text};
 use super::{GeneratedFile, JavaPackage, Options};
 use crate::model::{Definition, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
@@ -908,11 +908,6 @@ fn identifier(name: &str) -> String {
     } else {
         name
     }
-}
-
-fn article(name: &str) -> String {
-    let article = indefinite_article(name);
-    format!("{article} `{name}`")
 }
 
 /// `Float32` in `getFloat32()`, as the runtime names its getters and setters

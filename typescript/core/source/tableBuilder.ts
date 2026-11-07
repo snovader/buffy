@@ -486,7 +486,7 @@ export class TableBuilder {
 
     /**
      * Writes the table from the buffer's position, which counts as its start.
-     * The buffer's offsets must be as wide as the table's.
+     * The buffer's layout must have the table's offset type.
      */
     #write(buffer: ByteBuffer): void {
         this.#writeHeader(buffer);

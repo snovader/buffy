@@ -394,7 +394,7 @@ class TableBuilder:
 
     def __write(self, buffer: ByteBuffer) -> None:
         """Writes the table from the buffer's position, which counts as its
-        start. The buffer's offsets must be as wide as the table's."""
+        start. The buffer's layout must have the table's offset type."""
         if self.__layout.sized():
             buffer.set_size(self.__offset)
 

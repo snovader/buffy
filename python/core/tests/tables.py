@@ -415,9 +415,9 @@ class TableReader:
     bytes hold the values.
 
     A nested table, from ``set_table()`` or in a vector, is read in place when
-    it has no header and its parent's offset type. Any other is
-    read as a table of its own: a vector item from its bytes, and a field from
-    its position to the end of its parent, since its length isn't written.
+    it has no header and its parent's offset type. Any other is read as a table
+    of its own: a vector item from its bytes, and a field from its position to
+    the end of its parent, since its length isn't written.
 
     ``visit`` is called with the placement of every field before it's read,
     nested ones included.
