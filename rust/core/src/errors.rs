@@ -34,6 +34,9 @@ pub enum DecodeError {
     ///
     /// [`ByteBuffer::version()`]: crate::ByteBuffer::version
     UnsupportedVersion { version: u32, supported: u32 },
+    /// The offset of field `index` is 0, which would point at its table's
+    /// header or offsets, and which the format reserves
+    ZeroOffset { index: usize },
 }
 
 impl DecodeError {
@@ -70,6 +73,12 @@ impl fmt::Display for DecodeError {
                 f,
                 "Unsupported format version {version}; the reader reads version {supported}"
             ),
+            Self::ZeroOffset { index } => {
+                write!(
+                    f,
+                    "The offset of field {index} is 0, which the format reserves"
+                )
+            }
         }
     }
 }
@@ -79,7 +88,8 @@ impl Error for DecodeError {
         match self {
             Self::OutOfRange { .. }
             | Self::ItemEndsBeforeStart { .. }
-            | Self::UnsupportedVersion { .. } => None,
+            | Self::UnsupportedVersion { .. }
+            | Self::ZeroOffset { .. } => None,
             Self::InvalidUtf8 { source, .. } => Some(source),
         }
     }

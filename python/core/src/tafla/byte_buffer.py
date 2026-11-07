@@ -126,16 +126,31 @@ class ByteBuffer:
         self.__set_size(version)
 
     def root_offset(self, index: int) -> int:
-        """Returns the position of field ``index`` of the root table."""
-        return self.__get_size(self.__header_size + index * self.__size)
+        """Returns the position of field ``index`` of the root table.
+
+        Raises ``DecodeError`` if the field's offset doesn't lie within the
+        bytes, or is 0, which the format reserves.
+        """
+        offset = self.__get_size(self.__header_size + index * self.__size)
+        if offset == 0:
+            raise DecodeError.zero_offset(index)
+
+        return offset
 
     def field_offset(self, table_position: int, index: int) -> int:
         """Returns the position of field ``index`` of a nested table, which has
         no header and stores its field offsets from its own start.
         ``table_position`` is the nested table's position, which is the offset
         of the field that holds it.
+
+        Raises ``DecodeError`` if the field's offset doesn't lie within the
+        bytes, or is 0, which the format reserves.
         """
-        return table_position + self.__get_size(table_position + index * self.__size)
+        offset = self.__get_size(table_position + index * self.__size)
+        if offset == 0:
+            raise DecodeError.zero_offset(index)
+
+        return table_position + offset
 
     def set_offset(self, offset: int) -> None:
         self.__set_size(offset)

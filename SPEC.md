@@ -45,7 +45,9 @@ A table is its header, then one offset per field, then the fields' values:
   of the table. The offsets of a table of `n` fields start right after the
   header, so field `i`'s offset is at `headerSize + i × offsetSize`, where
   `offsetSize` is the offset size and the header is 0, 1 or 2 slots of the
-  offset type.
+  offset type. A field's offset is never 0: its value follows the header and
+  the offsets, so no value lies at the table's start. The format reserves an
+  offset of 0 for a later meaning, and readers reject it.
 
 Writers write the values in field order, each after the previous one, with
 only the padding described below between them. Padding bytes are zero, and
@@ -106,6 +108,25 @@ the same values from the same bytes, or fail alike. A vector item whose end
 leaves it only its offsets, for example, reads its fields from the bytes after
 it, which its parent reads within.
 
+## Evolution
+
+A table carries no count of its fields: the reader knows `n` from its
+format, and a reader that expects more fields than a table holds would read
+the extra offsets from the first value's bytes. So a format fixes its tables'
+fields, and a format whose fields change, such as that of messages that are
+stored or sent, gives each set of fields a version of its own in the header:
+
+- A versioned table's reader rejects every version but its own, with its
+  decode error. An application that reads several versions reads the version
+  first, and then reads the table with the reader of that version.
+- A new version should only append fields to the previous version's. Then a
+  reader of an older version reads the fields that it knows from a newer
+  table's bytes alike, once the application has read the version and chosen
+  to read it as the older one.
+
+A later version of the format may give tables a way to leave a field out,
+with the offset 0, which readers of this version reject rather than misread.
+
 ## Validation
 
 Readers decode untrusted bytes. An implementation:
@@ -115,6 +136,10 @@ Readers decode untrusted bytes. An implementation:
   would leave them, rather than reading other memory or allocating for a
   count that the bytes can't hold. A vector item must start no later than it
   ends.
+- Rejects a field's offset of 0, which the format reserves, with its decode
+  error, in the root table and in nested tables alike. Vector items' ends
+  aren't fields' offsets: an end of 0 is invalid anyway, since every item
+  starts after its vector's count.
 - Rejects strings that aren't valid UTF-8 with its decode error.
 - Reports every failure to decode as its decode error, and doesn't crash,
   panic or hang on any input.

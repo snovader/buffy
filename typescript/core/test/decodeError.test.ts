@@ -45,6 +45,21 @@ describe('DecodeError', () => {
         expect(() => new ByteBuffer(bytes).getVectorOffset(0, 0)).toThrow(DecodeError);
     });
 
+    it('should throw DecodeError for a field whose offset is 0, which the format reserves', () => {
+        // A table of two fields, whose second offset is 0, and a uint8 of 7.
+        // It nests itself at 0, so its field 1 is read in place too.
+        const bytes = new Uint8Array([8, 0, 0, 0, 0, 0, 0, 0, 7]);
+        const buffer = new ByteBuffer(bytes);
+
+        expect(buffer.getUint8(buffer.rootOffset(0))).toBe(7);
+        expect(() => buffer.rootOffset(1)).toThrow(
+            new DecodeError('The offset of field 1 is 0, which the format reserves')
+        );
+        expect(() => buffer.fieldOffset(0, 1)).toThrow(
+            new DecodeError('The offset of field 1 is 0, which the format reserves')
+        );
+    });
+
     it.each([
         ['a lone continuation byte', [0x80]],
         ['a truncated sequence', [0xe2, 0x82]],

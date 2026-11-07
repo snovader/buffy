@@ -127,9 +127,9 @@ Validation is always on:
 
 - Every read checks its range against the bytes the `ByteBuffer` was given,
   even when the backing `ArrayBuffer` is larger, and throws a `DecodeError`
-  if it would leave them. Strings must be valid UTF-8. A truncated or
-  corrupted buffer therefore throws rather than returning values from outside
-  it.
+  if it would leave them. Strings must be valid UTF-8, and a field's offset
+  can't be 0, which the format reserves. A truncated or corrupted buffer
+  therefore throws rather than returning values from outside it.
 - `DecodeError` extends `RangeError`. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
   `TypeError` from decoding as its `cause`.

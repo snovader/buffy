@@ -58,6 +58,26 @@ public class DecodeExceptionTest {
     }
 
     @Property
+    void reading_a_field_whose_offset_is_zero_throws_DecodeException(
+        @ForAll("tables") TableDescription table,
+        @ForAll @IntRange(min = 0, max = Integer.MAX_VALUE) int choice
+    ) {
+        var fields = table.fields();
+        Assume.that(!fields.isEmpty());
+
+        var layout = table.layout();
+        var index = choice % fields.size();
+        var slot = layout.headerSize() + index * layout.width();
+
+        var bytes = Tables.build(table).bytes();
+        Arrays.fill(bytes, slot, slot + layout.width(), (byte) 0);
+        var reader = TableReader.lenient(bytes, layout);
+
+        var exception = assertThrows(DecodeException.class, () -> reader.readRootField(index, fields.get(index)));
+        assertEquals("The offset of field " + index + " is 0, which the format reserves", exception.getMessage());
+    }
+
+    @Property
     void reading_any_bytes_with_any_getter_returns_a_value_or_throws_DecodeException(
         @ForAll @Size(max = 64) byte[] bytes,
         @ForAll("layouts") LayoutDescription layout,
@@ -107,6 +127,21 @@ public class DecodeExceptionTest {
 
             var exception = assertThrows(DecodeException.class, () -> buffer.getString(0));
             assertInstanceOf(CharacterCodingException.class, exception.getCause());
+        }
+    }
+
+    @Example
+    void should_throw_DecodeException_for_a_field_whose_offset_is_zero() {
+        // A table of two fields, whose second offset is 0, and a uint8 of 7. It nests itself at 0,
+        // so its field 1 is read in place too.
+        var buffer = new ByteBuffer(new byte[] {8, 0, 0, 0, 0, 0, 0, 0, 7});
+
+        assertEquals(7, buffer.getUint8(buffer.rootOffset(0)));
+        for (var exception : List.of(
+            assertThrows(DecodeException.class, () -> buffer.rootOffset(1)),
+            assertThrows(DecodeException.class, () -> buffer.fieldOffset(0, 1))
+        )) {
+            assertEquals("The offset of field 1 is 0, which the format reserves", exception.getMessage());
         }
     }
 

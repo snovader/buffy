@@ -30,6 +30,9 @@ first commits, for code built from its source before the release.
   byte for byte, and property tests of every runtime.
 - Benchmarks in every language, compared with FlatBuffers, protobuf,
   MessagePack and others on the same workloads.
+- A static `versionOf()` on every versioned message that tafla-gen generates
+  (`version_of()` in Python and Rust), which reads the version in the header
+  so that an application can choose the reader of that version.
 
 ### Changed
 
@@ -43,6 +46,11 @@ first commits, for code built from its source before the release.
 - Every implementation reads a vector item in place within its message, as
   the format now specifies, including an item whose offsets point past its
   end.
+- The format reserves a field's offset of 0, which no value can lie at, for a
+  later meaning, and every runtime rejects it with its decode error rather
+  than reading the table's header or offsets as the field.
+  [SPEC.md](SPEC.md) describes how messages evolve: each version fixes its
+  fields, and a new version appends fields to the previous one's.
 - TypeScript's `ByteBuffer.getVectorOffsets()` returns a `number[]` rather
   than a `Uint32Array`, so that positions past 4 GiB are exact.
 - Generated fields that clash with the generated code's members, or that are

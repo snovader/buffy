@@ -1,6 +1,7 @@
 //! Readers decode untrusted bytes: any bytes, and valid tables cut short or
 //! overwritten, read as values or fail with a `DecodeError`, and never
-//! panic. The examples document the errors.
+//! panic, and a field whose offset is 0 fails. The examples document the
+//! errors.
 
 mod common;
 
@@ -70,6 +71,27 @@ proptest! {
         for error in errors.into_iter().flatten() {
             prop_assert!(!matches!(error, ReadError::Get { .. }), "{:?}", error);
         }
+    }
+
+    /// A field whose offset is 0, which the format reserves, fails with
+    /// `ZeroOffset`, in a table of any layout
+    #[test]
+    fn test_fields_whose_offset_is_zero_fail_with_zero_offset(
+        table in strategy::table(),
+        field in any::<Index>(),
+    ) {
+        prop_assume!(!table.fields.is_empty());
+        let index = field.index(table.fields.len());
+        let offset_size = table.layout.offset_type.size();
+        let slot = table.layout.header_size() + index * offset_size;
+
+        let mut bytes = table.to_bytes().unwrap();
+        bytes[slot..slot + offset_size].fill(0);
+
+        prop_assert_eq!(
+            read_root_field(&bytes, table.layout, index, &table.fields[index]),
+            Err(ReadError::Decode(DecodeError::ZeroOffset { index }))
+        );
     }
 
     /// Every getter, at the root offsets of a table of any layout, in the
@@ -307,6 +329,24 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
     assert!(error.source().is_none());
     assert_eq!(vector.get_in_place(2), None);
     assert_eq!(vector.get(2), None);
+}
+
+#[test]
+fn test_reject_field_offset_of_zero() {
+    // A table of two fields, whose second offset is 0, and a u8 of 7. It
+    // nests itself at 0, so its field 1 is read in place too.
+    let bytes = [8, 0, 0, 0, 0, 0, 0, 0, 7];
+    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+
+    let error = DecodeError::ZeroOffset { index: 1 };
+    assert_eq!(buffer.get_u8(buffer.root_offset(0).unwrap()), Ok(7));
+    assert_eq!(buffer.root_offset(1), Err(error.clone()));
+    assert_eq!(buffer.field_offset(0, 1), Err(error.clone()));
+    assert_eq!(
+        error.to_string(),
+        "The offset of field 1 is 0, which the format reserves"
+    );
+    assert!(error.source().is_none());
 }
 
 #[test]

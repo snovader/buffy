@@ -185,6 +185,26 @@ class TestDecodeError(unittest.TestCase):
             ):
                 get()
 
+    def test_raises_for_a_field_whose_offset_is_zero(self) -> None:
+        # A table of two fields, whose second offset is 0, and a uint8 of 7.
+        # It nests itself at 0, so its field 1 is read in place too.
+        buffer = ByteBuffer(bytes([8, 0, 0, 0, 0, 0, 0, 0, 7]))
+
+        self.assertEqual(buffer.get_uint8(buffer.root_offset(0)), 7)
+        reads: list[tuple[str, Callable[[], object]]] = [
+            ("root_offset", lambda: buffer.root_offset(1)),
+            ("field_offset", lambda: buffer.field_offset(0, 1)),
+        ]
+
+        for name, get in reads:
+            with (
+                self.subTest(read=name),
+                self.assertRaisesRegex(
+                    DecodeError, "The offset of field 1 is 0, which the format reserves"
+                ),
+            ):
+                get()
+
     def test_rejects_counts_before_allocating_for_them_or_viewing_their_bytes(
         self,
     ) -> None:

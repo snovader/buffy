@@ -79,6 +79,15 @@ class Document:
             )
 
     @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
+
+    @classmethod
     def serialize(cls, **fields: Unpack[DocumentFields]) -> memoryview:
         """Writes a ``Document`` with every field"""
         writer = TableWriter(4, cls._LAYOUT, cls.FORMAT_VERSION)

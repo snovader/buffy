@@ -94,11 +94,17 @@ public final class ByteBuffer {
     /**
      * Returns the position of field {@code index} of the root table.
      *
-     * @throws DecodeException if the offset isn't within the bytes, or points past the largest
-     *     {@code int}. An offset to elsewhere outside them throws from the read at its position.
+     * @throws DecodeException if the offset isn't within the bytes, is 0, which the format reserves,
+     *     or points past the largest {@code int}. An offset to elsewhere outside them throws from
+     *     the read at its position.
      */
     public int rootOffset(int index) {
-        return toPosition(getUnsigned(headerSize + (long) index * offsetSize));
+        var offset = getUnsigned(headerSize + (long) index * offsetSize);
+        if (offset == 0) {
+            throw DecodeException.zeroOffset(index);
+        }
+
+        return toPosition(offset);
     }
 
     /**
@@ -107,11 +113,16 @@ public final class ByteBuffer {
      *
      * @param tablePosition the nested table's position, which is the offset of the field that
      *     holds it
-     * @throws DecodeException if the offset isn't within the bytes, or points past the largest
-     *     {@code int}. An offset to elsewhere outside them throws from the read at its position.
+     * @throws DecodeException if the offset isn't within the bytes, is 0, which the format reserves,
+     *     or points past the largest {@code int}. An offset to elsewhere outside them throws from
+     *     the read at its position.
      */
     public int fieldOffset(int tablePosition, int index) {
         var offset = getUnsigned(tablePosition + (long) index * offsetSize);
+        if (offset == 0) {
+            throw DecodeException.zeroOffset(index);
+        }
+
         return toPosition(tablePosition + offset);
     }
 

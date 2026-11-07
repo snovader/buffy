@@ -19,7 +19,7 @@ import {
     setUint64Elements
 } from './elements.ts';
 import { byteOrderSwapped } from './endianness.ts';
-import { DecodeError, outOfRange } from './errors.ts';
+import { DecodeError, outOfRange, zeroOffset } from './errors.ts';
 import { TableLayout } from './layout.ts';
 import type { OffsetSize, ElementSize } from './types.ts';
 
@@ -98,9 +98,19 @@ export class ByteBuffer {
         this.#setSize(version);
     }
 
-    /** Returns the position of field `index` of the root table */
+    /**
+     * Returns the position of field `index` of the root table
+     *
+     * @throws {DecodeError} If the field's offset doesn't lie within the
+     * bytes, or is 0, which the format reserves.
+     */
     rootOffset(index: number): number {
-        return this.#getSize(this.#headerSize + index * this.#size);
+        const offset = this.#getSize(this.#headerSize + index * this.#size);
+        if (offset === 0) {
+            throw zeroOffset(index);
+        }
+
+        return offset;
     }
 
     /**
@@ -109,11 +119,16 @@ export class ByteBuffer {
      *
      * @param tablePosition - The nested table's position, which is the
      * offset of the field that holds it.
+     * @throws {DecodeError} If the field's offset doesn't lie within the
+     * bytes, or is 0, which the format reserves.
      */
     fieldOffset(tablePosition: number, index: number): number {
-        return (
-            tablePosition + this.#getSize(tablePosition + index * this.#size)
-        );
+        const offset = this.#getSize(tablePosition + index * this.#size);
+        if (offset === 0) {
+            throw zeroOffset(index);
+        }
+
+        return tablePosition + offset;
     }
 
     setOffset(offset: number): void {

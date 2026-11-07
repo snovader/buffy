@@ -307,6 +307,22 @@ describe('untrusted bytes', () => {
         }
     );
 
+    it.prop([tables({ minFields: 1 }), fc.nat(), BYTE_OFFSETS])(
+        'should throw DecodeError for a field whose offset is 0, which the format reserves',
+        (table, choice, byteOffset) => {
+            const { layout, fields } = table;
+            const index = choice % fields.length;
+            const offsetSize = OFFSET_SIZES[layout.offsetType];
+            const slot = headerSizeOf(layout) + index * offsetSize;
+
+            const bytes = buildTable(table).bytes().slice();
+            bytes.fill(0, slot, slot + offsetSize);
+            const reader = new TableReader(sliceOf(bytes, { byteOffset, fill: 0xff }), layout);
+
+            expect(() => reader.readRootField(index, fields[index]!)).toThrow(DecodeError);
+        }
+    );
+
     it.prop([
         fc.uint8Array({ maxLength: 64 }),
         LAYOUTS,

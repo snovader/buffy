@@ -81,13 +81,17 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// # Errors
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
-    /// the bytes.
+    /// the bytes, and [`DecodeError::ZeroOffset`] if it's 0, which the format
+    /// reserves.
     pub fn root_offset(&self, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
             .saturating_add(self.layout.header_size());
 
-        self.get_size(slot)
+        match self.get_size(slot)? {
+            0 => Err(zero_offset(index)),
+            offset => Ok(offset),
+        }
     }
 
     /// Returns the position of field `index` of a nested table, which has no
@@ -99,12 +103,17 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     /// # Errors
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
-    /// the bytes.
+    /// the bytes, and [`DecodeError::ZeroOffset`] if it's 0, which the format
+    /// reserves.
     pub fn field_offset(&self, table_position: usize, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
             .saturating_add(table_position);
         let offset = self.get_size(slot)?;
+
+        if offset == 0 {
+            return Err(zero_offset(index));
+        }
 
         // Only a 32-bit host can overflow, at a position past any bytes
         table_position.checked_add(offset).ok_or_else(|| {
@@ -289,4 +298,13 @@ pub fn read_slot(bytes: &[u8], offset_type: OffsetType) -> Option<u32> {
             .map(|&bytes| u32::from(u16::from_le_bytes(bytes))),
         OffsetType::Uint32 => bytes.first_chunk().map(|&bytes| u32::from_le_bytes(bytes)),
     }
+}
+
+/// The error of field `index`, whose offset is 0. Building it out of line, in
+/// a cold function, made reading a vector's tables in place faster than
+/// building it where the offset is checked.
+#[cold]
+#[inline(never)]
+const fn zero_offset(index: usize) -> DecodeError {
+    DecodeError::ZeroOffset { index }
 }

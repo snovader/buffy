@@ -29,6 +29,16 @@ export function outOfRange(
     );
 }
 
+/**
+ * Builds the error for a field whose offset is 0, which would point at its
+ * table's header or offsets, and which the format reserves
+ */
+export function zeroOffset(index: number): DecodeError {
+    return new DecodeError(
+        `The offset of field ${index} is 0, which the format reserves`
+    );
+}
+
 /** Builds the error for a write outside the supplied bytes */
 export function writeOutOfRange(
     position: number,

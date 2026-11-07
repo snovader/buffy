@@ -1461,6 +1461,46 @@
             "case": "nested-tables",
             "corruption": { "kind": "overwrite", "at": 56, "bytes": [255, 255, 255, 255] },
             "field": 1
+        },
+        {
+            "name": "offset-zero-offset-type-uint8",
+            "description": "The offset of the first field of offset-type-uint8, a uint8, is 0, which the format reserves",
+            "file": "invalid/offset-zero-offset-type-uint8.bin",
+            "case": "offset-type-uint8",
+            "corruption": { "kind": "overwrite", "at": 0, "bytes": [0] },
+            "field": 0
+        },
+        {
+            "name": "offset-zero-offset-type-uint16",
+            "description": "The offset of the first field of offset-type-uint16, a uint8, is 0, which the format reserves",
+            "file": "invalid/offset-zero-offset-type-uint16.bin",
+            "case": "offset-type-uint16",
+            "corruption": { "kind": "overwrite", "at": 0, "bytes": [0, 0] },
+            "field": 0
+        },
+        {
+            "name": "offset-zero-offset-type-uint32",
+            "description": "The offset of the first field of offset-type-uint32, a uint8, is 0, which the format reserves",
+            "file": "invalid/offset-zero-offset-type-uint32.bin",
+            "case": "offset-type-uint32",
+            "corruption": { "kind": "overwrite", "at": 0, "bytes": [0, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "nested-offset-zero",
+            "description": "The offset of the first field of the first nested table, an int16, is 0, which would point at the nested table's own offsets",
+            "file": "invalid/nested-offset-zero.bin",
+            "case": "nested-tables",
+            "corruption": { "kind": "overwrite", "at": 48, "bytes": [0, 0, 0, 0] },
+            "field": 1
+        },
+        {
+            "name": "vector-item-offset-zero",
+            "description": "The offset of the field of the vector's first item, which is read in place, is 0, which would point at the item's own offset",
+            "file": "invalid/vector-item-offset-zero.bin",
+            "case": "vector-item-layouts",
+            "corruption": { "kind": "overwrite", "at": 24, "bytes": [0, 0, 0, 0] },
+            "field": 0
         }
     ]
 }

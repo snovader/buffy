@@ -152,6 +152,8 @@ Validation is always on:
   when `Vector::get()` or the iterator reads it, which returns a `Result`. An
   item that ends before the one before it is
   `DecodeError::ItemEndsBeforeStart`.
+- `root_offset()` and `field_offset()` return `DecodeError::ZeroOffset` for
+  a field whose offset is 0, which the format reserves.
 - `ByteBuffer` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
   the example does, so that every decoding failure is a `DecodeError`.

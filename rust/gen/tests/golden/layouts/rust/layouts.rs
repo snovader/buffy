@@ -179,6 +179,16 @@ impl<'a> Uint8OffsetsVersioned<'a> {
         Ok(Self { bytes })
     }
 
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
+    }
+
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -272,6 +282,16 @@ impl<'a> Uint8OffsetsSizedVersioned<'a> {
         }
 
         Ok(Self { bytes })
+    }
+
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
     }
 
     /// # Errors
@@ -512,6 +532,16 @@ impl<'a> Uint16OffsetsVersioned<'a> {
         Ok(Self { bytes })
     }
 
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
+    }
+
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -605,6 +635,16 @@ impl<'a> Uint16OffsetsSizedVersioned<'a> {
         }
 
         Ok(Self { bytes })
+    }
+
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
     }
 
     /// # Errors
@@ -841,6 +881,16 @@ impl<'a> Uint32OffsetsVersioned<'a> {
         Ok(Self { bytes })
     }
 
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
+    }
+
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -931,6 +981,16 @@ impl<'a> Uint32OffsetsSizedVersioned<'a> {
         }
 
         Ok(Self { bytes })
+    }
+
+    /// Returns the format version in the header of `bytes`, without checking
+    /// it, so that an application can choose the reader of that version
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the header doesn't fit in `bytes`.
+    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {
+        ByteBuffer::new(bytes, Self::LAYOUT).version()
     }
 
     /// # Errors

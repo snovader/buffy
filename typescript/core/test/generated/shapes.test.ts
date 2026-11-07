@@ -26,9 +26,8 @@ import {
 // The code generated from schemas/shapes.tafla, in TypeScript and in
 // JavaScript, writes and reads tables with tafla
 
-const OTHER_VERSIONS = fc
-    .integer({ min: 0, max: 0xffff_ffff })
-    .filter(version => version !== DOCUMENT_LAYOUT.version);
+const VERSIONS = fc.integer({ min: 0, max: 0xffff_ffff });
+const OTHER_VERSIONS = VERSIONS.filter(version => version !== DOCUMENT_LAYOUT.version);
 
 describe.each(SHAPES)('%s', (_, shapes) => {
     describe('round trip', () => {
@@ -85,6 +84,26 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 const byHand = buildTable(describeItemList(fields)).bytes();
 
                 expect(shapes.ItemList.serialize(fields)).toStrictEqual(byHand);
+            }
+        );
+    });
+
+    describe('versions', () => {
+        it.prop([DOCUMENT_FIELDS, VERSIONS])(
+            "should read a Document's version from its bytes, of any version, to choose its reader",
+            (fields, version) => {
+                const bytes = buildTable(describeDocument(fields, version)).bytes();
+
+                expect(shapes.Document.versionOf(bytes)).toBe(version);
+            }
+        );
+
+        it.prop([DOCUMENT_FIELDS, fc.integer({ min: 0, max: 7 })])(
+            "should throw DecodeError for the version of bytes that don't hold a Document's header",
+            (fields, length) => {
+                const bytes = shapes.Document.serialize(fields).slice(0, length);
+
+                expect(() => shapes.Document.versionOf(bytes)).toThrow(DecodeError);
             }
         );
     });

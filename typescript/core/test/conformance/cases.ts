@@ -16,6 +16,7 @@ import {
     toJsonNumber,
     type ValidCase
 } from './description.ts';
+import { OFFSET_SIZES } from './format.ts';
 import { buildTable, layoutOf } from './tables.ts';
 
 // The cases of the conformance suite, which `generate.ts` writes to
@@ -125,6 +126,8 @@ const ROWS = [
         string('three')
     ])
 ];
+
+const OFFSET_TYPES: readonly OffsetType[] = ['uint8', 'uint16', 'uint32'];
 
 const VALID_CASES: ValidCase[] = [
     validCase(
@@ -562,6 +565,29 @@ function invalidCases(): InvalidCase[] {
                 littleEndian(0xffff_ffff, 4)
             ),
             1
+        ),
+        ...OFFSET_TYPES.map(offsetType =>
+            invalidCase(
+                `offset-zero-offset-type-${offsetType}`,
+                `The offset of the first field of offset-type-${offsetType}, a uint8, is 0, which the format reserves`,
+                inspect(`offset-type-${offsetType}`),
+                overwrite(0, littleEndian(0, OFFSET_SIZES[offsetType])),
+                0
+            )
+        ),
+        invalidCase(
+            'nested-offset-zero',
+            "The offset of the first field of the first nested table, an int16, is 0, which would point at the nested table's own offsets",
+            nestedTables,
+            overwrite(nestedTables.buffer.rootOffset(1), littleEndian(0, 4)),
+            1
+        ),
+        invalidCase(
+            'vector-item-offset-zero',
+            "The offset of the field of the vector's first item, which is read in place, is 0, which would point at the item's own offset",
+            itemLayouts,
+            overwrite(itemsVector + 5 * 4, littleEndian(0, 4)),
+            0
         )
     ];
 }
@@ -638,9 +664,7 @@ function layoutCases(): ValidCase[] {
         { suffix: '-sized-versioned', sized: true, versioned: true }
     ];
 
-    const offsetTypes: readonly OffsetType[] = ['uint8', 'uint16', 'uint32'];
-
-    return offsetTypes.flatMap(offsetType =>
+    return OFFSET_TYPES.flatMap(offsetType =>
         headers.map(({ suffix, sized, versioned }) =>
             validCase(
                 `offset-type-${offsetType}${suffix}`,

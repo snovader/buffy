@@ -187,6 +187,7 @@ An implementation's test loads `cases.json` and:
 | Truncated tables                                           | `truncated-*`, `struct-past-end`                                                                    |
 | Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
 | A vector item that ends before it starts                   | `vector-item-ends-before-start`                                                                     |
+| Fields' offsets of 0, which the format reserves            | `offset-zero-offset-type-{uint8,uint16,uint32}`, `nested-offset-zero`, `vector-item-offset-zero`    |
 | Invalid UTF-8                                              | `invalid-utf8-continuation`, `invalid-utf8-overlong`, `invalid-utf8-surrogate`                      |
 
 It doesn't cover:

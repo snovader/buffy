@@ -376,6 +376,30 @@ class TestUntrustedBytes(unittest.TestCase):
 
         read_corrupted(bytes(corrupted), table)
 
+    @given(tables(), data())
+    def test_a_field_whose_offset_is_zero_raises_decode_error(
+        self, table: Description, data: DataObject
+    ) -> None:
+        """The format reserves an offset of 0, which would point at the
+        table's header or offsets"""
+        fields = table["fields"]
+        assume(fields)
+
+        layout = table["layout"]
+        offset_size = offset_size_of(layout["offsetType"])
+        header_size = (layout["sized"] + layout["versioned"]) * offset_size
+        index = data.draw(integers(0, len(fields) - 1), label="index")
+        slot = header_size + index * offset_size
+
+        corrupted = bytearray(build_table(table).bytes())
+        corrupted[slot : slot + offset_size] = bytes(offset_size)
+        reader = TableReader(bytes(corrupted), layout)
+
+        with self.assertRaisesRegex(
+            DecodeError, f"The offset of field {index} is 0, which the format reserves"
+        ):
+            reader.read_root_field(index, fields[index])
+
     @given(
         binary(max_size=64),
         LAYOUTS,

@@ -32,4 +32,14 @@ public class DecodeException extends RuntimeException {
             )
         );
     }
+
+    /**
+     * Builds the error for a field whose offset is 0, which would point at its table's header or
+     * offsets, and which the format reserves
+     */
+    static DecodeException zeroOffset(int index) {
+        return new DecodeException(
+            "The offset of field " + index + " is 0, which the format reserves"
+        );
+    }
 }

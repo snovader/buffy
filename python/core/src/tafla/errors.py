@@ -27,6 +27,15 @@ class DecodeError(ValueError):
             f"of {available}"
         )
 
+    @classmethod
+    def zero_offset(cls, index: int) -> Self:
+        """Returns the error of a field whose offset is 0, which would point at
+        its table's header or offsets, and which the format reserves.
+        """
+        return cls(
+            f"The offset of field {describe_int(index)} is 0, which the format reserves"
+        )
+
 
 # Integers of up to 64 bits have at most 20 digits, which the least limit of
 # sys.set_int_max_str_digits() still converts

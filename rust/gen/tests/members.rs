@@ -6,7 +6,7 @@
 use tafla_gen::{Options, Target, compile};
 
 const SCHEMA: &str = "\
-message Members {
+message Members (version: 1) {
     constructor: uint8;
     to_string: uint8;
     serialize: uint8;
@@ -18,6 +18,7 @@ message Members {
     read: uint8;
     write: uint8;
     then: uint8;
+    version_of: uint8;
 }
 
 struct Frame {
@@ -57,6 +58,8 @@ fn typescript_renames_object_members_and_then() {
             "    readonly #writer: number;",
             "    serialize(): number {",
             "    new(): number {",
+            "    static versionOf(bytes: Uint8Array): number {",
+            "    versionOf(): number {",
         ],
     );
 }
@@ -91,6 +94,8 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
             "    cls_: int\n",
             "    def constructor(self) -> int:",
             "    def then(self) -> int:",
+            "    def version_of(cls, data: Buffer) -> int:",
+            "    def version_of_(self) -> int:",
         ],
     );
 }
@@ -107,12 +112,14 @@ fn java_renames_object_methods_and_the_members_of_structs() {
             "    public short builder() {",
             "    public short read() {",
             "    public short then() {",
+            "    public static long versionOf(byte[] bytes) {",
+            "    public short versionOf() {",
         ],
     );
 }
 
 #[test]
-fn rust_renames_the_constructor_of_views() {
+fn rust_renames_the_associated_functions_of_views() {
     assert_declares(
         "rust",
         &[
@@ -122,6 +129,8 @@ fn rust_renames_the_constructor_of_views() {
             "    pub fn read(&self) -> Result<u8, DecodeError> {",
             "    pub serialize: u8,",
             "    pub fn then(&self) -> Result<u8, DecodeError> {",
+            "    pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {",
+            "    pub fn version_of_(&self) -> Result<u8, DecodeError> {",
         ],
     );
 }
