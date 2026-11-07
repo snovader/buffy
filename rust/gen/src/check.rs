@@ -34,11 +34,12 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
     if errors.is_empty() {
         let order = nesting_order(&definitions);
         check_nesting_depth(&definitions, declarations, &order, &mut errors);
+        check_scalar_paths(&definitions, declarations, &order, &mut errors);
         measure_structs(&mut definitions, declarations, &order, &mut errors);
     }
 
     if errors.is_empty() {
-        Ok(Schema { definitions })
+        Ok(Schema::new(definitions))
     } else {
         errors.sort_by_key(|error| error.span.start);
         Err(errors)
@@ -741,14 +742,9 @@ fn check_nesting_depth(
         depths[index] = deepest.unwrap_or(0) + 1;
     }
 
-    for (index, definition) in definitions.iter().enumerate() {
-        // The error points at the definitions that grow too deep, rather than
-        // at every definition that holds one of them
-        let too_deep = |index: usize| depths[index] > MAX_NESTING_DEPTH;
-        if !too_deep(index) || nested_alike(definition).any(too_deep) {
-            continue;
-        }
-
+    let too_deep = |index: usize| depths[index] > MAX_NESTING_DEPTH;
+    for index in first_to_exceed(definitions, too_deep) {
+        let definition = &definitions[index];
         let help = if definition.is_struct() {
             format!("structs nest at most {MAX_NESTING_DEPTH} deep, one within another")
         } else {
@@ -760,6 +756,70 @@ fn check_nesting_depth(
                 declarations[index].name.span,
             )
             .with_help(help),
+        );
+    }
+}
+
+/// The most fields on the paths from a struct to its scalars, in all: a
+/// struct whose field `start` holds a struct of `x` and `y` reaches them as
+/// `start.x` and `start.y`, through 4 fields. The generated Python and Rust
+/// read and write each of a struct's scalars through its path, indented as
+/// deep as it lies, so a few lines of structs that hold others in pairs, or
+/// wrap them one within another, would otherwise generate code of any size:
+/// 17 lines, of structs up to 65,536 bytes, generated 70 MB of Python, and
+/// 64 lines that wrap a struct of 1,024 scalars, 66 MB. A struct at the
+/// limit, such as 32 structs of 16 scalars, generates about 75 KB of Python
+/// and less Rust. It holds at most 1,024 scalars, of at most 8,192 bytes,
+/// and a struct that nests others 64 deep holds its scalars in the innermost.
+const MAX_SCALAR_PATHS: usize = 1_024;
+
+/// Rejects structs whose paths to their scalars take more than
+/// [`MAX_SCALAR_PATHS`] fields in all, from `order`, where each definition
+/// comes after those nested in it. Counts saturate rather than overflowing,
+/// since a few lines can double a struct's scalars many times over.
+fn check_scalar_paths(
+    definitions: &[Definition],
+    declarations: &[Declaration],
+    order: &[usize],
+    errors: &mut Vec<Diagnostic>,
+) {
+    // A field of a struct adds itself to the path to each of the scalars
+    // within it
+    let mut scalars = vec![0_usize; definitions.len()];
+    let mut paths = vec![0_usize; definitions.len()];
+    for &index in order {
+        let definition = &definitions[index];
+        if !definition.is_struct() {
+            continue;
+        }
+
+        for field in &definition.fields {
+            let (field_scalars, field_paths) = match field.field_type {
+                FieldType::Scalar(_) => (1, 1),
+                FieldType::Struct(inner) => {
+                    (scalars[inner], paths[inner].saturating_add(scalars[inner]))
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            };
+            scalars[index] = scalars[index].saturating_add(field_scalars);
+            paths[index] = paths[index].saturating_add(field_paths);
+        }
+    }
+
+    // The structs that an error points at hold structs within the limit
+    // only, so their counts haven't saturated
+    let too_many = |index: usize| paths[index] > MAX_SCALAR_PATHS;
+    for index in first_to_exceed(definitions, too_many) {
+        let name = &definitions[index].name;
+        let found = paths[index];
+        errors.push(
+            Diagnostic::new(
+                format!("`{name}` has too many scalars for a struct"),
+                declarations[index].name.span,
+            )
+            .with_help(format!(
+                "the paths to a struct's scalars, such as `start.x`, take at most {MAX_SCALAR_PATHS} fields in all, and those of `{name}` take {found}"
+            )),
         );
     }
 }
@@ -789,22 +849,14 @@ fn measure_structs(
     let too_large = |index: usize| {
         layouts[index].is_some_and(|layout: StructLayout| layout.size > MAX_STRUCT_SIZE)
     };
-    for (index, definition) in definitions.iter().enumerate() {
-        // The error points at the structs that grow too large, rather than
-        // at every struct that holds one of them
-        let holds_too_large = definition
-            .fields
-            .iter()
-            .any(|field| matches!(field.field_type, FieldType::Struct(inner) if too_large(inner)));
-        if too_large(index) && !holds_too_large {
-            errors.push(
-                Diagnostic::new(
-                    format!("`{}` is too large for a struct", definition.name),
-                    declarations[index].name.span,
-                )
-                .with_help(format!("structs take at most {MAX_STRUCT_SIZE} bytes")),
-            );
-        }
+    for index in first_to_exceed(definitions, too_large) {
+        errors.push(
+            Diagnostic::new(
+                format!("`{}` is too large for a struct", definitions[index].name),
+                declarations[index].name.span,
+            )
+            .with_help(format!("structs take at most {MAX_STRUCT_SIZE} bytes")),
+        );
     }
 
     for (definition, layout) in definitions.iter_mut().zip(layouts) {
@@ -895,6 +947,22 @@ fn nested_alike(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
             FieldType::Struct(index) if is_struct => Some(index),
             _ => None,
         })
+}
+
+/// The definitions that exceed a limit of their own, rather than by holding
+/// one of the same kind that does, which an error points at rather than at
+/// every definition that holds one of them
+fn first_to_exceed<'a>(
+    definitions: &'a [Definition],
+    exceeds: impl Fn(usize) -> bool + Copy + 'a,
+) -> impl Iterator<Item = usize> + 'a {
+    definitions
+        .iter()
+        .enumerate()
+        .filter(move |&(index, definition)| {
+            exceeds(index) && !nested_alike(definition).any(exceeds)
+        })
+        .map(|(index, _)| index)
 }
 
 fn is_pascal_case(name: &str) -> bool {

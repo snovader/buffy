@@ -2,73 +2,75 @@
 // structs too, the outermost included. Each chain here is one too deep, and
 // the error points at the definition that grows too deep, rather than at
 // those that hold it. A struct within a table adds nothing to the table's
-// depth, and vectors nest tables deeper.
+// depth, and vectors nest tables deeper. The innermost struct holds the
+// chain's scalar, since paths to a scalar in every struct would take too
+// many fields.
 
 struct S1 { value: uint8; }
-struct S2 { value: uint8; inner: S1; }
-struct S3 { value: uint8; inner: S2; }
-struct S4 { value: uint8; inner: S3; }
-struct S5 { value: uint8; inner: S4; }
-struct S6 { value: uint8; inner: S5; }
-struct S7 { value: uint8; inner: S6; }
-struct S8 { value: uint8; inner: S7; }
-struct S9 { value: uint8; inner: S8; }
-struct S10 { value: uint8; inner: S9; }
-struct S11 { value: uint8; inner: S10; }
-struct S12 { value: uint8; inner: S11; }
-struct S13 { value: uint8; inner: S12; }
-struct S14 { value: uint8; inner: S13; }
-struct S15 { value: uint8; inner: S14; }
-struct S16 { value: uint8; inner: S15; }
-struct S17 { value: uint8; inner: S16; }
-struct S18 { value: uint8; inner: S17; }
-struct S19 { value: uint8; inner: S18; }
-struct S20 { value: uint8; inner: S19; }
-struct S21 { value: uint8; inner: S20; }
-struct S22 { value: uint8; inner: S21; }
-struct S23 { value: uint8; inner: S22; }
-struct S24 { value: uint8; inner: S23; }
-struct S25 { value: uint8; inner: S24; }
-struct S26 { value: uint8; inner: S25; }
-struct S27 { value: uint8; inner: S26; }
-struct S28 { value: uint8; inner: S27; }
-struct S29 { value: uint8; inner: S28; }
-struct S30 { value: uint8; inner: S29; }
-struct S31 { value: uint8; inner: S30; }
-struct S32 { value: uint8; inner: S31; }
-struct S33 { value: uint8; inner: S32; }
-struct S34 { value: uint8; inner: S33; }
-struct S35 { value: uint8; inner: S34; }
-struct S36 { value: uint8; inner: S35; }
-struct S37 { value: uint8; inner: S36; }
-struct S38 { value: uint8; inner: S37; }
-struct S39 { value: uint8; inner: S38; }
-struct S40 { value: uint8; inner: S39; }
-struct S41 { value: uint8; inner: S40; }
-struct S42 { value: uint8; inner: S41; }
-struct S43 { value: uint8; inner: S42; }
-struct S44 { value: uint8; inner: S43; }
-struct S45 { value: uint8; inner: S44; }
-struct S46 { value: uint8; inner: S45; }
-struct S47 { value: uint8; inner: S46; }
-struct S48 { value: uint8; inner: S47; }
-struct S49 { value: uint8; inner: S48; }
-struct S50 { value: uint8; inner: S49; }
-struct S51 { value: uint8; inner: S50; }
-struct S52 { value: uint8; inner: S51; }
-struct S53 { value: uint8; inner: S52; }
-struct S54 { value: uint8; inner: S53; }
-struct S55 { value: uint8; inner: S54; }
-struct S56 { value: uint8; inner: S55; }
-struct S57 { value: uint8; inner: S56; }
-struct S58 { value: uint8; inner: S57; }
-struct S59 { value: uint8; inner: S58; }
-struct S60 { value: uint8; inner: S59; }
-struct S61 { value: uint8; inner: S60; }
-struct S62 { value: uint8; inner: S61; }
-struct S63 { value: uint8; inner: S62; }
-struct S64 { value: uint8; inner: S63; }
-struct S65 { value: uint8; inner: S64; }
+struct S2 { inner: S1; }
+struct S3 { inner: S2; }
+struct S4 { inner: S3; }
+struct S5 { inner: S4; }
+struct S6 { inner: S5; }
+struct S7 { inner: S6; }
+struct S8 { inner: S7; }
+struct S9 { inner: S8; }
+struct S10 { inner: S9; }
+struct S11 { inner: S10; }
+struct S12 { inner: S11; }
+struct S13 { inner: S12; }
+struct S14 { inner: S13; }
+struct S15 { inner: S14; }
+struct S16 { inner: S15; }
+struct S17 { inner: S16; }
+struct S18 { inner: S17; }
+struct S19 { inner: S18; }
+struct S20 { inner: S19; }
+struct S21 { inner: S20; }
+struct S22 { inner: S21; }
+struct S23 { inner: S22; }
+struct S24 { inner: S23; }
+struct S25 { inner: S24; }
+struct S26 { inner: S25; }
+struct S27 { inner: S26; }
+struct S28 { inner: S27; }
+struct S29 { inner: S28; }
+struct S30 { inner: S29; }
+struct S31 { inner: S30; }
+struct S32 { inner: S31; }
+struct S33 { inner: S32; }
+struct S34 { inner: S33; }
+struct S35 { inner: S34; }
+struct S36 { inner: S35; }
+struct S37 { inner: S36; }
+struct S38 { inner: S37; }
+struct S39 { inner: S38; }
+struct S40 { inner: S39; }
+struct S41 { inner: S40; }
+struct S42 { inner: S41; }
+struct S43 { inner: S42; }
+struct S44 { inner: S43; }
+struct S45 { inner: S44; }
+struct S46 { inner: S45; }
+struct S47 { inner: S46; }
+struct S48 { inner: S47; }
+struct S49 { inner: S48; }
+struct S50 { inner: S49; }
+struct S51 { inner: S50; }
+struct S52 { inner: S51; }
+struct S53 { inner: S52; }
+struct S54 { inner: S53; }
+struct S55 { inner: S54; }
+struct S56 { inner: S55; }
+struct S57 { inner: S56; }
+struct S58 { inner: S57; }
+struct S59 { inner: S58; }
+struct S60 { inner: S59; }
+struct S61 { inner: S60; }
+struct S62 { inner: S61; }
+struct S63 { inner: S62; }
+struct S64 { inner: S63; }
+struct S65 { inner: S64; }
 
 table T1 { value: uint8; }
 table T2 { value: uint8; inner: T1; }

@@ -102,7 +102,21 @@ const WASM_STACK: usize = 1 << 20;
 
 #[test]
 fn long_chains_fail_with_an_error_rather_than_overflowing_the_stack() {
-    for keyword in ["struct", "table"] {
+    // The 65th link, counting from the innermost, rather than every link
+    // that holds it, and of structs the 45th, the first whose paths to its
+    // scalars, one in each link, take more than 1024 fields
+    let expected_errors = [
+        (
+            "struct",
+            &[
+                "`Link44` has too many scalars for a struct",
+                "`Link64` nests too deeply",
+            ][..],
+        ),
+        ("table", &["`Link64` nests too deeply"][..]),
+    ];
+
+    for (keyword, expected) in expected_errors {
         let mut source = format!("{keyword} Link0 {{ value: uint8; }}\n");
         for link in 1..10_000 {
             let inner = link - 1;
@@ -120,13 +134,37 @@ fn long_chains_fail_with_an_error_rather_than_overflowing_the_stack() {
             .join()
             .unwrap();
 
-        // The 65th link, counting from the innermost, rather than every link
-        // that holds it
         let messages: Vec<&str> = diagnostics
             .iter()
             .map(|diagnostic| diagnostic.message.as_str())
             .collect();
-        assert_eq!(messages, ["`Link64` nests too deeply"], "{keyword}");
+        assert_eq!(messages, expected, "{keyword}");
+    }
+}
+
+#[test]
+fn structs_whose_paths_to_scalars_take_1024_fields_generate_code_for_every_target() {
+    // 32 structs of 16 scalars, and 16 scalars within 63 structs that wrap
+    // them, 64 deep: paths of 2 and 64 fields to each scalar
+    let row: Vec<String> = (0..16)
+        .map(|column| format!("c{column}: float32;"))
+        .collect();
+    let rows: Vec<String> = (0..32).map(|row| format!("r{row}: Row;")).collect();
+    let mut source = format!(
+        "struct Row {{ {} }}\nstruct Grid {{ {} }}\nstruct W0 {{ row: Row; }}\n",
+        row.join(" "),
+        rows.join(" ")
+    );
+    for level in 1..63 {
+        let inner = level - 1;
+        writeln!(source, "struct W{level} {{ inner: W{inner}; }}").unwrap();
+    }
+    source.push_str("message Holder { grid: Grid; grids: [Grid]; nested: Nested; }\n");
+    source.push_str("table Nested { wrapped: W62; all: [W62]; }\n");
+
+    for (name, target) in targets() {
+        let files = compile("scalars.tafla", &source, target, &Options::default());
+        assert!(files.is_ok(), "{name}: {files:?}");
     }
 }
 

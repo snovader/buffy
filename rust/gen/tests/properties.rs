@@ -1,8 +1,9 @@
 //! Properties of the generator over arbitrary input: parsing never panics,
 //! every schema that the checker accepts generates code for every target,
-//! structs that contain themselves or grow too large and chains of tables or
-//! structs that nest too deep fail with the checker's errors, its files stay
-//! in the output directory, and the CLI writes what the library generates.
+//! structs that contain themselves, grow too large or reach their scalars
+//! through too many fields and chains of tables or structs that nest too
+//! deep fail with the checker's errors, its files stay in the output
+//! directory, and the CLI writes what the library generates.
 
 mod common;
 
@@ -17,6 +18,9 @@ use tafla_gen::{Diagnostic, GeneratedFile, Options, compile, parse};
 
 /// The most bytes that a struct takes
 const MAX_STRUCT_SIZE: usize = 65_536;
+
+/// The most fields on the paths from a struct to its scalars, in all
+const MAX_SCALAR_PATHS: usize = 1_024;
 
 /// The most tables, and the most structs, that nest in place one within
 /// another, the outermost included
@@ -158,11 +162,52 @@ proptest! {
         // which makes it and every struct that contains it too large
         let structs: Vec<usize> = schema.structs().collect();
         let large = structs[chosen.index(structs.len())];
-        let mut source = schema.render_with(Some((large, "large: Large16")));
-        source.push_str(&large_structs());
+        let levels = MAX_STRUCT_SIZE.ilog2();
+        let mut source = schema.render_with(Some((large, &format!("large: Large{levels}"))));
+        source.push_str(&doubling_structs(levels));
 
-        // The struct that grows too large, rather than those that hold it
-        let expected = [(format!("`{}` is too large for a struct", name(large)), name(large))];
+        // The struct that grows too large, rather than those that hold it,
+        // and the first of the structs that double whose paths to scalars
+        // take too many fields: `Large<n>` has 2 ^ n scalars, through paths
+        // of n + 1 fields
+        let level = (0_usize..usize::BITS as usize)
+            .find(|&level| (1 << level) * (level + 1) > MAX_SCALAR_PATHS)
+            .unwrap();
+        let many = format!("Large{level}");
+        let expected = [
+            (format!("`{}` is too large for a struct", name(large)), name(large)),
+            (format!("`{many}` has too many scalars for a struct"), many),
+        ];
+        check_errors(&source, &expected)?;
+    }
+
+    #[test]
+    fn structs_whose_paths_to_scalars_take_more_than_1024_fields_fail_with_diagnostics(
+        schema in schema_with_struct(),
+        chosen in any::<Index>(),
+    ) {
+        // A struct that holds one whose paths take 1,024 fields beside its
+        // own fields, which adds a field to each path. No other struct
+        // contains it, since one that held it many times would grow too
+        // large too.
+        let outermost: Vec<usize> = schema
+            .structs()
+            .filter(|&inner| {
+                !schema
+                    .structs()
+                    .any(|outer| outer != inner && schema.contains(outer, inner))
+            })
+            .collect();
+        let many = outermost[chosen.index(outermost.len())];
+        let mut source = schema.render_with(Some((many, "grid: Grid")));
+        source.push_str(&grid_structs());
+
+        // The struct whose paths take too many fields, rather than the one
+        // in it
+        let expected = [(
+            format!("`{}` has too many scalars for a struct", name(many)),
+            name(many),
+        )];
         check_errors(&source, &expected)?;
     }
 
@@ -353,13 +398,18 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 /// tables only in messages of `uint32` offsets, structs of scalars and of the
 /// structs after them, which can share a struct, and versions that fit in
 /// their offset type. A struct of `n` fields nests only structs of at most
-/// 65,536 / `n` bytes, so that it takes at most 65,536 itself. Of at most 11
-/// definitions, tables and structs nest at most 11 deep.
+/// 1,024 / `n` fields on the paths to their scalars, their fields in it
+/// included, so that its paths take at most 1,024 fields, and it at most
+/// 8,192 bytes. Of at most 11 definitions, tables and structs nest at most 11
+/// deep.
 #[derive(Debug)]
 struct Schema {
     definitions: Vec<Definition>,
-    /// The bytes that each struct takes, by its index, and 0 for the others
-    struct_sizes: Vec<usize>,
+    /// The scalars that each struct holds, by its index, and 0 for the others
+    struct_scalars: Vec<usize>,
+    /// The fields on the paths to each struct's scalars, in all, by its
+    /// index, and 0 for the others
+    struct_paths: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -502,31 +552,49 @@ fn docs() -> impl Strategy<Value = Vec<String>> {
 }
 
 impl Schema {
-    /// The schema of `definitions`, with the size of each struct, measured
-    /// from the last, since a struct nests only the structs after it
+    /// The schema of `definitions`, with the scalars and paths of each
+    /// struct, counted from the last, since a struct nests only the structs
+    /// after it
     fn new(definitions: Vec<Definition>) -> Self {
         let mut schema = Self {
-            struct_sizes: vec![0; definitions.len()],
+            struct_scalars: vec![0; definitions.len()],
+            struct_paths: vec![0; definitions.len()],
             definitions,
         };
 
         let structs: Vec<usize> = schema.structs().collect();
         for index in structs.into_iter().rev() {
-            let size = schema.definitions[index]
+            let (scalars, paths) = schema.definitions[index]
                 .fields
                 .iter()
                 .map(|field| match field.of_type {
-                    FieldType::Scalar(scalar) => scalar_size(scalar),
-                    FieldType::Struct(chosen) => schema
-                        .nested_struct(index, chosen)
-                        .map_or_else(|| scalar_size(chosen), |nested| schema.struct_sizes[nested]),
+                    FieldType::Scalar(_) => (1, 1),
+                    FieldType::Struct(chosen) => {
+                        schema
+                            .nested_struct(index, chosen)
+                            .map_or((1, 1), |nested| {
+                                (
+                                    schema.struct_scalars[nested],
+                                    schema.paths_through_field(nested),
+                                )
+                            })
+                    }
                     _ => unreachable!("structs hold scalars and structs"),
                 })
-                .sum();
-            schema.struct_sizes[index] = size;
+                .fold((0, 0), |(scalars, paths), (more_scalars, more_paths)| {
+                    (scalars + more_scalars, paths + more_paths)
+                });
+            schema.struct_scalars[index] = scalars;
+            schema.struct_paths[index] = paths;
         }
 
         schema
+    }
+
+    /// The fields on the paths to the scalars of the struct at `index`,
+    /// from a struct whose field holds it, which adds itself to each path
+    fn paths_through_field(&self, index: usize) -> usize {
+        self.struct_paths[index] + self.struct_scalars[index]
     }
 
     fn render(&self) -> String {
@@ -666,14 +734,17 @@ impl Schema {
 
     /// The struct that a field of the definition at `index` holds, if there's
     /// one: any of the structs, or in a struct one after it, so that none
-    /// contains itself, of at most its share of the bytes that a struct takes
+    /// contains itself, of at most its share of the fields that the paths to
+    /// a struct's scalars take
     fn nested_struct(&self, index: usize, chosen: Index) -> Option<usize> {
         let definition = &self.definitions[index];
         let in_struct = matches!(definition.kind, Kind::Struct);
-        let share = MAX_STRUCT_SIZE / definition.fields.len();
+        let share = MAX_SCALAR_PATHS / definition.fields.len();
         let structs: Vec<usize> = self
             .structs()
-            .filter(|&other| !in_struct || (other > index && self.struct_sizes[other] <= share))
+            .filter(|&other| {
+                !in_struct || (other > index && self.paths_through_field(other) <= share)
+            })
             .collect();
 
         (!structs.is_empty()).then(|| structs[chosen.index(structs.len())])
@@ -698,25 +769,16 @@ fn scalar_name(scalar: Index) -> &'static str {
     SCALARS[scalar.index(SCALARS.len())]
 }
 
-/// The bytes of a scalar, from the bits in its name
-fn scalar_size(scalar: Index) -> usize {
-    let bits: usize = scalar_name(scalar)
-        .trim_start_matches(char::is_alphabetic)
-        .parse()
-        .unwrap();
-    bits / 8
-}
-
 /// Unique names, which mix letters and digits as `PascalCase` allows
 fn name(index: usize) -> String {
     format!("Definition{index}X")
 }
 
-/// Structs that double in size, from `Large0` of one byte to `Large16` of
-/// 65,536, the most that a struct takes
-fn large_structs() -> String {
+/// Structs that double in size, from `Large0` of one byte to `Large<levels>`
+/// of 2 ^ `levels`, such as `Large16` of 65,536, the most that a struct takes
+fn doubling_structs(levels: u32) -> String {
     let mut source = "struct Large0 { value: uint8; }\n".to_owned();
-    for level in 1..=16 {
+    for level in 1..=levels {
         let half = level - 1;
         writeln!(
             source,
@@ -727,6 +789,18 @@ fn large_structs() -> String {
     source
 }
 
+/// `Grid`, of 32 structs of 16 scalars, whose paths to its scalars take
+/// 1,024 fields, the most that they take
+fn grid_structs() -> String {
+    let row: Vec<String> = (0..16).map(|column| format!("c{column}: uint8;")).collect();
+    let rows: Vec<String> = (0..32).map(|row| format!("r{row}: Row;")).collect();
+    format!(
+        "struct Row {{ {} }}\nstruct Grid {{ {} }}\n",
+        row.join(" "),
+        rows.join(" ")
+    )
+}
+
 /// A chain of tables or of structs, each of which holds the one before it in
 /// place, `depth` of them in all, declared in any order
 #[derive(Debug)]
@@ -734,8 +808,10 @@ struct Chain {
     is_struct: bool,
     depth: usize,
     /// How many fields each link has besides its scalar: a table's each hold
-    /// the link before it, and a struct's all but the first are scalars,
-    /// since each struct that held the one before it twice would double
+    /// the link before it, and the innermost link's are scalars. A struct
+    /// holds the link before it alone, since each that held it twice would
+    /// double, and the paths to scalars in every link of a chain 64 deep
+    /// would take too many fields.
     width: usize,
     /// The order of the links' declarations, by their depth less one
     order: Vec<usize>,
@@ -766,15 +842,20 @@ impl Chain {
 
         let mut source = String::new();
         for &link in &self.order {
-            let mut fields = vec!["value: uint8".to_owned()];
-            for field in 0..self.width {
-                let nests = link > 0 && (field == 0 || !self.is_struct);
-                fields.push(if nests {
-                    format!("inner_{field}: {}", link_name(link - 1))
-                } else {
-                    format!("value_{field}: float64")
-                });
-            }
+            let fields: Vec<String> = if link == 0 {
+                let values = (0..self.width).map(|field| format!("value_{field}: float64"));
+                std::iter::once("value: uint8".to_owned())
+                    .chain(values)
+                    .collect()
+            } else if self.is_struct {
+                vec![format!("inner: {}", link_name(link - 1))]
+            } else {
+                let inner =
+                    (0..self.width).map(|field| format!("inner_{field}: {}", link_name(link - 1)));
+                std::iter::once("value: uint8".to_owned())
+                    .chain(inner)
+                    .collect()
+            };
             writeln!(
                 source,
                 "{keyword} {} {{ {}; }}",

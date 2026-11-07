@@ -74,7 +74,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
             }
             Kind::Table => {
                 imports(&mut writer, runtime, definition, None);
-                table(&mut writer, schema, definition);
+                table(&mut writer, schema, index);
             }
             Kind::Struct(_) => {
                 writer.line(format!("import {runtime}.DecodeException;"));
@@ -380,7 +380,8 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout) {
     writer.dedent();
 }
 
-fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
+    let definition = schema.definition(index);
     let name = &definition.name;
 
     writer.lines(&javadoc(&definition.docs));
@@ -394,7 +395,7 @@ fn table(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     ]));
     writer.line(format!(
         "public static final int ALIGNMENT = {};",
-        schema.table_alignment(definition)
+        schema.table_alignment(index)
     ));
     writer.blank();
     writer.line("private final ByteBuffer buffer;");

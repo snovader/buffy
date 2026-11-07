@@ -1,3 +1,9 @@
+error: `S8` has too many scalars for a struct
+  --> large_structs.tafla:18:8
+   |
+18 | struct S8 { left: S7; right: S7; }
+   |        ^^ the paths to a struct's scalars, such as `start.x`, take at most 1024 fields in all, and those of `S8` take 2304
+
 error: `S17` is too large for a struct
   --> large_structs.tafla:27:8
    |
