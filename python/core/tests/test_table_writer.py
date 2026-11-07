@@ -4,7 +4,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from hypothesis import assume, given
-from hypothesis.strategies import booleans, integers, sampled_from
+from hypothesis.strategies import booleans, integers, one_of, sampled_from
 
 from tafla import TableBuilder, TableLayout, TableWriter
 from tests.descriptions import tables
@@ -289,6 +289,63 @@ class TestIndices(unittest.TestCase):
 
                     with self.assertRaises(ValueError):
                         write(writer, index)
+
+    @given(tables(), integers(min_value=0), one_of(integers(-4, 64), integers()))
+    def test_writes_nothing_outside_its_bytes_whatever_the_index_of_a_field_or_the_item_of_an_end(
+        self, table: Description, call: int, value: int
+    ) -> None:
+        """The table's bytes are undefined then, but the writer's bytes bound
+        them"""
+        table = nested_in_place(table)
+        assume(fits(table))
+        length = len(write_table(table))
+        counter = IndexReplacer(-1, 0)
+        write_table(table, wrap=counter.wrap)
+        assume(counter.calls > 0)
+
+        replacer = IndexReplacer(call % counter.calls, value)
+        try:
+            data = write_table(table, wrap=replacer.wrap)
+        except ValueError:
+            return
+
+        self.assertEqual(len(data), length)
+
+
+class IndexReplacer:
+    """Passes a writer its calls, with the index of one field or the item of
+    one end replaced by another, as a caller other than the generated code
+    might pass it"""
+
+    def __init__(self, call: int, value: int) -> None:
+        """Replaces the index or item of call ``call`` of those that take one"""
+        self.calls = 0
+        self.__call = call
+        self.__value = value
+        self.__writer: TableWriter | None = None
+
+    def wrap(self, writer: TableWriter) -> Any:
+        self.__writer = writer
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        method = getattr(self.__writer, name)
+        # set_item_end(vector, item), and every other setter set_*(index, ...)
+        if name == "set_item_end":
+            argument = 1
+        elif name.startswith("set_"):
+            argument = 0
+        else:
+            return method
+
+        def forward(*args: Any) -> Any:
+            replaced = list(args)
+            if self.calls == self.__call:
+                replaced[argument] = self.__value
+            self.calls += 1
+            return method(*replaced)
+
+        return forward
 
 
 if __name__ == "__main__":

@@ -230,6 +230,18 @@ export function writeTableInto(
 }
 
 /**
+ * Writes a table into `bytes`, as {@link writeTableInto} does, through the
+ * writer that `wrap` returns for its own, which can change the calls
+ */
+export function writeTableThrough(
+    table: TableDescription,
+    bytes: Uint8Array,
+    wrap: (writer: TableWriter) => TableWriter
+): Uint8Array {
+    return writeFields(wrap(createWriter(table, bytes)), table);
+}
+
+/**
  * Returns the description with every table nested in it made one that a
  * `TableWriter` writes in place: from its builder, without a header, and
  * with the root's offset type

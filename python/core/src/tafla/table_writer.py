@@ -55,10 +55,15 @@ class TableWriter:
     way, with the same errors: a struct that isn't a C-contiguous buffer raises
     ``TypeError``.
 
-    The index of each field and the item of each end must be their own, as the
-    generated code passes them, since the writer doesn't check them: another
-    writes the offset or end into another slot of the bytes, or raises
-    ``ValueError`` where the bytes have no such slot.
+    It's the target of the code that tafla-gen generates, whose calls follow
+    from the schema, so it doesn't check them again: every field is set, in
+    index order, each once, and each vector item is followed by its
+    ``set_item_end()``. A field index outside its table, or an item outside its
+    vector, writes an offset or end over another slot or field, so the table's
+    bytes are undefined, though never outside them: a slot past them raises
+    ``ValueError``. Without a sizer, the writer can't tell a field that wasn't
+    set: ``bytes()`` returns a table without it, whose offset is 0.
+    Hand-written tables use ``TableBuilder``, which checks every field.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
     them, without copying them. A table too long for the layout's

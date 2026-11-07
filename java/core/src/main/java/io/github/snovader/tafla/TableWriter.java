@@ -17,12 +17,18 @@ import java.util.*;
  * <p>Arrays of the elements' own Java type are copied in bulk, and unsigned setters write the low
  * bits of their argument, as {@code TableBuilder}'s do.</p>
  *
+ * <p>It's the target of the code that tafla-gen generates, whose calls follow from the schema, so
+ * it doesn't check them again: fields are set in index order, each once, as the sizer added them,
+ * and each vector item is followed by its {@link #setItemEnd}. A field index outside its table, or
+ * an item outside its vector, writes an offset or end over another slot or field, so the table's
+ * bytes are undefined, though never outside them: a slot past them throws an
+ * {@link IndexOutOfBoundsException}. Hand-written tables use {@code TableBuilder}, which checks
+ * every field.</p>
+ *
  * <p>Fields that differ from those that the sizer added, such as values that changed in between,
- * never write outside the table's bytes. A field that would end past them throws an
- * {@link IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()}
- * throws an {@link IllegalStateException} for fields that didn't fill them. The index of each field
- * and the item of each end must be their own: another writes the offset or end into another slot
- * of the bytes, or throws an {@code IndexOutOfBoundsException}.</p>
+ * never write outside the table's bytes either. A field that would end past them throws an
+ * {@code IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()}
+ * throws an {@link IllegalStateException} for fields that didn't fill them.</p>
  */
 public final class TableWriter {
     private final byte[] bytes;

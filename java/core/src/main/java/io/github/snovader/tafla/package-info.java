@@ -142,5 +142,27 @@
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
  *     versioned.</li>
  * </ul>
+ *
+ * <h2>TableWriter's contract</h2>
+ *
+ * <p>{@code TableWriter} is the target of the generated code, whose calls follow from the schema,
+ * so it doesn't check them again. Its contract:</p>
+ *
+ * <ul>
+ *   <li>Fields are set in index order, each once, as the sizer added them, and each vector item is
+ *     followed by its {@code setItemEnd()}.</li>
+ *   <li>A field index outside its table, or an item outside its vector, writes an offset or item
+ *     end over another slot or field, so the table's bytes are undefined. Every write still stays
+ *     within the writer's bytes: one whose slot lies past them throws an
+ *     {@link IndexOutOfBoundsException}.</li>
+ *   <li>Fields that differ from those the sizer counted, in their lengths or number, throw an
+ *     {@code IndexOutOfBoundsException} rather than end past the bytes, and {@code bytes()} an
+ *     {@code IllegalStateException} when they didn't fill them.</li>
+ * </ul>
+ *
+ * <p>Rust's writer also reports an index past its table's fields, since the parent that the
+ * generated code hands back already carries the count. The others don't keep that count for each
+ * nested table, so the contract doesn't promise it. Hand-written tables use {@code TableBuilder},
+ * which checks every field.</p>
  */
 package io.github.snovader.tafla;

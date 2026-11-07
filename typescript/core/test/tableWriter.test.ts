@@ -29,7 +29,8 @@ import {
     readTable,
     structAlignment,
     writeTable,
-    writeTableInto
+    writeTableInto,
+    writeTableThrough
 } from './conformance/tables.ts';
 
 /** Tables whose nested tables a TableWriter writes in place */
@@ -411,6 +412,83 @@ describe('fields that differ from those sized', () => {
         );
     });
 });
+
+describe('indices and item ends outside their table', () => {
+    // The table's bytes are undefined then, but the writer's bytes bound them
+    const positions = fc.oneof(
+        fc.integer({ min: -4, max: 64 }),
+        fc.integer({ min: -(2 ** 33), max: 2 ** 33 })
+    );
+
+    it.prop([inPlaceTables(), SLICES, fc.nat(), positions])(
+        'should write nothing outside the bytes, whatever the index of a field or the item of an end',
+        (table, slice, call, position) => {
+            const length = writeTable(table).length;
+            const counter = new IndexReplacer(-1, 0);
+            writeTableThrough(table, new Uint8Array(length), writer => counter.wrap(writer));
+            fc.pre(counter.calls() > 0);
+
+            const replacer = new IndexReplacer(call % counter.calls(), position);
+            const bytes = sliceOf(new Uint8Array(length), slice);
+            const outcome = outcomeOf(() =>
+                writeTableThrough(table, bytes, writer => replacer.wrap(writer))
+            );
+
+            expect(outcome instanceof Uint8Array || outcome === 'RangeError').toBe(true);
+            expect(bytesAround(bytes)).toStrictEqual(filled(bytes, slice.fill));
+        }
+    );
+});
+
+/**
+ * Passes a writer its calls, with the index of one field or the item of one
+ * end replaced by another, as a caller other than the generated code might
+ * pass it
+ */
+class IndexReplacer {
+    readonly #call: number;
+    readonly #value: number;
+    #calls = 0;
+
+    /** Replaces the index or item of call `call` of those that take one */
+    constructor(call: number, value: number) {
+        this.#call = call;
+        this.#value = value;
+    }
+
+    /** The calls that took an index or item */
+    calls(): number {
+        return this.#calls;
+    }
+
+    wrap(writer: TableWriter): TableWriter {
+        return new Proxy(writer, {
+            get: (target, name) => {
+                const member = Reflect.get(target, name);
+                if (typeof member !== 'function') {
+                    return member;
+                }
+
+                return (...args: unknown[]) => this.#forward(target, member, name, args);
+            }
+        });
+    }
+
+    #forward(
+        writer: TableWriter,
+        method: (...args: unknown[]) => unknown,
+        name: string | symbol,
+        args: unknown[]
+    ): unknown {
+        // setItemEnd(vector, item), and every other setter set*(index, ...)
+        const argument = name === 'setItemEnd' ? 1 : String(name).startsWith('set') ? 0 : -1;
+        if (argument >= 0 && this.#calls++ === this.#call) {
+            args[argument] = this.#value;
+        }
+
+        return method.apply(writer, args);
+    }
+}
 
 const UINT8_LAYOUT = { sized: false, versioned: false, offsetType: 'uint8' } as const;
 

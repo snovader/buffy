@@ -55,6 +55,27 @@ them first as `TableBuilder` does. Both pad arrays and nested tables as
 `TableBuilder` does, so they write the same bytes, and the writer returns
 `TableBuilder`'s errors.
 
+`TableWriter` is the target of the generated code, whose calls follow from
+the schema, so it doesn't check them again. Its contract:
+
+- Fields are set in index order, each once, as the sizer added them, and
+  each vector item is followed by its `set_item_end()`.
+- A field index outside its table, or an item outside its vector, writes an
+  offset or item end over another slot or field, so the table's bytes are
+  undefined. Every write still stays within the writer's bytes: one whose
+  slot lies past them writes nothing, and `into_bytes()` returns an error.
+- Fields that differ from those the sizer counted, in their lengths or
+  number, write nothing past the bytes, and `into_bytes()` returns
+  `BuildError::NotAsSized`.
+
+Rust's writer also reports an index past its table's fields, as
+`BuildError::TooManyFields`, and an item past its vector's count, as
+`BuildError::NotAsSized`, since the `WriterParent` and `VectorPosition` that
+the generated code hands back already carry the counts: it cost nothing
+measurable. The others don't keep a count for each nested table, so the
+contract doesn't promise it. Hand-written tables use `TableBuilder`, which
+checks every field.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field

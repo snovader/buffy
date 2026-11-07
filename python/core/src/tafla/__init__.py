@@ -151,15 +151,38 @@ Using the API wrongly raises other errors, whatever the bytes:
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
-  fit, or from ``bytes()``. It doesn't check that each field's index is its
-  own: another writes the offset into another slot, or raises ``ValueError``
-  where the bytes have no such slot.
+  fit, or from ``bytes()``. It doesn't check the order of its calls, as the
+  next section describes.
 - A struct size less than 1 raises ``ValueError`` from
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.
 - ``get_vector_offset()`` raises ``IndexError`` for an item outside the
   vector.
 - ``get_version()`` raises ``TypeError`` when the layout isn't versioned.
+
+TableWriter's contract
+----------------------
+
+``TableWriter`` is the target of the generated code, whose calls follow from
+the schema, so it doesn't check them again. Its contract:
+
+- Every field is set, in index order, each once, and each vector item is
+  followed by its ``set_item_end()``.
+- A field index outside its table, or an item outside its vector, writes an
+  offset or item end over another slot or field, so the table's bytes are
+  undefined. Every write still stays within the writer's bytes: one whose slot
+  lies past them raises ``ValueError``.
+- The TypeScript, Java and Rust writers write into bytes that a sizer counted,
+  and so fail for fields that differ from those counted. Python's appends
+  without a sizer, so a field that wasn't set isn't caught: ``bytes()``
+  returns a table without it, whose offset is 0. Checking the root's offsets
+  in ``bytes()`` made writing the record 18% slower, so it's left to the
+  caller.
+
+Rust's writer also reports an index past its table's fields, since the parent
+that the generated code hands back already carries the count. The others don't
+keep that count for each nested table, so the contract doesn't promise it.
+Hand-written tables use ``TableBuilder``, which checks every field.
 """
 
 from .byte_buffer import ByteBuffer
