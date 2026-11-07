@@ -148,6 +148,21 @@ export class Uint8OffsetsVersioned {
     }
 
     /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint8OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
+    /**
      * Writes a `Uint8OffsetsVersioned` with every field
      *
      * @param {Uint8OffsetsVersionedFields} fields
@@ -229,6 +244,21 @@ export class Uint8OffsetsSizedVersioned {
                 `Expected format version ${Uint8OffsetsSizedVersioned.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint8OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /**
@@ -426,6 +456,21 @@ export class Uint16OffsetsVersioned {
     }
 
     /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint16OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
+    /**
      * Writes a `Uint16OffsetsVersioned` with every field
      *
      * @param {Uint16OffsetsVersionedFields} fields
@@ -507,6 +552,21 @@ export class Uint16OffsetsSizedVersioned {
                 `Expected format version ${Uint16OffsetsSizedVersioned.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint16OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /**
@@ -701,6 +761,21 @@ export class Uint32OffsetsVersioned {
     }
 
     /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint32OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
+    /**
      * Writes a `Uint32OffsetsVersioned` with every field
      *
      * @param {Uint32OffsetsVersionedFields} fields
@@ -778,6 +853,21 @@ export class Uint32OffsetsSizedVersioned {
                 `Expected format version ${Uint32OffsetsSizedVersioned.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @param {Uint8Array} bytes
+     * @returns {number}
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes) {
+        return new ByteBuffer(
+            bytes,
+            Uint32OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /**

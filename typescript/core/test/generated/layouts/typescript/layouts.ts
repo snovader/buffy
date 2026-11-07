@@ -122,6 +122,19 @@ export class Uint8OffsetsVersioned {
         }
     }
 
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint8OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
     /** Writes a `Uint8OffsetsVersioned` with every field */
     static serialize(fields: Uint8OffsetsVersionedFields): Uint8Array {
         const sizer = new TableSizer(
@@ -190,6 +203,19 @@ export class Uint8OffsetsSizedVersioned {
                 `Expected format version ${Uint8OffsetsSizedVersioned.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint8OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /** Writes a `Uint8OffsetsSizedVersioned` with every field */
@@ -351,6 +377,19 @@ export class Uint16OffsetsVersioned {
         }
     }
 
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint16OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
     /** Writes a `Uint16OffsetsVersioned` with every field */
     static serialize(fields: Uint16OffsetsVersionedFields): Uint8Array {
         const sizer = new TableSizer(
@@ -419,6 +458,19 @@ export class Uint16OffsetsSizedVersioned {
                 `Expected format version ${Uint16OffsetsSizedVersioned.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint16OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /** Writes a `Uint16OffsetsSizedVersioned` with every field */
@@ -574,6 +626,19 @@ export class Uint32OffsetsVersioned {
         }
     }
 
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint32OffsetsVersioned.#LAYOUT
+        ).getVersion();
+    }
+
     /** Writes a `Uint32OffsetsVersioned` with every field */
     static serialize(fields: Uint32OffsetsVersionedFields): Uint8Array {
         const sizer = new TableSizer(
@@ -641,6 +706,19 @@ export class Uint32OffsetsSizedVersioned {
                 `Expected format version ${Uint32OffsetsSizedVersioned.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got ${version}`
             );
         }
+    }
+
+    /**
+     * Returns the format version in the header of `bytes`, without checking
+     * it, so that an application can choose the reader of that version
+     *
+     * @throws {DecodeError} If the header doesn't fit in `bytes`.
+     */
+    static versionOf(bytes: Uint8Array): number {
+        return new ByteBuffer(
+            bytes,
+            Uint32OffsetsSizedVersioned.#LAYOUT
+        ).getVersion();
     }
 
     /** Writes a `Uint32OffsetsSizedVersioned` with every field */

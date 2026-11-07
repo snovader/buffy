@@ -262,6 +262,11 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
+        if layout.version.is_some() {
+            self.version_of(writer, name);
+            writer.blank();
+        }
+
         self.doc(
             writer,
             &[format!("Writes a `{name}` with every field")],
@@ -1194,6 +1199,39 @@ impl Generator<'_> {
 
     /// Documentation with `JSDoc` type tags, which TypeScript leaves out. A
     /// line that doesn't start with `@` continues the tag before it.
+    /// A versioned message's `versionOf()`, which reads the version in a
+    /// header without checking it, so that an application can choose the
+    /// reader of that version before it constructs one
+    fn version_of(&self, writer: &mut CodeWriter, name: &str) {
+        self.doc(
+            writer,
+            &[
+                "Returns the format version in the header of `bytes`, without checking".to_owned(),
+                "it, so that an application can choose the reader of that version".to_owned(),
+            ],
+            &[
+                "@param {Uint8Array} bytes".to_owned(),
+                "@returns {number}".to_owned(),
+                "@throws {DecodeError} If the header doesn't fit in `bytes`.".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static versionOf(bytes{}){} {{",
+            self.annotation("Uint8Array"),
+            self.annotation("number")
+        ));
+        writer.statement(
+            &STYLE,
+            "return ",
+            &call(
+                "new ByteBuffer",
+                vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
+            ),
+            ".getVersion();",
+        );
+        writer.close("}");
+    }
+
     fn doc(&self, writer: &mut CodeWriter, docs: &[String], tags: &[String]) {
         let mut kept = false;
         let tags: Vec<&String> = tags

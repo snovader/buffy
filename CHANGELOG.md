@@ -30,6 +30,12 @@ first commits, for code built from its source before the release.
   byte for byte, and property tests of every runtime.
 - Benchmarks in every language, compared with FlatBuffers, protobuf,
   MessagePack and others on the same workloads.
+- [SPEC.md](SPEC.md) describes how a format's messages evolve: each version
+  fixes its fields and keeps the same layout, and a new version appends
+  fields to the previous version's.
+- A static `versionOf()` on every versioned message that tafla-gen generates
+  (`version_of()` in Python and Rust), which reads the version in the header
+  so that an application can choose the reader of that version.
 
 ### Changed
 

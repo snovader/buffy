@@ -31,6 +31,16 @@ public final class Uint8OffsetsVersioned {
         }
     }
 
+    /**
+     * Returns the format version in the header of {@code bytes}, without checking it, so that an
+     * application can choose the reader of that version
+     *
+     * @throws DecodeException if the header doesn't fit in {@code bytes}
+     */
+    public static long versionOf(byte[] bytes) {
+        return new ByteBuffer(bytes, LAYOUT).getVersion();
+    }
+
     /** Writes a {@code Uint8OffsetsVersioned} with every field */
     public static byte[] serialize(Fields fields) {
         var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);

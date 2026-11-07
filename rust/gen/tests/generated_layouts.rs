@@ -1,8 +1,9 @@
 //! The code generated from `schemas/layouts.tafla`, which has a message of
 //! the same fields in every layout, writes the tables that `TableBuilder`
-//! writes by hand, or fails as it fails, reads back what it writes, rejects
-//! tables of other versions, and reads corrupted and arbitrary bytes as
-//! values or decode errors without panicking.
+//! writes by hand, or fails as it fails, reads back what it writes, reads the
+//! version of tables of any version and rejects those of other versions, and
+//! reads corrupted and arbitrary bytes as values or decode errors without
+//! panicking.
 
 #[path = "golden/layouts/rust/layouts.rs"]
 mod layouts;
@@ -43,7 +44,12 @@ struct Message {
     /// Reads every field, after checking the version when the message is
     /// versioned
     read: fn(&[u8]) -> Result<Fields, DecodeError>,
+    /// The generated `version_of()` of a versioned message
+    version_of: Option<VersionOf>,
 }
+
+/// A generated `version_of()`
+type VersionOf = fn(&[u8]) -> Result<u32, DecodeError>;
 
 /// Reads every field of a message, including those after one that fails
 macro_rules! read_fields {
@@ -73,6 +79,7 @@ macro_rules! message {
                 fields.serialize()
             },
             read: message!(@read $message $(, $versioned)?),
+            version_of: message!(@version_of $message $(, $versioned)?),
         }
     };
     (@read $message:ident) => {
@@ -80,6 +87,12 @@ macro_rules! message {
     };
     (@read $message:ident, versioned) => {
         |bytes| $message::new(bytes).map(|message| read_fields!(message))
+    };
+    (@version_of $message:ident) => {
+        None
+    };
+    (@version_of $message:ident, versioned) => {
+        Some($message::version_of)
     };
 }
 
@@ -237,6 +250,24 @@ proptest! {
                 "{}",
                 message.name
             );
+        }
+    }
+
+    #[test]
+    fn every_versioned_layout_reads_the_version_of_its_bytes_of_any_version(
+        owned in owned(),
+        version in integers(0, u32::MAX),
+    ) {
+        for message in messages() {
+            let Some(version_of) = message.version_of else {
+                continue;
+            };
+            let version = version & message.header.layout.offset_type().max_value();
+            let Ok(bytes) = build(message.header.with_version(version), &describe(&owned)) else {
+                continue;
+            };
+
+            prop_assert_eq!(version_of(&bytes), Ok(version), "{}", message.name);
         }
     }
 

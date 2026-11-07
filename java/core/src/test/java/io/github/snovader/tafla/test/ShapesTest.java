@@ -97,6 +97,28 @@ public class ShapesTest {
         assertEquals(300_000, new ItemList(bytes).items().size());
     }
 
+    // Versions
+
+    @Property
+    void a_documents_version_is_read_from_its_bytes_of_any_version_to_choose_its_reader(
+        @ForAll("documents") Document.Fields fields,
+        @ForAll @LongRange(max = 0xffff_ffffL) long version
+    ) {
+        var bytes = Tables.build(describeDocument(fields).withVersion(version)).bytes();
+
+        assertEquals(version, Document.versionOf(bytes));
+    }
+
+    @Property
+    void the_version_of_bytes_without_a_documents_header_throws_DecodeException(
+        @ForAll("documents") Document.Fields fields,
+        @ForAll @IntRange(max = 7) int length
+    ) {
+        var bytes = Arrays.copyOf(Document.serialize(fields), length);
+
+        assertThrows(DecodeException.class, () -> Document.versionOf(bytes));
+    }
+
     // Decode exceptions
 
     @Property

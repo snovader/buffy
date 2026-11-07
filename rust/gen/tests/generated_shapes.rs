@@ -204,6 +204,31 @@ proptest! {
         prop_assert_eq!(fields.serialize(), build(ITEM_LIST, &describe_item_list(&fields)));
     }
 
+    // Versions
+
+    /// An application reads the version to choose the reader of it
+    #[test]
+    fn a_documents_version_is_read_from_its_bytes_of_any_version(
+        document in documents(),
+        version in integers(0, u32::MAX),
+    ) {
+        let values = describe_document(&document.fields());
+        let bytes = build(DOCUMENT.with_version(version), &values)?;
+
+        prop_assert_eq!(Document::version_of(&bytes), Ok(version));
+    }
+
+    #[test]
+    fn the_version_of_bytes_without_a_documents_header_is_out_of_range(
+        document in documents(),
+        length in 0..8_usize,
+    ) {
+        let bytes = document.fields().serialize()?;
+
+        let error = Document::version_of(&bytes[..length]).err();
+        prop_assert!(matches!(error, Some(DecodeError::OutOfRange { .. })), "{:?}", error);
+    }
+
     // Decode errors
 
     #[test]

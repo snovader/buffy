@@ -109,6 +109,15 @@ class Uint8OffsetsVersioned:
             )
 
     @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
+
+    @classmethod
     def serialize(cls, **fields: Unpack[Uint8OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint8OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
@@ -159,6 +168,15 @@ class Uint8OffsetsSizedVersioned:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got {version}"
             )
+
+    @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
@@ -293,6 +311,15 @@ class Uint16OffsetsVersioned:
             )
 
     @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
+
+    @classmethod
     def serialize(cls, **fields: Unpack[Uint16OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint16OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
@@ -343,6 +370,15 @@ class Uint16OffsetsSizedVersioned:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got {version}"
             )
+
+    @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
@@ -477,6 +513,15 @@ class Uint32OffsetsVersioned:
             )
 
     @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
+
+    @classmethod
     def serialize(cls, **fields: Unpack[Uint32OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint32OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
@@ -527,6 +572,15 @@ class Uint32OffsetsSizedVersioned:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got {version}"
             )
+
+    @classmethod
+    def version_of(cls, data: Buffer) -> int:
+        """Returns the format version in the header of ``data``, without checking
+        it, so that an application can choose the reader of that version.
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
+        the header doesn't fit in it.
+        """
+        return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
