@@ -18,10 +18,10 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// written in the same pass, straight into this one.
 ///
 /// A setter returns a [`BuildError`], and leaves the builder as it was, when
-/// the table already holds all its fields or the field would make it longer
-/// than the layout's offsets address: 255 bytes, 64 KiB or 4 GiB. Errors are
-/// values rather than panics, since a WebAssembly build that aborts on panic
-/// couldn't report them.
+/// the table already holds all its fields or the field would make it too
+/// long for the layout's offset type: longer than 255 bytes, 64 KiB or
+/// 4 GiB. Errors are values rather than panics, since a WebAssembly build
+/// that aborts on panic couldn't report them.
 #[derive(Debug)]
 pub struct TableBuilder<'a> {
     // Narrow fields, since the builder is inline in a field that nests it,
@@ -50,7 +50,7 @@ macro_rules! scalar_setters {
         ///
         /// [`BuildError::TooManyFields`] if the table holds all its fields
         /// already, or [`BuildError::TooLong`] if the field would make it
-        /// longer than its offsets address.
+        /// too long for its offset type.
         #[inline]
         pub fn $name(&mut self, value: $type) -> Result<(), BuildError> {
             self.add_field(Field::scalar(value))
@@ -69,7 +69,7 @@ macro_rules! array_setters {
         ///
         /// [`BuildError::TooManyFields`] if the table holds all its fields
         /// already, or [`BuildError::TooLong`] if the field would make it
-        /// longer than its offsets address.
+        /// too long for its offset type.
         #[inline]
         pub fn $name(&mut self, values: impl Into<Cow<'a, [$type]>>) -> Result<(), BuildError> {
             self.add_field(Field::Array(Array::$variant(values.into())))
@@ -83,8 +83,8 @@ impl<'a> TableBuilder<'a> {
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is longer than the
-    /// layout's offsets address.
+    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
+    /// layout's offset type.
     pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
         let header = layout.header_length(fields)?;
 
@@ -99,7 +99,7 @@ impl<'a> TableBuilder<'a> {
     ///
     /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
     /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is longer than the layout's offsets address.
+    /// alone is too long for the layout's offset type.
     pub fn versioned(
         fields: usize,
         layout: TableLayout<true>,
@@ -175,8 +175,8 @@ impl<'a> TableBuilder<'a> {
     /// # Errors
     ///
     /// [`BuildError::TooManyFields`] if the table holds all its fields
-    /// already, or [`BuildError::TooLong`] if the field would make it longer
-    /// than its offsets address.
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
     pub fn set_str(&mut self, string: impl Into<Cow<'a, str>>) -> Result<(), BuildError> {
         self.add_field(Field::String(string.into()))
     }
@@ -188,8 +188,8 @@ impl<'a> TableBuilder<'a> {
     /// # Errors
     ///
     /// [`BuildError::TooManyFields`] if the table holds all its fields
-    /// already, or [`BuildError::TooLong`] if the field would make it longer
-    /// than its offsets address.
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
     pub fn set_struct(&mut self, bytes: impl Into<Cow<'a, [u8]>>) -> Result<(), BuildError> {
         self.add_field(Field::Struct(bytes.into()))
     }

@@ -25,3 +25,11 @@ message Odd (offset_type: 12) {
 message Signed (offset_type: int16) {
     x: float64;
 }
+
+message Bits8 (offset_type: 8) {
+    x: float64;
+}
+
+message Bits32 (offset_type: 32) {
+    x: float64;
+}

@@ -504,7 +504,7 @@ public final class ByteBuffer {
      */
     private void startArray(int length, int elementSize) {
         assertWritable(offsetSize + (long) length * elementSize);
-        setUnsigned(length);
+        setCount(length);
     }
 
     /**
@@ -673,15 +673,15 @@ public final class ByteBuffer {
         for (var item : vector) {
             byteLength += item.length;
         }
-        assertFits(byteLength);
+        assertCountFits(byteLength);
         assertWritable(byteLength);
 
-        setUnsigned(vector.length);
+        putUnsigned(vector.length);
 
         long end = firstItemStart(vector.length);
         for (var item : vector) {
             end += item.length;
-            setUnsigned(end);
+            putUnsigned(end);
         }
 
         for (var item : vector) {
@@ -731,7 +731,7 @@ public final class ByteBuffer {
 
     /** Writes a length or count as wide as the table's offsets */
     void setLength(int length) {
-        setUnsigned(length);
+        setCount(length);
     }
 
     /**
@@ -761,13 +761,32 @@ public final class ByteBuffer {
     }
 
     /**
-     * Writes an unsigned value as wide as the table's offsets, such as a length or an offset.
+     * Writes an offset or a header slot, as wide as the table's offsets.
      *
      * @throws IllegalArgumentException if it doesn't fit in that width
      */
     private void setUnsigned(long value) {
-        assertFits(value);
+        if (value < 0 || value > maxOffset) {
+            throw new IllegalArgumentException(
+                String.format("%d doesn't fit in %s offsets", value, offsetType)
+            );
+        }
 
+        putUnsigned(value);
+    }
+
+    /**
+     * Writes a count, length or item end, as wide as the table's offsets.
+     *
+     * @throws IllegalArgumentException if it doesn't fit in that width
+     */
+    private void setCount(long value) {
+        assertCountFits(value);
+        putUnsigned(value);
+    }
+
+    /** Writes an unsigned value as wide as the table's offsets, which it fits in */
+    private void putUnsigned(long value) {
         switch (offsetSize) {
             case Byte.BYTES -> view.put(position, (byte) value);
 
@@ -779,10 +798,17 @@ public final class ByteBuffer {
         position += offsetSize;
     }
 
-    private void assertFits(long value) {
+    /** Checks that a count, length or item end fits in a slot, before anything is written */
+    private void assertCountFits(long value) {
         if (value < 0 || value > maxOffset) {
             throw new IllegalArgumentException(
-                String.format("%d doesn't fit in %s offsets", value, offsetType)
+                String.format(
+                    "Can't write %d at %d: a %s count, length or item end holds at most %d",
+                    value,
+                    position,
+                    offsetType,
+                    maxOffset
+                )
             );
         }
     }

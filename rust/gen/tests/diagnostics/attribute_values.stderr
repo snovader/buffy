@@ -39,3 +39,15 @@ error: `int16` isn't an offset type
    |
 25 | message Signed (offset_type: int16) {
    |                              ^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`
+
+error: `8` isn't an offset type
+  --> attribute_values.tafla:29:29
+   |
+29 | message Bits8 (offset_type: 8) {
+   |                             ^ `offset_type` names the offset type, such as `offset_type: uint8`
+
+error: `32` isn't an offset type
+  --> attribute_values.tafla:33:30
+   |
+33 | message Bits32 (offset_type: 32) {
+   |                              ^^ `offset_type` names the offset type, such as `offset_type: uint32`

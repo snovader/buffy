@@ -15,3 +15,9 @@ error: unknown attribute `offset_size`
    |
 12 | message Bare (offset_size) {
    |               ^^^^^^^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`
+
+error: unknown attribute `offset_size`
+  --> offset_size.tafla:16:16
+   |
+16 | message Named (offset_size: uint8) {
+   |                ^^^^^^^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`

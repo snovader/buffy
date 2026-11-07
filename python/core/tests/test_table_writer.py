@@ -24,7 +24,7 @@ NARROW_OFFSET_TYPES: tuple[OffsetType, ...] = ("uint8", "uint16")
 
 def outcome(write: Callable[[], memoryview[int]]) -> bytes | type[Exception]:
     """The bytes that ``write`` returns, or the class of the error it raises
-    for a table too long for its offsets"""
+    for a table too long for its offset type"""
     try:
         return bytes(write())
     except ValueError as error:
@@ -179,11 +179,25 @@ class TestTableLength(unittest.TestCase):
                 # The uint8's offset is past the longest table
                 starts_too_late = TableWriter(2, layout)
                 starts_too_late.set_struct(0, bytes(longest))
+                length = longest + 2 * offset_size_of(offset_type)
                 with self.assertRaises(ValueError) as raised:
                     starts_too_late.set_uint8(1, 1)
                 self.assertEqual(
                     str(raised.exception),
-                    f"The table is too long for {offset_type} offsets",
+                    f"The table's fields make it {length} bytes, "
+                    f"too long for {offset_type} offsets",
+                )
+
+                # The string's length doesn't fit, so the table would end
+                # after its bytes, past the longest table
+                counts_too_many = TableWriter(1, layout)
+                length = 2 * offset_size_of(offset_type) + longest + 1
+                with self.assertRaises(ValueError) as raised:
+                    counts_too_many.set_string(0, "a" * (longest + 1))
+                self.assertEqual(
+                    str(raised.exception),
+                    f"The table's fields make it {length} bytes, "
+                    f"too long for {offset_type} offsets",
                 )
 
 

@@ -11,7 +11,7 @@ from unittest.mock import patch
 from hypothesis import given
 from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
-from tafla import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder, TableLayout
 from tafla.types import IntTypeCode
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
@@ -269,22 +269,27 @@ class TestByteBuffer(unittest.TestCase):
 
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
                 buffer = ByteBuffer(mapped)
-                vector = position + buffer.get_uint32(position)
-                # The table's offset, then the vector's count and two ends
-                expected = [position + 16, position + 17]
+                try:
+                    vector = position + buffer.get_uint32(position)
+                    # The table's offset, then the vector's count and two ends
+                    expected = [position + 16, position + 17]
 
-                self.assertEqual(buffer.get_vector_offsets(vector).tolist(), expected)
-                self.assertEqual(
-                    [buffer.get_vector_offset(vector, index) for index in range(2)],
-                    expected,
-                )
-                self.assertEqual(
-                    [bytes(item) for item in buffer.get_vector(vector)],
-                    [b"\x01", b"\x02\x03"],
-                )
-
-                # Release the views of the map, so that it can close
-                del buffer
+                    self.assertEqual(
+                        buffer.get_vector_offsets(vector).tolist(), expected
+                    )
+                    self.assertEqual(
+                        [buffer.get_vector_offset(vector, index) for index in range(2)],
+                        expected,
+                    )
+                    self.assertEqual(
+                        [bytes(item) for item in buffer.get_vector(vector)],
+                        [b"\x01", b"\x02\x03"],
+                    )
+                finally:
+                    # Release the views of the map, so that it can close even
+                    # when an assertion fails, whose error then surfaces
+                    # rather than the map's BufferError
+                    del buffer
 
     def test_rejects_an_index_outside_a_vector_with_index_error(self) -> None:
         builder = TableBuilder(1)
@@ -306,6 +311,16 @@ class TestByteBuffer(unittest.TestCase):
                 ),
             ):
                 buffer.get_vector_offset(buffer.root_offset(0), index)
+
+    def test_rejects_a_vector_count_that_the_bytes_cant_hold_before_the_index(
+        self,
+    ) -> None:
+        # A count of 3, whose ends need 12 bytes after it, where 4 are left
+        buffer = ByteBuffer(bytes([3, 0, 0, 0, 8, 0, 0, 0]))
+
+        for index in [0, 3]:
+            with self.subTest(index=index), self.assertRaises(DecodeError):
+                buffer.get_vector_offset(0, index)
 
     def test_writes_padding_as_zeros(self) -> None:
         backing = bytearray(b"\xff" * 4)

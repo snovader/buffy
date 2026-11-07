@@ -91,8 +91,8 @@ public final class TableSizer {
     /**
      * Returns the byte length of the table, with every field added.
      *
-     * @throws IllegalArgumentException if the table is longer than its layout's offsets address, or
-     *     than a Java array can be
+     * @throws IllegalArgumentException if the table is too long for its offset type, or longer than
+     *     a Java array can be
      */
     public int byteLength() {
         var maxLength = layout.maxLength();
@@ -107,8 +107,8 @@ public final class TableSizer {
      * Returns a writer of the table, into new bytes of its length, which takes its fields in the
      * order that they were added.
      *
-     * @throws IllegalArgumentException if the table is longer than its layout's offsets address, or
-     *     than a Java array can be
+     * @throws IllegalArgumentException if the table is too long for its offset type, or longer than
+     *     a Java array can be
      */
     public TableWriter writer() {
         var strings = encodedStrings == null ? List.<EncodedString>of() : encodedStrings;

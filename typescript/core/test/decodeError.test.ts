@@ -97,6 +97,8 @@ function resizableTable(): [ArrayBuffer, ByteBuffer, Record<string, () => unknow
         'getUint8Array()': () => reader.getUint8Array(string),
         'getString()': () => reader.getString(string),
         'getStruct()': () => reader.getStruct(struct, 4),
+        // Reads no bytes, so only the lost slice can fail it
+        'getStruct() of no bytes': () => reader.getStruct(0, 0),
         'getStructArray()': () => reader.getStructArray(structArray, 2),
         'getVectorLength()': () => reader.getVectorLength(vector),
         'getVectorOffset()': () => reader.getVectorOffset(vector, 1),
