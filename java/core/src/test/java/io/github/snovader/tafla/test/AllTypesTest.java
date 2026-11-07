@@ -63,7 +63,7 @@ public class AllTypesTest {
     @Example
     void unsigned_integers_read_back_widened_and_a_uint64_as_the_bits_of_a_long() {
         // The largest value of each unsigned type
-        var fields = new Scalars.Fields((byte) 0, (short) 0xff, (short) 0, 0xffff, 0, 0xffff_ffffL, 0, -1L, 0, 0);
+        var fields = new Scalars.Fields((byte) 0, (short) 0xff, (short) 0, 0xffff, 0, 0xffff_ffffL, 0, -1L, 0, 0, false);
 
         var scalars = new Scalars(Scalars.serialize(fields));
         var packed = Packed.read(packedOf(fields).serialize(), 0);
@@ -77,6 +77,17 @@ public class AllTypesTest {
         assertEquals(65_535, packed.uint16());
         assertEquals(4_294_967_295L, packed.uint32());
         assertEquals("18446744073709551615", Long.toUnsignedString(packed.uint64()));
+    }
+
+    @Property
+    void a_bool_reads_any_byte_but_0_as_true(
+        @ForAll("scalars") Scalars.Fields fields,
+        @ForAll @IntRange(min = 2, max = 0xff) int value
+    ) {
+        var bytes = Scalars.serialize(withBool(fields, false));
+        bytes[new ByteBuffer(bytes).rootOffset(10)] = (byte) value;
+
+        assertEquals(describeScalars(withBool(fields, true)), describeScalars(readScalars(new Scalars(bytes))));
     }
 
     // Tables built by hand
@@ -256,7 +267,7 @@ public class AllTypesTest {
         var structs = new Structs(
             Structs.serialize(
                 new Structs.Fields(
-                    new Packed((byte) 0, (short) 0, (short) 0, 0, 0, 0, 0, 0, 0, 0),
+                    new Packed((byte) 0, (short) 0, (short) 0, 0, 0, 0, 0, 0, 0, 0, false),
                     new Documented[0],
                     new Segment(point, point),
                     new Segment[0],
@@ -280,11 +291,22 @@ public class AllTypesTest {
     // Structs
 
     @Property
-    void a_packed_is_written_in_its_42_bytes_little_endian_at_fixed_offsets(@ForAll("packeds") Packed packed) {
+    void a_packed_is_written_in_its_43_bytes_little_endian_at_fixed_offsets(@ForAll("packeds") Packed packed) {
         var bytes = packed.serialize();
 
-        assertEquals(42, Packed.SIZE);
+        assertEquals(43, Packed.SIZE);
         assertArrayEquals(structBytes(describePacked(packed)), bytes);
+    }
+
+    @Property
+    void a_packed_reads_any_byte_of_its_bool_but_0_as_true(
+        @ForAll("scalars") Scalars.Fields fields,
+        @ForAll @IntRange(min = 2, max = 0xff) int value
+    ) {
+        var bytes = packedOf(withBool(fields, false)).serialize();
+        bytes[42] = (byte) value;
+
+        assertEquals(describePacked(packedOf(withBool(fields, true))), describePacked(Packed.read(bytes, 0)));
     }
 
     @Property
@@ -423,6 +445,23 @@ public class AllTypesTest {
         assertArrayEquals(
             concatenated(points.stream().map(Point::serialize).toList()),
             Point.serializeArray(points.toArray(Point[]::new))
+        );
+    }
+
+    /** {@return the fields with another bool} */
+    private static Scalars.Fields withBool(Scalars.Fields fields, boolean bool) {
+        return new Scalars.Fields(
+            fields.int8(),
+            fields.uint8(),
+            fields.int16(),
+            fields.uint16(),
+            fields.int32(),
+            fields.uint32(),
+            fields.int64(),
+            fields.uint64(),
+            fields.float32(),
+            fields.float64(),
+            bool
         );
     }
 

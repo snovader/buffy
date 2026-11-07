@@ -93,7 +93,7 @@ impl Field {
     pub fn add(&self, sizer: &mut TableSizer) {
         match self {
             Self::I8(_) => sizer.add_i8(),
-            Self::U8(_) => sizer.add_u8(),
+            Self::U8(_) | Self::Bool(_) => sizer.add_u8(),
             Self::I16(_) => sizer.add_i16(),
             Self::U16(_) => sizer.add_u16(),
             Self::I32(_) => sizer.add_i32(),
@@ -145,6 +145,7 @@ impl Field {
             Self::U64(value) => writer.set_u64(index, *value),
             Self::F32(value) => writer.set_f32(index, *value),
             Self::F64(value) => writer.set_f64(index, *value),
+            Self::Bool(value) => writer.set_u8(index, u8::from(*value)),
             Self::I8Array(values) => writer.set_i8_array(index, values),
             Self::U8Array(values) => writer.set_u8_array(index, values),
             Self::I16Array(values) => writer.set_i16_array(index, values),

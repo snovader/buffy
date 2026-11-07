@@ -5,7 +5,7 @@ use tafla::{
     TableWriter, Vector,
 };
 
-/// A field of every scalar type
+/// A field of every scalar type, and a bool
 #[derive(Clone, Copy, Debug)]
 pub struct Scalars<'a> {
     bytes: &'a [u8],
@@ -108,6 +108,15 @@ impl<'a> Scalars<'a> {
         let position = buffer.root_offset(9)?;
         buffer.get_f64(position)
     }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn bool(&self) -> Result<bool, DecodeError> {
+        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
+        let position = buffer.root_offset(10)?;
+        Ok(buffer.get_u8(position)? != 0)
+    }
 }
 
 /// The fields of a [`Scalars`], to write
@@ -123,6 +132,7 @@ pub struct ScalarsFields {
     pub uint64: u64,
     pub float32: f32,
     pub float64: f64,
+    pub bool: bool,
 }
 
 impl ScalarsFields {
@@ -132,7 +142,7 @@ impl ScalarsFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(10, Scalars::LAYOUT)?;
+        let mut sizer = TableSizer::new(11, Scalars::LAYOUT)?;
         sizer.add_i8();
         sizer.add_u8();
         sizer.add_i16();
@@ -143,6 +153,7 @@ impl ScalarsFields {
         sizer.add_u64();
         sizer.add_f32();
         sizer.add_f64();
+        sizer.add_u8();
 
         let mut writer = sizer.writer()?;
         writer.set_i8(0, self.int8);
@@ -155,12 +166,13 @@ impl ScalarsFields {
         writer.set_u64(7, self.uint64);
         writer.set_f32(8, self.float32);
         writer.set_f64(9, self.float64);
+        writer.set_u8(10, u8::from(self.bool));
 
         writer.into_bytes()
     }
 }
 
-/// An array of every scalar type
+/// An array of every scalar type but bool, which has none
 #[derive(Clone, Copy, Debug)]
 pub struct Arrays<'a> {
     bytes: &'a [u8],
@@ -1261,7 +1273,8 @@ impl<'a> PointArray<'a> {
     }
 }
 
-/// A struct of every scalar type, at fixed offsets without padding
+/// A struct of every scalar type and a bool, at fixed offsets without
+/// padding
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Packed {
     pub int8: i8,
@@ -1274,11 +1287,12 @@ pub struct Packed {
     pub uint64: u64,
     pub float32: f32,
     pub float64: f64,
+    pub bool: bool,
 }
 
 impl Packed {
     /// The byte length of a [`Packed`]
-    pub const SIZE: usize = 42;
+    pub const SIZE: usize = 43;
 
     /// The alignment of an array of a [`Packed`]: its largest scalar's size
     pub const ALIGNMENT: Alignment = Alignment::Eight;
@@ -1293,7 +1307,7 @@ impl Packed {
             Some(bytes) => Ok(Self::from_bytes(bytes)),
             None => Err(DecodeError::OutOfRange {
                 position: 0,
-                byte_length: 42,
+                byte_length: 43,
                 available: bytes.len(),
             }),
         }
@@ -1301,7 +1315,7 @@ impl Packed {
 
     /// Reads a [`Packed`] from its bytes, such as those of an array of them
     #[must_use]
-    pub fn from_bytes(bytes: &[u8; 42]) -> Self {
+    pub fn from_bytes(bytes: &[u8; 43]) -> Self {
         Self {
             int8: i8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
             uint8: u8::from_le_bytes(bytes[1..2].try_into().unwrap_or_default()),
@@ -1313,11 +1327,12 @@ impl Packed {
             uint64: u64::from_le_bytes(bytes[22..30].try_into().unwrap_or_default()),
             float32: f32::from_le_bytes(bytes[30..34].try_into().unwrap_or_default()),
             float64: f64::from_le_bytes(bytes[34..42].try_into().unwrap_or_default()),
+            bool: bytes[42] != 0,
         }
     }
 
     #[must_use]
-    pub fn to_bytes(self) -> [u8; 42] {
+    pub fn to_bytes(self) -> [u8; 43] {
         let mut bytes = [0; Self::SIZE];
         bytes[0..1].copy_from_slice(&self.int8.to_le_bytes());
         bytes[1..2].copy_from_slice(&self.uint8.to_le_bytes());
@@ -1329,6 +1344,7 @@ impl Packed {
         bytes[22..30].copy_from_slice(&self.uint64.to_le_bytes());
         bytes[30..34].copy_from_slice(&self.float32.to_le_bytes());
         bytes[34..42].copy_from_slice(&self.float64.to_le_bytes());
+        bytes[42] = u8::from(self.bool);
 
         bytes
     }

@@ -7,6 +7,7 @@ import type {
 } from '../conformance/description.ts';
 import {
     array,
+    bool,
     DEFAULT_LAYOUT,
     message,
     scalar,
@@ -72,7 +73,10 @@ interface View<T> {
     get(index: number): T;
 }
 
-/** The scalar types in the order of the fields of `Scalars`, `Arrays` and `Packed` */
+/**
+ * The scalar types in the order of the fields of `Arrays`, and of `Scalars`
+ * and `Packed`, which end with a bool
+ */
 const SCALAR_TYPES = [
     'int8',
     'uint8',
@@ -101,7 +105,8 @@ export function readScalars(scalars: Scalars | Packed): ScalarsFields {
         int64: scalars.int64(),
         uint64: scalars.uint64(),
         float32: scalars.float32(),
-        float64: scalars.float64()
+        float64: scalars.float64(),
+        bool: scalars.bool()
     };
 }
 
@@ -235,10 +240,10 @@ function readPoint(point: Point): PointFields {
 // model
 
 export function describeScalars(fields: ScalarsFields): TableDescription {
-    return message(
-        DEFAULT_LAYOUT,
-        SCALAR_TYPES.map(type => scalar(type, fields[type]))
-    );
+    return message(DEFAULT_LAYOUT, [
+        ...SCALAR_TYPES.map(type => scalar(type, fields[type])),
+        bool(fields.bool)
+    ]);
 }
 
 export function describeArrays(fields: ArraysFields): TableDescription {
@@ -300,7 +305,11 @@ export function describeStructs({
     path
 }: StructsFields): TableDescription {
     return message(DEFAULT_LAYOUT, [
-        struct(SCALAR_TYPES.map(type => [type, packed[type]])),
+        // A struct's bool is the uint8 that stores it
+        struct([
+            ...SCALAR_TYPES.map(type => [type, packed[type]] as const),
+            ['uint8', packed.bool ? 1 : 0]
+        ]),
         structArray(
             ['uint8', 'uint16', 'uint32'],
             documented.map(({ one, two, undocumented }) => [
@@ -338,7 +347,7 @@ function segmentValues({ start, end }: SegmentFields): number[] {
  * DataView rather than tafla
  */
 export function packedBytes(fields: PackedFields): Uint8Array {
-    const bytes = new Uint8Array(42);
+    const bytes = new Uint8Array(43);
     const view = new DataView(bytes.buffer);
     view.setInt8(0, fields.int8);
     view.setUint8(1, fields.uint8);
@@ -350,6 +359,7 @@ export function packedBytes(fields: PackedFields): Uint8Array {
     view.setBigUint64(22, fields.uint64, true);
     view.setFloat32(30, fields.float32, true);
     view.setFloat64(34, fields.float64, true);
+    view.setUint8(42, fields.bool ? 1 : 0);
 
     return bytes;
 }
@@ -377,9 +387,11 @@ function arrays<T>(values: fc.Arbitrary<T>): fc.Arbitrary<T[]> {
     return fc.array(values, { maxLength: MAX_LENGTH });
 }
 
-/** A value of every scalar type, as `Scalars` and `Packed` hold them */
-export const SCALARS_FIELDS: fc.Arbitrary<ScalarsFields> =
-    fc.record(SCALAR_VALUES);
+/** A value of every scalar type and a bool, as `Scalars` and `Packed` hold them */
+export const SCALARS_FIELDS: fc.Arbitrary<ScalarsFields> = fc.record({
+    ...SCALAR_VALUES,
+    bool: fc.boolean()
+});
 
 export const ARRAYS_FIELDS: fc.Arbitrary<ArraysFields> = fc.record({
     int8: arrays(SCALAR_VALUES.int8),

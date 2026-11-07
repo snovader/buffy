@@ -128,6 +128,10 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
             builder.setFloat64(fromJsonNumber(field.value));
             break;
 
+        case 'bool':
+            builder.setUint8(field.value ? 1 : 0);
+            break;
+
         case 'int8[]':
             builder.setInt8Array(field.value.map(fromJsonNumber));
             break;
@@ -359,6 +363,10 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
             sizer.addFloat64();
             break;
 
+        case 'bool':
+            sizer.addUint8();
+            break;
+
         case 'int8[]':
             sizer.addInt8Array(field.value.length);
             break;
@@ -482,6 +490,10 @@ function writeField(
 
         case 'float64':
             writer.setFloat64(index, fromJsonNumber(field.value));
+            break;
+
+        case 'bool':
+            writer.setUint8(index, field.value ? 1 : 0);
             break;
 
         case 'int8[]':
@@ -860,6 +872,9 @@ export class TableReader {
                     ...field,
                     value: toJsonNumber(buffer.getFloat64(position))
                 };
+
+            case 'bool':
+                return { ...field, value: buffer.getUint8(position) !== 0 };
 
             case 'int8[]':
                 return {

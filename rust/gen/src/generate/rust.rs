@@ -385,6 +385,13 @@ impl Generator<'_> {
         ));
         writer.line("let mut bytes = [0; Self::SIZE];");
         for (field, start, end, read) in &fields {
+            if read == "bool" {
+                writer.line(format!(
+                    "bytes[{}] = u8::from(self.{field});",
+                    integer(start)
+                ));
+                continue;
+            }
             let bytes = if read.starts_with(char::is_uppercase) {
                 format!("self.{field}.to_bytes()")
             } else {
@@ -435,6 +442,10 @@ impl Generator<'_> {
         for field in &definition.fields {
             let name = identifier(&field.name);
             match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => {
+                    writer.line(format!("{name}: bytes[{}] != 0,", integer(&start)));
+                    start += 1;
+                }
                 FieldType::Scalar(scalar) => {
                     let end = start + usize::from(scalar.size());
                     writer.line(format!(
@@ -608,7 +619,7 @@ impl Generator<'_> {
         for field in &definition.fields {
             let value = format!("self.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
-                FieldType::Scalar(scalar) => (format!("add_{}", scalar_type(scalar)), vec![]),
+                FieldType::Scalar(scalar) => (format!("add_{}", method_type(scalar)), vec![]),
                 FieldType::Array(scalar) => (
                     format!("add_{}_array", scalar_type(scalar)),
                     vec![text(format!("{value}.len()"))],
@@ -665,6 +676,10 @@ impl Generator<'_> {
             let value = format!("self.{}", identifier(&field.name));
             let position = text(integer(&index));
             let (method, arguments) = match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => (
+                    "set_u8".to_owned(),
+                    vec![position, text(format!("u8::from({value})"))],
+                ),
                 FieldType::Scalar(scalar) => (
                     format!("set_{}", scalar_type(scalar)),
                     vec![position, text(value)],
@@ -764,6 +779,7 @@ impl Generator<'_> {
             writer.line(buffer);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => writer.line("Ok(buffer.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("buffer.get_{}(position)", scalar_type(scalar)));
                 }
@@ -1260,9 +1276,11 @@ fn article(name: &str) -> String {
     format!("{} [`{name}`]", indefinite_article(name))
 }
 
-/// The Rust type, which also names the crate's getters and setters
+/// The Rust type, which also names the crate's getters and setters, but for
+/// `bool`'s, which [`method_type()`] names
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
+        Scalar::Bool => "bool",
         Scalar::Int8 => "i8",
         Scalar::Uint8 => "u8",
         Scalar::Int16 => "i16",
@@ -1274,6 +1292,12 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
         Scalar::Float32 => "f32",
         Scalar::Float64 => "f64",
     }
+}
+
+/// The type that names the crate's getters and setters of a scalar: `u8` for a
+/// bool, which a `u8` stores
+const fn method_type(scalar: Scalar) -> &'static str {
+    scalar_type(scalar.stored())
 }
 
 /// The variant of the runtime's `Alignment` of `bytes`

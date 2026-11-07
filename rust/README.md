@@ -88,9 +88,11 @@ seeds after the corpus that libFuzzer grows, and stop it with Ctrl-C or
 ```sh
 cargo install cargo-fuzz
 cargo +nightly fuzz run byte_buffer fuzz/corpus/byte_buffer \
-    ../conformance/valid ../conformance/invalid -- -max_total_time=300
+    ../conformance/valid ../conformance/equivalent ../conformance/invalid \
+    -- -max_total_time=300
 cargo +nightly fuzz run conformance fuzz/corpus/conformance \
-    ../conformance/valid ../conformance/invalid -- -max_total_time=300
+    ../conformance/valid ../conformance/equivalent ../conformance/invalid \
+    -- -max_total_time=300
 cargo +nightly fuzz run gen fuzz/corpus/gen ../schemas gen/tests/diagnostics \
     -- -dict=fuzz/gen.dict -max_total_time=300
 ```

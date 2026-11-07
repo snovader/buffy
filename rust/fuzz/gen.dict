@@ -7,6 +7,7 @@
 "version"
 "offset_type"
 "offset_size"
+"bool"
 "int8"
 "uint8"
 "int16"

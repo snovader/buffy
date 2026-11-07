@@ -5,7 +5,7 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
-/** A field of every scalar type */
+/** A field of every scalar type, and a bool */
 public final class Scalars {
     private static final TableLayout LAYOUT = TableLayout.DEFAULT;
 
@@ -17,7 +17,7 @@ public final class Scalars {
 
     /** Writes a {@code Scalars} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(10, LAYOUT);
+        var sizer = new TableSizer(11, LAYOUT);
         sizer.addInt8();
         sizer.addUint8();
         sizer.addInt16();
@@ -28,6 +28,7 @@ public final class Scalars {
         sizer.addUint64();
         sizer.addFloat32();
         sizer.addFloat64();
+        sizer.addUint8();
 
         var writer = sizer.writer();
         writer.setInt8(0, fields.int8());
@@ -40,6 +41,7 @@ public final class Scalars {
         writer.setUint64(7, fields.uint64());
         writer.setFloat32(8, fields.float32());
         writer.setFloat64(9, fields.float64());
+        writer.setUint8(10, (short) (fields.bool() ? 1 : 0));
 
         return writer.bytes();
     }
@@ -84,6 +86,10 @@ public final class Scalars {
         return buffer.getFloat64(buffer.rootOffset(9));
     }
 
+    public boolean bool() {
+        return buffer.getUint8(buffer.rootOffset(10)) != 0;
+    }
+
     /** The fields of a {@code Scalars}, to write */
     public record Fields(
         byte int8,
@@ -95,6 +101,7 @@ public final class Scalars {
         long int64,
         long uint64,
         float float32,
-        double float64
+        double float64,
+        boolean bool
     ) {}
 }

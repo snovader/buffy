@@ -294,6 +294,7 @@ impl Value {
             Field::U64(value) => Self::scalar(value.to_le_bytes()),
             Field::F32(value) => Self::scalar(value.to_le_bytes()),
             Field::F64(value) => Self::scalar(value.to_le_bytes()),
+            Field::Bool(value) => Self::scalar([u8::from(*value)]),
             Field::I8Array(values) => Self::array(values, i8::to_le_bytes),
             Field::U8Array(values) => Self::array(values, u8::to_le_bytes),
             Field::I16Array(values) => Self::array(values, i16::to_le_bytes),

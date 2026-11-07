@@ -417,7 +417,7 @@ fn longest(field: &Field, width: u64) -> u64 {
     let array = |len: usize, size: u64| size - 1 + width + len as u64 * size;
 
     match field {
-        Field::I8(_) | Field::U8(_) => 1,
+        Field::I8(_) | Field::U8(_) | Field::Bool(_) => 1,
         Field::I16(_) | Field::U16(_) => 2,
         Field::I32(_) | Field::U32(_) | Field::F32(_) => 4,
         Field::I64(_) | Field::U64(_) | Field::F64(_) => 8,

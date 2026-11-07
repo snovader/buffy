@@ -54,12 +54,20 @@ Each field is `name: type;`, of one of these types:
 | ------------------------------------------------------------------------ | ------------------------- |
 | `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64` | An integer                |
 | `float32`, `float64`                                                     | A float                   |
+| `bool`                                                                   | A bool, in one byte       |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
 | `string`                                                                 | A UTF-8 string            |
 | A struct's name                                                          | A struct, in place        |
 | `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
 | `[` a table's name `]`                                                   | A vector of tables        |
+
+A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
+format describes it, so that any byte reads as a value. It's `boolean` in
+TypeScript, JavaScript and Java, and `bool` in Python and Rust, and the
+generated code reads and writes it with the runtime's `uint8` getters and
+setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
+and 1 holds bools in the meantime.
 
 Every field is required, and is read by its index, so its position is part of
 the format: a message that changes its fields needs another version, which
@@ -125,7 +133,8 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of strings aren't supported.
+  even within another struct. Arrays of strings and of bools aren't
+  supported.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
@@ -249,8 +258,8 @@ Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
-`constructor_` and `toString_` in TypeScript, `serialize_`, `int_` and
-`version_of_` in Python, `hashCode_` and `serialize_` in Java, and `new_` and
+`constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
+and `version_of_` in Python, `hashCode_` and `serialize_` in Java, and `new_` and
 `version_of_` in Rust. So does `then` in TypeScript and JavaScript, since a
 `then()` method would make a reader a thenable, which `await` calls and never settles. `MEMBERS` in each
 target's generator lists them; other targets keep the name.

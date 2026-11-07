@@ -3,7 +3,7 @@
 // within other structs, with doc comments on each kind of declaration and
 // field names that are keywords in some target language.
 
-/// A field of every scalar type
+/// A field of every scalar type, and a bool
 message Scalars {
     int8: int8;
     uint8: uint8;
@@ -15,9 +15,10 @@ message Scalars {
     uint64: uint64;
     float32: float32;
     float64: float64;
+    bool: bool;
 }
 
-/// An array of every scalar type
+/// An array of every scalar type but bool, which has none
 message Arrays {
     int8: [int8];
     uint8: [uint8];
@@ -103,7 +104,8 @@ struct Point {
     y: float32;
 }
 
-/// A struct of every scalar type, at fixed offsets without padding
+/// A struct of every scalar type and a bool, at fixed offsets without
+/// padding
 struct Packed {
     int8: int8;
     uint8: uint8;
@@ -115,6 +117,7 @@ struct Packed {
     uint64: uint64;
     float32: float32;
     float64: float64;
+    bool: bool;
 }
 
 // A comment, which the generated code leaves out

@@ -2,11 +2,11 @@
 //! describes them, following their offsets into nested tables, vectors,
 //! arrays, strings and structs, as the conformance test reads them.
 //!
-//! Its seed corpus is the suite's tables, `conformance/valid/*.bin` and
-//! `conformance/invalid/*.bin`, so that the fuzzer mutates tables that the
-//! descriptions read deep into. Reads may fail, but only with the decode
-//! error, and finding a vector's item by index must find what iterating
-//! finds.
+//! Its seed corpus is the suite's tables, `conformance/valid/*.bin`,
+//! `conformance/equivalent/*.bin` and `conformance/invalid/*.bin`, so that
+//! the fuzzer mutates tables that the descriptions read deep into. Reads may
+//! fail, but only with the decode error, and finding a vector's item by
+//! index must find what iterating finds.
 
 #![no_main]
 

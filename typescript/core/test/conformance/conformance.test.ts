@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
-import type { Suite } from './description.ts';
+import type { Suite, ValidCase } from './description.ts';
 import { SUITE_DIRECTORY, writeSuite } from './files.ts';
 import { buildTable, readTable, TableReader } from './tables.ts';
 
@@ -16,7 +16,7 @@ const tables = await readTables();
 async function readTables(): Promise<Map<string, Uint8Array>> {
     const tables = new Map<string, Uint8Array>();
 
-    for (const subdirectory of ['valid/', 'invalid/']) {
+    for (const subdirectory of ['valid/', 'equivalent/', 'invalid/']) {
         for (const name of await readdir(new URL(subdirectory, directory))) {
             const path = `${subdirectory}${name}`;
             // A plain Uint8Array rather than a Buffer, to compare with tafla's
@@ -25,6 +25,15 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
     }
 
     return tables;
+}
+
+function validCaseNamed(name: string): ValidCase {
+    const validCase = suite.valid.find(validCase => validCase.name === name);
+    if (validCase === undefined) {
+        throw new Error(`There's no valid case ${name}`);
+    }
+
+    return validCase;
 }
 
 function bytesOf(file: string): Uint8Array {
@@ -62,11 +71,18 @@ describe('valid cases', () => {
     });
 });
 
+describe('equivalent cases', () => {
+    it.each(suite.equivalent)('should read $name as $case', ({ file, case: name }) => {
+        const { table } = validCaseNamed(name);
+        expect(readTable(bytesOf(file), table)).toStrictEqual(table);
+    });
+});
+
 describe('invalid cases', () => {
     it.each(suite.invalid)(
         'should read $name up to field $field and then throw DecodeError',
         ({ file, case: name, field }) => {
-            const { table } = suite.valid.find(validCase => validCase.name === name)!;
+            const { table } = validCaseNamed(name);
             const reader = new TableReader(bytesOf(file), table.layout);
 
             for (let index = 0; index < field; index++) {

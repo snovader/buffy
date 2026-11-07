@@ -14,6 +14,7 @@ message Members (version: 1) {
     builder: uint8;
     cls: uint8;
     int: uint8;
+    bool: bool;
     equals: uint8;
     read: uint8;
     write: uint8;
@@ -89,6 +90,7 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
             "    def write_(self) -> int:",
             "    def cls_(self) -> int:",
             "    def int_(self) -> int:",
+            "    def bool_(self) -> bool:",
             "    def read_(self) -> int:",
             "    serialize_: int\n",
             "    cls_: int\n",

@@ -2,6 +2,7 @@ import { ByteBuffer } from 'tafla';
 import {
     type Alignment,
     type Corruption,
+    type EquivalentCase,
     type FieldDescription,
     type InvalidCase,
     type JsonNumber,
@@ -145,6 +146,11 @@ const VALID_CASES: ValidCase[] = [
             ...FLOAT32S.map(value => scalar('float32', value)),
             ...FLOAT64S.map(value => scalar('float64', value))
         ])
+    ),
+    validCase(
+        'bools',
+        'false and true, which writers write as the bytes 0 and 1, and two more true bools, whose bytes bool-nonzero changes',
+        table([bool(false), bool(true), bool(true), bool(true)])
     ),
     validCase(
         'integer-arrays',
@@ -394,8 +400,22 @@ const VALID_CASES: ValidCase[] = [
 
 export const SUITE: Suite = {
     valid: VALID_CASES,
+    equivalent: equivalentCases(),
     invalid: invalidCases()
 };
+
+function equivalentCases(): EquivalentCase[] {
+    const bools = inspect('bools');
+
+    return [
+        equivalentCase(
+            'bool-nonzero',
+            'The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1',
+            bools,
+            overwrite(bools.buffer.rootOffset(2), [0x02, 0x80])
+        )
+    ];
+}
 
 function invalidCases(): InvalidCase[] {
     const integerScalars = inspect('integer-scalars');
@@ -584,6 +604,21 @@ function inspect(name: string): Inspected {
     };
 }
 
+function equivalentCase(
+    name: string,
+    description: string,
+    { name: validName }: Inspected,
+    corruption: Corruption
+): EquivalentCase {
+    return {
+        name,
+        description,
+        file: `equivalent/${name}.bin`,
+        case: validName,
+        corruption
+    };
+}
+
 function invalidCase(
     name: string,
     description: string,
@@ -765,6 +800,10 @@ function table(
 
 function scalar(type: ScalarType, value: number | bigint): FieldDescription {
     return { type, value: toJson(type, value) };
+}
+
+function bool(value: boolean): FieldDescription {
+    return { type: 'bool', value };
 }
 
 function array(

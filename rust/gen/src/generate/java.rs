@@ -730,6 +730,10 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields.{}()", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => (
+                "setUint8".to_owned(),
+                vec![position, text(format!("(short) ({value} ? 1 : 0)"))],
+            ),
             FieldType::Scalar(scalar) => (
                 format!("set{}", method_name(scalar)),
                 vec![position, text(value)],
@@ -816,6 +820,9 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name)
         ));
         match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => {
+                writer.line(format!("return buffer.getUint8({offset}) != 0;"));
+            }
             FieldType::Scalar(scalar) => {
                 writer.line(format!(
                     "return buffer.get{}({offset});",
@@ -952,9 +959,10 @@ fn identifier(name: &str) -> String {
     }
 }
 
-/// `Float32` in `getFloat32()`, as the runtime names its getters and setters
+/// `Float32` in `getFloat32()`, as the runtime names its getters and setters,
+/// and `Uint8` for a bool, which a uint8 stores
 fn method_name(scalar: Scalar) -> String {
-    let name = scalar.name();
+    let name = scalar.stored().name();
     name[..1].to_ascii_uppercase() + &name[1..]
 }
 
@@ -962,6 +970,7 @@ fn method_name(scalar: Scalar) -> String {
 /// them, except `uint64`, which is a `long` with its bits
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
+        Scalar::Bool => "boolean",
         Scalar::Int8 => "byte",
         Scalar::Uint8 | Scalar::Int16 => "short",
         Scalar::Uint16 | Scalar::Int32 => "int",
@@ -994,7 +1003,7 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
 /// for those wider than a byte
 const fn var_handle(scalar: Scalar) -> Option<(&'static str, &'static str)> {
     match scalar {
-        Scalar::Int8 | Scalar::Uint8 => None,
+        Scalar::Bool | Scalar::Int8 | Scalar::Uint8 => None,
         Scalar::Int16 | Scalar::Uint16 => Some(("INT16", "short[]")),
         Scalar::Int32 | Scalar::Uint32 => Some(("INT32", "int[]")),
         Scalar::Int64 | Scalar::Uint64 => Some(("INT64", "long[]")),
@@ -1033,6 +1042,7 @@ fn struct_bounds_check(writer: &mut CodeWriter, length: &str) {
 
 fn struct_read(scalar: Scalar, at: &str) -> String {
     match scalar {
+        Scalar::Bool => format!("bytes[{at}] != 0"),
         Scalar::Int8 => format!("bytes[{at}]"),
         Scalar::Uint8 => format!("(short) Byte.toUnsignedInt(bytes[{at}])"),
         Scalar::Int16 => format!("(short) INT16.get(bytes, {at})"),
@@ -1049,6 +1059,7 @@ fn struct_read(scalar: Scalar, at: &str) -> String {
 /// it
 fn view_read(scalar: Scalar, at: &str) -> String {
     match scalar {
+        Scalar::Bool => format!("view.get({at}) != 0"),
         Scalar::Int8 => format!("view.get({at})"),
         Scalar::Uint8 => format!("(short) Byte.toUnsignedInt(view.get({at}))"),
         Scalar::Int16 => format!("view.getShort({at})"),
@@ -1063,6 +1074,7 @@ fn view_read(scalar: Scalar, at: &str) -> String {
 
 fn struct_write(scalar: Scalar, at: &str, field: &str) -> String {
     match scalar {
+        Scalar::Bool => format!("bytes[{at}] = (byte) ({field} ? 1 : 0)"),
         Scalar::Int8 => format!("bytes[{at}] = {field}"),
         Scalar::Uint8 => format!("bytes[{at}] = (byte) {field}"),
         Scalar::Int16 => format!("INT16.set(bytes, {at}, {field})"),

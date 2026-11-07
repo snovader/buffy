@@ -26,6 +26,10 @@ export function scalar(
     return { type, value: jsonOf(value) };
 }
 
+export function bool(value: boolean): FieldDescription {
+    return { type: 'bool', value };
+}
+
 export function array(
     type: ScalarType,
     values: ArrayLike<number> | ArrayLike<bigint>

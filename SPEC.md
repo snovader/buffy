@@ -56,7 +56,8 @@ readers ignore them.
 | Type                                    | Bytes at the field's offset                                    |
 | --------------------------------------- | -------------------------------------------------------------- |
 | `int8` … `uint64`, `float32`, `float64` | The value, in 1, 2, 4 or 8 bytes                               |
-| Array of one of those types             | A count `n`, then `n` elements                                 |
+| `bool`                                  | One byte, 0 for false, written as 0 or 1 and true if not 0     |
+| Array of an integer or float type       | A count `n`, then `n` elements                                 |
 | String                                  | A count `n`, then `n` bytes of UTF-8                           |
 | Struct                                  | Its scalars, one after another                                 |
 | Array of structs                        | A count `n`, then `n` structs                                  |
@@ -65,7 +66,10 @@ readers ignore them.
 
 Counts, lengths and item ends are of the offset type, as offsets are.
 
-- **Scalars** aren't aligned.
+- **Scalars**, the integers, floats and `bool`, aren't aligned. Writers
+  write a `bool` as 0 or 1, and readers accept any byte, as true when it
+  isn't 0, so that corrupted bytes still read as values and a `bool` needs
+  no check. A `bool` has no arrays.
 - **Structs** are a fixed sequence of scalars, which the format defines, as
   it defines a table's fields; a struct within a struct adds its scalars in
   its place. A struct has no header, offsets or padding, so its scalars lie

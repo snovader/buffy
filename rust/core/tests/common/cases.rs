@@ -47,6 +47,7 @@ fn field_of(field: &Value) -> Field {
     }
 
     match type_name {
+        "bool" => Field::Bool(value.as_bool().unwrap()),
         "int8[]" => Field::I8Array(elements(value, integer)),
         "uint8[]" => Field::U8Array(elements(value, integer)),
         "int16[]" => Field::I16Array(elements(value, integer)),

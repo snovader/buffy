@@ -237,6 +237,11 @@ function expectLittleEndian(
         return;
     }
 
+    if (field.type === 'bool') {
+        expect(bytes[position]).toBe(field.value ? 1 : 0);
+        return;
+    }
+
     expect(readScalar(bytes, field.type, position)).toBe(field.value);
 }
 

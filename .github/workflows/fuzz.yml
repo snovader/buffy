@@ -37,11 +37,11 @@ jobs:
         include:
           # Arbitrary bytes, read with every getter at every position
           - target: byte_buffer
-            seeds: ../conformance/valid ../conformance/invalid
+            seeds: ../conformance/valid ../conformance/equivalent ../conformance/invalid
             options: ""
           # The suite's tables, mutated and read as its descriptions
           - target: conformance
-            seeds: ../conformance/valid ../conformance/invalid
+            seeds: ../conformance/valid ../conformance/equivalent ../conformance/invalid
             options: ""
           # Arbitrary text, parsed, checked and generated from
           - target: gen

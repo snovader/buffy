@@ -5,7 +5,14 @@ of their fields' values."""
 from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
-from hypothesis.strategies import SearchStrategy, builds, just, lists, recursive
+from hypothesis.strategies import (
+    SearchStrategy,
+    booleans,
+    builds,
+    just,
+    lists,
+    recursive,
+)
 
 from tests.descriptions import SCALAR_VALUES, STRINGS, scalar_values
 from tests.generated.all_types.all_types import (
@@ -35,6 +42,7 @@ from tests.generated.all_types.all_types import (
     TreeFields,
 )
 from tests.generated.descriptions import (
+    boolean,
     message,
     scalar,
     string,
@@ -63,6 +71,7 @@ def read_scalars(scalars: Scalars) -> ScalarsFields:
         "uint64": scalars.uint64(),
         "float32": scalars.float32(),
         "float64": scalars.float64(),
+        "bool_": scalars.bool_(),
     }
 
 
@@ -207,6 +216,7 @@ def describe_scalars(fields: ScalarsFields) -> Description:
             scalar("uint64", fields["uint64"]),
             scalar("float32", fields["float32"]),
             scalar("float64", fields["float64"]),
+            boolean(fields["bool_"]),
         ],
     )
 
@@ -312,9 +322,11 @@ def describe_structs(fields: StructsFields) -> Description:
 
 
 def describe_packed(packed: Packed) -> list[Description]:
-    """The fields of a ``Packed``, in the order that they lie in its bytes,
-    which is the order of the scalar types, as its fields are named"""
-    return [scalar(kind, getattr(packed, kind)) for kind in SCALAR_VALUES]
+    """The fields of a ``Packed``, in the order that they lie in its bytes:
+    one of each scalar type, in their order and named after them, and then a
+    bool, which a struct holds as the uint8 1 or 0"""
+    scalars = [scalar(kind, getattr(packed, kind)) for kind in SCALAR_VALUES]
+    return [*scalars, scalar("uint8", 1 if packed.bool_ else 0)]
 
 
 def packed_bytes(packed: Packed) -> bytes:
@@ -359,7 +371,7 @@ def segment_bytes(segment: Segment) -> bytes:
 # infinities, strings outside the Basic Multilingual Plane, empty arrays,
 # vectors and arrays of structs, and trees a few levels deep. The fields of
 # Scalars, Arrays and Packed are named after their types, as SCALAR_VALUES
-# names its strategies.
+# names its strategies, and the bools of Scalars and Packed are bool_.
 
 _SCALARS: dict[str, SearchStrategy[Any]] = {
     kind: scalar_values(kind) for kind in SCALAR_VALUES
@@ -370,7 +382,9 @@ def _arrays(values: SearchStrategy[Any]) -> SearchStrategy[list[Any]]:
     return lists(values, max_size=8)
 
 
-scalars_fields: SearchStrategy[ScalarsFields] = builds(ScalarsFields, **_SCALARS)
+scalars_fields: SearchStrategy[ScalarsFields] = builds(
+    ScalarsFields, **_SCALARS, bool_=booleans()
+)
 
 arrays_fields: SearchStrategy[ArraysFields] = builds(
     ArraysFields,
@@ -413,7 +427,7 @@ reserved_fields: SearchStrategy[ReservedFields] = builds(
     ),
 )
 
-packed_structs: SearchStrategy[Packed] = builds(Packed, **_SCALARS)
+packed_structs: SearchStrategy[Packed] = builds(Packed, **_SCALARS, bool_=booleans())
 
 documented_structs: SearchStrategy[Documented] = builds(
     Documented,

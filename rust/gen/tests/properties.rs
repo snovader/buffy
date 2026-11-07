@@ -26,8 +26,10 @@ const MAX_SCALAR_PATHS: usize = 1_024;
 /// another, the outermost included
 const MAX_NESTING_DEPTH: usize = 64;
 
-const SCALARS: [&str; 10] = [
-    "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float32", "float64",
+/// The scalar types, each of which but `bool` makes arrays too
+const SCALARS: [&str; 11] = [
+    "bool", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float32",
+    "float64",
 ];
 
 /// Field names, including keywords of the targets and the names of the
@@ -40,7 +42,7 @@ const FIELD_NAMES: [&str; 24] = [
 
 /// The tokens of the schema language and some that aren't, for input that
 /// gets further into the parser and the checker than arbitrary text does
-const TOKENS: [&str; 42] = [
+const TOKENS: [&str; 43] = [
     "message",
     "table",
     "struct",
@@ -53,6 +55,7 @@ const TOKENS: [&str; 42] = [
     "next",
     "float64",
     "uint8",
+    "bool",
     "string",
     "flaot64",
     "[",
@@ -708,14 +711,14 @@ impl Schema {
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_name(scalar).to_owned(),
-            FieldType::Array(scalar) => format!("[{}]", scalar_name(scalar)),
+            FieldType::Array(scalar) => format!("[{}]", element_name(scalar)),
             FieldType::Struct(chosen) => self
                 .nested_struct(index, chosen)
                 .map_or_else(|| scalar_name(chosen).to_owned(), name),
             FieldType::StructArray(chosen) => {
                 let element = self
                     .nested_struct(index, chosen)
-                    .map_or_else(|| scalar_name(chosen).to_owned(), name);
+                    .map_or_else(|| element_name(chosen).to_owned(), name);
                 format!("[{element}]")
             }
             FieldType::Table(table) if holds_tables && !later_tables.is_empty() => {
@@ -770,6 +773,12 @@ impl Schema {
 
 fn scalar_name(scalar: Index) -> &'static str {
     SCALARS[scalar.index(SCALARS.len())]
+}
+
+/// The element type of an array of scalars, which can't be `bool`
+fn element_name(scalar: Index) -> &'static str {
+    let elements = &SCALARS[1..];
+    elements[scalar.index(elements.len())]
 }
 
 /// Unique names, which mix letters and digits as `PascalCase` allows

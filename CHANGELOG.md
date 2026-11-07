@@ -33,6 +33,9 @@ first commits, for code built from its source before the release.
 - [SPEC.md](SPEC.md) describes how a format's messages evolve: each version
   fixes its fields and keeps the same layout, and a new version appends
   fields to the previous version's.
+- A `bool` scalar, one byte that writers write as 0 or 1 and readers read as
+  true when it isn't 0, in tables and structs, which tafla-gen generates as
+  each language's boolean. Arrays of bools aren't supported.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.

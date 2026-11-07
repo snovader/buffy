@@ -50,6 +50,8 @@ impl Debug for Bits<f64> {
 /// The value of a field of a table, of its type in the schema
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    /// A bool, which tables and structs store as the `u8` 1 or 0
+    Bool(bool),
     I8(i8),
     U8(u8),
     I16(i16),
@@ -227,6 +229,7 @@ fn set_all<'a>(builder: &mut TableBuilder<'a>, values: &'a [Value]) -> Result<()
 
 fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), BuildError> {
     match value {
+        Value::Bool(value) => builder.set_u8(u8::from(*value)),
         Value::I8(value) => builder.set_i8(*value),
         Value::U8(value) => builder.set_u8(*value),
         Value::I16(value) => builder.set_i16(*value),
@@ -277,6 +280,7 @@ pub fn struct_bytes(scalars: &[Value]) -> Vec<u8> {
     scalars
         .iter()
         .flat_map(|scalar| match scalar {
+            Value::Bool(value) => vec![u8::from(*value)],
             Value::I8(value) => value.to_le_bytes().to_vec(),
             Value::U8(value) => value.to_le_bytes().to_vec(),
             Value::I16(value) => value.to_le_bytes().to_vec(),

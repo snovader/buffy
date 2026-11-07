@@ -37,6 +37,7 @@ final class Tables {
     static void setField(TableBuilder builder, FieldDescription field) {
         switch (field) {
             case ScalarField scalar -> scalar.type().set(builder, scalar.value());
+            case BoolField bool -> builder.setUint8(bool.uint8());
             case ArrayField array -> array.type().setArray(builder, array.values());
             case StringField string -> builder.setString(string.value());
             case StructField struct -> builder.setStruct(StructBytes.pack(struct.types(), List.of(struct.values())));
@@ -158,6 +159,7 @@ final class Tables {
     private static void addField(TableSizer sizer, FieldDescription field) {
         switch (field) {
             case ScalarField scalar -> scalar.type().add(sizer);
+            case BoolField ignored -> sizer.addUint8();
             case ArrayField array -> array.type().addArray(sizer, array.values().length);
             case StringField string -> sizer.addString(string.value());
             case StructField struct -> sizer.addStruct(StructBytes.size(struct.types()));
@@ -197,6 +199,7 @@ final class Tables {
     private static void writeField(TableWriter writer, int index, FieldDescription field) {
         switch (field) {
             case ScalarField scalar -> scalar.type().set(writer, index, scalar.value());
+            case BoolField bool -> writer.setUint8(index, bool.uint8());
             case ArrayField array -> array.type().setArray(writer, index, array.values());
             case StringField string -> writer.setString(index, string.value());
             case StructField struct -> writer.setStruct(index, StructBytes.pack(struct.types(), List.of(struct.values())));

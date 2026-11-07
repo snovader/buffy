@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { DecodeError } from 'tafla';
+import { ByteBuffer, DecodeError } from 'tafla';
 import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
@@ -50,8 +50,12 @@ const EMPTY_PACKED = {
     int64: 0n,
     uint64: 0n,
     float32: 0,
-    float64: 0
+    float64: 0,
+    bool: false
 };
+
+/** A byte of a bool other than the 0 and 1 that writers write */
+const TRUE_BYTES = fc.integer({ min: 2, max: 0xff });
 
 // The code generated from schemas/all_types.tafla, in TypeScript and in
 // JavaScript, writes and reads tables of every type of field with tafla
@@ -64,6 +68,16 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 const bytes = sliceOf(allTypes.Scalars.serialize(fields), slice);
 
                 expect(readScalars(new allTypes.Scalars(bytes))).toEqual(fields);
+            }
+        );
+
+        it.prop([SCALARS_FIELDS, TRUE_BYTES])(
+            'should read any byte of a bool but 0 as true',
+            (fields, byte) => {
+                const bytes = allTypes.Scalars.serialize({ ...fields, bool: false });
+                bytes[new ByteBuffer(bytes).rootOffset(10)] = byte;
+
+                expect(readScalars(new allTypes.Scalars(bytes))).toEqual({ ...fields, bool: true });
             }
         );
 
@@ -319,11 +333,11 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
 
     describe('structs', () => {
         it.prop([SCALARS_FIELDS, SLICES])(
-            'should write Packed in its 42 bytes, little-endian at fixed offsets, and read it back wherever they lie',
+            'should write Packed in its 43 bytes, little-endian at fixed offsets, and read it back wherever they lie',
             (fields, slice) => {
                 const bytes = allTypes.Packed.serialize(fields);
 
-                expect(allTypes.Packed.SIZE).toBe(42);
+                expect(allTypes.Packed.SIZE).toBe(43);
                 expect(bytes).toStrictEqual(packedBytes(fields));
                 expect(readScalars(new allTypes.Packed(sliceOf(bytes, slice)))).toEqual(fields);
             }
@@ -351,8 +365,18 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             }
         );
 
-        it.prop([fc.uint8Array({ maxLength: 41 })])(
-            'should throw DecodeError reading Packed from fewer than 42 bytes',
+        it.prop([SCALARS_FIELDS, TRUE_BYTES])(
+            'should read any byte of the bool of Packed but 0 as true',
+            (fields, byte) => {
+                const bytes = packedBytes({ ...fields, bool: false });
+                bytes[42] = byte;
+
+                expect(readScalars(new allTypes.Packed(bytes))).toEqual({ ...fields, bool: true });
+            }
+        );
+
+        it.prop([fc.uint8Array({ maxLength: 42 })])(
+            'should throw DecodeError reading Packed from fewer than 43 bytes',
             bytes => {
                 expect(() => new allTypes.Packed(bytes)).toThrow(DecodeError);
             }

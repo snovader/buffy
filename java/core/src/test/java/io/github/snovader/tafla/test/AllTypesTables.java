@@ -24,8 +24,14 @@ final class AllTypesTables {
     // The types of each struct's scalars in the order of their offsets, with the scalars of a struct
     // within a struct in its place
 
-    /** Every scalar type, in the order of {@link ScalarType}'s constants */
-    static final List<ScalarType> PACKED_TYPES = List.of(ScalarType.values());
+    /**
+     * Every scalar type, in the order of {@link ScalarType}'s constants, and then the uint8 that
+     * stores a bool
+     */
+    static final List<ScalarType> PACKED_TYPES = java.util.stream.Stream.concat(
+        java.util.Arrays.stream(ScalarType.values()),
+        java.util.stream.Stream.of(ScalarType.UINT8)
+    ).toList();
     static final List<ScalarType> DOCUMENTED_TYPES = List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32);
     static final List<ScalarType> POINT_TYPES = List.of(ScalarType.FLOAT32, ScalarType.FLOAT32);
     /** A start point and an end point */
@@ -48,7 +54,8 @@ final class AllTypesTables {
             scalars.int64(),
             scalars.uint64(),
             scalars.float32(),
-            scalars.float64()
+            scalars.float64(),
+            scalars.bool()
         );
     }
 
@@ -182,7 +189,8 @@ final class AllTypesTables {
             int64(scalars.int64()),
             uint64(scalars.uint64()),
             float32(scalars.float32()),
-            float64(scalars.float64())
+            float64(scalars.float64()),
+            new BoolField(scalars.bool())
         );
     }
 
@@ -254,7 +262,10 @@ final class AllTypesTables {
         return table(struct(describePoint(path.start())), structArray(POINT_TYPES, points));
     }
 
-    /** {@return the fields of a {@code Packed} in the order of their offsets} */
+    /**
+     * {@return the fields of a {@code Packed} in the order of their offsets, with the bool as the
+     * uint8 that stores it}
+     */
     static List<ScalarField> describePacked(Packed packed) {
         return List.of(
             int8(packed.int8()),
@@ -266,7 +277,8 @@ final class AllTypesTables {
             int64(packed.int64()),
             uint64(packed.uint64()),
             float32(packed.float32()),
-            float64(packed.float64())
+            float64(packed.float64()),
+            uint8((short) (packed.bool() ? 1 : 0))
         );
     }
 
@@ -303,8 +315,8 @@ final class AllTypesTables {
             uint64s()
         ).as(Tuple::of);
 
-        return Combinators.combine(integers, float32s(), float64s()).as(
-            (ints, float32, float64) -> new Scalars.Fields(
+        return Combinators.combine(integers, float32s(), float64s(), Arbitraries.of(false, true)).as(
+            (ints, float32, float64, bool) -> new Scalars.Fields(
                 ints.get1(),
                 ints.get2(),
                 ints.get3(),
@@ -314,7 +326,8 @@ final class AllTypesTables {
                 ints.get7(),
                 ints.get8(),
                 float32,
-                float64
+                float64,
+                bool
             )
         );
     }
@@ -384,7 +397,8 @@ final class AllTypesTables {
             scalars.int64(),
             scalars.uint64(),
             scalars.float32(),
-            scalars.float64()
+            scalars.float64(),
+            scalars.bool()
         );
     }
 

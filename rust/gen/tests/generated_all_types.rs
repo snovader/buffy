@@ -23,7 +23,7 @@ use tables::{
     expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
     to_vec, truncations, vector,
 };
-use tafla::{Alignment, BuildError, DecodeError, TableLayout};
+use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableLayout};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
@@ -43,6 +43,7 @@ fn read_scalars(scalars: &Scalars) -> Fields {
         scalars.uint64().map(Value::U64),
         scalars.float32().map(Value::f32),
         scalars.float64().map(Value::f64),
+        scalars.bool().map(Value::Bool),
     ]
 }
 
@@ -281,6 +282,7 @@ fn describe_scalars(fields: &ScalarsFields) -> Vec<Value> {
         Value::U64(fields.uint64),
         Value::f32(fields.float32),
         Value::f64(fields.float64),
+        Value::Bool(fields.bool),
     ]
 }
 
@@ -356,6 +358,7 @@ fn describe_packed(packed: &Packed) -> Vec<Value> {
         Value::U64(packed.uint64),
         Value::f32(packed.float32),
         Value::f64(packed.float64),
+        Value::Bool(packed.bool),
     ]
 }
 
@@ -431,6 +434,7 @@ fn packed_bytes(packed: &Packed) -> Vec<u8> {
         &packed.uint64.to_le_bytes(),
         &packed.float32.to_le_bytes(),
         &packed.float64.to_le_bytes(),
+        &[u8::from(packed.bool)],
     ]
     .concat()
 }
@@ -460,21 +464,24 @@ fn scalars() -> impl Strategy<Value = ScalarsFields> {
         integers(0, u64::MAX),
     );
 
-    (integers, float32s(), float64s()).prop_map(|(integers, float32, float64)| {
-        let (int8, uint8, int16, uint16, int32, uint32, int64, uint64) = integers;
-        ScalarsFields {
-            int8,
-            uint8,
-            int16,
-            uint16,
-            int32,
-            uint32,
-            int64,
-            uint64,
-            float32,
-            float64,
-        }
-    })
+    (integers, float32s(), float64s(), any::<bool>()).prop_map(
+        |(integers, float32, float64, bool)| {
+            let (int8, uint8, int16, uint16, int32, uint32, int64, uint64) = integers;
+            ScalarsFields {
+                int8,
+                uint8,
+                int16,
+                uint16,
+                int32,
+                uint32,
+                int64,
+                uint64,
+                float32,
+                float64,
+                bool,
+            }
+        },
+    )
 }
 
 /// The values of an `Arrays`' fields, which `ArraysFields` borrows
@@ -719,6 +726,7 @@ fn packeds() -> impl Strategy<Value = Packed> {
         uint64: fields.uint64,
         float32: fields.float32,
         float64: fields.float64,
+        bool: fields.bool,
     })
 }
 
@@ -859,6 +867,16 @@ proptest! {
 
         let read = read_structs(&Structs::new(bytes.bytes()));
         prop_assert_eq!(read, expected(describe_structs(&fields)));
+    }
+
+    #[test]
+    fn scalars_reads_any_byte_of_its_bool_but_0_as_true(fields in scalars(), byte in 2..=u8::MAX) {
+        let mut bytes = ScalarsFields { bool: false, ..fields }.serialize()?;
+        let position = ByteBuffer::new(&bytes, TableLayout::DEFAULT).root_offset(10)?;
+        bytes[position] = byte;
+
+        let read = read_scalars(&Scalars::new(&bytes));
+        prop_assert_eq!(read, expected(describe_scalars(&ScalarsFields { bool: true, ..fields })));
     }
 
     // Tables built by hand
@@ -1070,12 +1088,12 @@ proptest! {
     // The structs
 
     #[test]
-    fn packed_is_written_in_42_bytes_at_fixed_offsets_and_read_back_wherever_they_lie(
+    fn packed_is_written_in_43_bytes_at_fixed_offsets_and_read_back_wherever_they_lie(
         packed in packeds(),
         placement in placements(),
     ) {
         let bytes = packed.to_bytes();
-        prop_assert_eq!(Packed::SIZE, 42);
+        prop_assert_eq!(Packed::SIZE, 43);
         prop_assert_eq!(bytes.to_vec(), packed_bytes(&packed));
 
         let read = Packed::read(placement.place(&bytes).bytes())?;
@@ -1091,7 +1109,16 @@ proptest! {
     }
 
     #[test]
-    fn packed_fails_to_read_from_fewer_than_42_bytes(bytes in shorter_than(Packed::SIZE)) {
+    fn packed_reads_any_byte_of_its_bool_but_0_as_true(packed in packeds(), byte in 2..=u8::MAX) {
+        let mut bytes = packed_bytes(&Packed { bool: false, ..packed });
+        bytes[42] = byte;
+
+        let read = Packed::read(&bytes)?;
+        prop_assert_eq!(describe_packed(&read), describe_packed(&Packed { bool: true, ..packed }));
+    }
+
+    #[test]
+    fn packed_fails_to_read_from_fewer_than_43_bytes(bytes in shorter_than(Packed::SIZE)) {
         let read = Packed::read(&bytes);
         prop_assert!(matches!(read, Err(DecodeError::OutOfRange { .. })), "{:?}", read);
     }

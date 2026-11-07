@@ -115,6 +115,9 @@ pub enum FieldType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scalar {
+    /// One byte, which writers write as 0 or 1 and readers read as true when
+    /// it isn't 0
+    Bool,
     Int8,
     Uint8,
     Int16,
@@ -128,7 +131,8 @@ pub enum Scalar {
 }
 
 impl Scalar {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
+        Self::Bool,
         Self::Int8,
         Self::Uint8,
         Self::Int16,
@@ -141,9 +145,12 @@ impl Scalar {
         Self::Float64,
     ];
 
-    /// The name in schemas, which every runtime's getters and setters use too
+    /// The name in schemas, which every runtime's getters and setters use
+    /// too, but for `bool`'s, which are those of its [`stored()`](Self::stored)
+    /// scalar
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Bool => "bool",
             Self::Int8 => "int8",
             Self::Uint8 => "uint8",
             Self::Int16 => "int16",
@@ -159,10 +166,20 @@ impl Scalar {
 
     pub const fn size(self) -> u8 {
         match self {
-            Self::Int8 | Self::Uint8 => 1,
+            Self::Bool | Self::Int8 | Self::Uint8 => 1,
             Self::Int16 | Self::Uint16 => 2,
             Self::Int32 | Self::Uint32 | Self::Float32 => 4,
             Self::Int64 | Self::Uint64 | Self::Float64 => 8,
+        }
+    }
+
+    /// The scalar that the runtimes read and write this one as, since they
+    /// have no getters and setters of bools: `uint8` for a `bool`, and the
+    /// scalar itself for every other
+    pub const fn stored(self) -> Self {
+        match self {
+            Self::Bool => Self::Uint8,
+            scalar => scalar,
         }
     }
 
