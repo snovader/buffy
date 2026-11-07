@@ -8,5 +8,32 @@ bytes. Every read checks that it stays within the bytes it was given.
 code that tafla-gen generates writes its tables, without recording them first
 as `TableBuilder` does.
 
-The package's docstring, `help(tafla)`, has an example, which the tests run
-as a doctest.
+```pycon
+>>> from array import array
+>>> from tafla import ByteBuffer, TableBuilder, TableLayout
+
+>>> LAYOUT = TableLayout(sized=True, versioned=True)  # shared by writers and readers
+>>> series = TableBuilder(2)
+>>> series.set_uint32_array(array("I", [0, 86400]))  # copied as bytes
+>>> series.set_float32_array([21.75, 18.5])  # a list is converted first
+
+>>> builder = TableBuilder(3, LAYOUT, 1)
+>>> builder.set_float64(59.3293)
+>>> builder.set_string("Europe/Stockholm")
+>>> builder.set_table(series)  # written straight into the table
+>>> data = builder.bytes()
+
+>>> buffer = ByteBuffer(data, LAYOUT)
+>>> buffer.get_version()
+1
+>>> buffer.get_string(buffer.root_offset(1))
+'Europe/Stockholm'
+>>> table = buffer.root_offset(2)
+>>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
+[21.75, 18.5]
+```
+
+The package's docstring, `help(tafla)`, has a longer example, with structs,
+and describes the format. The tests run both examples as doctests.
+[SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) specifies the
+format, which tafla's TypeScript, Java and Rust runtimes read and write too.

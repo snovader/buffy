@@ -13,6 +13,9 @@ tafla hasn't been released yet.
 
 [SPEC.md](SPEC.md) describes the format.
 
+[CHANGELOG.md](CHANGELOG.md) lists the changes that each release brings, and
+[RELEASING.md](RELEASING.md) describes how to release the packages.
+
 ## Packages
 
 | Language   | Runtime                                           | Code generator                                        |

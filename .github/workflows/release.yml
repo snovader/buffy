@@ -1,0 +1,462 @@
+name: Release
+
+# Publishes every package when a tag v<version> is pushed, as RELEASING.md
+# describes. Each registry has a job that checks its language and builds its
+# artifacts, which a dry run uploads to the workflow run, and a job that
+# publishes them, so that one registry's failure doesn't stop the others.
+#
+# A dry run builds without publishing: a pull request that touches the release
+# files runs one, and so does a manual run, unless it's on a tag with dry_run
+# turned off.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build every artifact without publishing it. A run off a tag never publishes."
+        type: boolean
+        default: true
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A release runs to its end, and a pull request's dry run gives way to a newer
+  # one
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Runs on every pull request, so that a package whose version disagrees with
+  # VERSION fails, and decides what the jobs below do
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.mode.outputs.build }}
+      publish: ${{ steps.mode.outputs.publish }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Check that every package has the version in VERSION
+        run: scripts/set-version.sh --check
+
+      - name: Read the version
+        id: version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Check that the tag names the version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ "$TAG" != "v$VERSION" ]]; then
+            echo "::error::The tag is $TAG, but VERSION is $VERSION, whose tag is v$VERSION"
+            exit 1
+          fi
+
+      - name: Filter the changed paths
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            release:
+              - ".github/actions/prepare-node-dependencies/action.yml"
+              - ".github/actions/prepare-node-environment/action.yml"
+              - ".github/workflows/release.yml"
+              - "VERSION"
+              - "scripts/set-version.sh"
+              - "typescript/core/package.json"
+              - "python/pyproject.toml"
+              - "python/core/pyproject.toml"
+              - "rust/Cargo.toml"
+              - "rust/core/Cargo.toml"
+              - "rust/gen/Cargo.toml"
+              - "java/core/build.gradle.kts"
+              - "java/gradle/libs.versions.toml"
+
+      # A tag publishes, and so does a manual run on a tag with dry_run off.
+      # Any other manual run, and a pull request that touches the release
+      # files, builds without publishing.
+      - name: Choose what to run
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_FILES_CHANGED: ${{ steps.filter.outputs.release }}
+        run: |
+          build=false
+          publish=false
+          case "$EVENT" in
+            push)
+              build=true
+              publish=true
+              ;;
+            workflow_dispatch)
+              build=true
+              if [[ "$REF_TYPE" == tag && "$DRY_RUN" == false ]]; then
+                publish=true
+              fi
+              ;;
+            pull_request)
+              build="$RELEASE_FILES_CHANGED"
+              ;;
+          esac
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Build: $build, publish: $publish"
+
+  # npm
+
+  npm-build:
+    name: npm (check and pack)
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Prepare dependencies
+        uses: ./.github/actions/prepare-node-dependencies
+
+      - name: Run format check
+        run: yarn format:check
+
+      - name: Run lint check
+        run: yarn lint:check
+
+      - name: Run type check
+        run: yarn typecheck
+
+      - name: Check the package
+        run: yarn package:check
+
+      - name: Run tests
+        run: yarn test
+
+      - name: Pack the package
+        run: yarn workspace tafla pack --out "$RUNNER_TEMP/npm/%s-%v.tgz"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm
+          path: ${{ runner.temp }}/npm/
+          if-no-files-found: error
+
+  npm-publish:
+    name: npm (publish)
+    needs: [version, npm-build]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/tafla/v/${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing and provenance
+      id-token: write
+    defaults:
+      run:
+        working-directory: typescript/core
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Prepare dependencies
+        uses: ./.github/actions/prepare-node-dependencies
+
+      # Yarn exchanges the workflow's OIDC token for one that publishes, as
+      # the package's trusted publisher on npm allows. npm can only trust a
+      # publisher for a package that exists, so an NPM_TOKEN secret, if set,
+      # publishes instead, as the first release needs.
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -n "$NPM_TOKEN" ]]; then
+            export YARN_NPM_AUTH_TOKEN="$NPM_TOKEN"
+          fi
+          yarn npm publish --provenance --access public
+
+  # PyPI
+
+  pypi-build:
+    name: PyPI (check and build)
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      - name: Run format check
+        run: uv run --locked ruff format --check
+
+      - name: Run lint check
+        run: uv run --locked ruff check
+
+      - name: Run type check
+        run: uv run --locked ty check
+
+      - name: Run tests
+        run: uv run --locked python -m unittest discover -s core/tests -t core
+
+      - name: Build the source distribution and wheel
+        run: uv build --package tafla --out-dir "$RUNNER_TEMP/pypi"
+
+      - name: Upload the distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: pypi
+          path: ${{ runner.temp }}/pypi/
+          if-no-files-found: error
+
+  # Publishes the distributions that pypi-build built and checked
+  pypi-publish:
+    name: PyPI (publish)
+    needs: [version, pypi-build]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tafla/${{ needs.version.outputs.version }}/
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: pypi
+          path: dist
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+
+      # PyPI trusts this workflow as a publisher, pending one for the first
+      # release, so the job needs no token
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always dist/*
+
+  # crates.io
+
+  crates-build:
+    name: crates.io (check and package)
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: rustfmt, clippy
+          cache-workspaces: rust -> target
+          cache-key: release
+
+      - name: Run formatting check
+        run: cargo fmt --all -- --check
+
+      - name: Run lint check
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+      # Packages tafla-gen against the tafla that it packages first, rather
+      # than one on crates.io, and builds both from their packages
+      - name: Package the crates
+        run: cargo package --locked -p tafla -p tafla-gen
+
+      - name: Upload the crates
+        uses: actions/upload-artifact@v7
+        with:
+          name: crates
+          path: rust/target/package/*.crate
+          if-no-files-found: error
+
+  crates-publish:
+    name: crates.io (publish)
+    needs: [version, crates-build]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/tafla/${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      # crates.io can only trust a publisher for a crate that exists, so a
+      # CARGO_REGISTRY_TOKEN secret publishes the first release. Without one,
+      # the job exchanges its OIDC token for a short-lived one, as the crates'
+      # trusted publisher on crates.io allows.
+      - name: Check for a registry token
+        id: token
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: echo "present=$([[ -n "$CARGO_REGISTRY_TOKEN" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate with trusted publishing
+        if: steps.token.outputs.present != 'true'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      # tafla-gen's tests depend on tafla at the same version, which crates.io
+      # resolves, so tafla goes first. cargo publish waits until crates.io
+      # serves the crate.
+      - name: Publish tafla
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
+        run: cargo publish --locked -p tafla
+
+      - name: Publish tafla-gen
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
+        run: cargo publish --locked -p tafla-gen
+
+  # Maven Central
+
+  maven-build:
+    name: Maven Central (check and build)
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Gradle build
+        run: ./gradlew build javadoc
+
+      # Publishing requires a signature, so the dry run signs with a key of its
+      # own, which nothing trusts, and checks the signatures
+      - name: Publish to a local repository, signed with a throwaway key
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --pinentry-mode loopback --passphrase dry-run \
+            --quick-gen-key "tafla dry run <dry-run@example.invalid>" rsa3072 sign never
+
+          ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --batch --pinentry-mode loopback --passphrase dry-run --armor --export-secret-keys)" \
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=dry-run \
+            ./gradlew :core:publishToMavenLocal -Dmaven.repo.local="$RUNNER_TEMP/maven"
+
+          for signature in "$RUNNER_TEMP"/maven/io/github/snovader/tafla/tafla/*/*.asc; do
+            gpg --batch --verify "$signature" "${signature%.asc}"
+          done
+
+      - name: Upload the repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: maven
+          path: ${{ runner.temp }}/maven/io/github/snovader/tafla/
+          if-no-files-found: error
+
+  maven-publish:
+    name: Maven Central (publish)
+    needs: [version, maven-build]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    # Waits for the Central Portal to validate the deployment
+    timeout-minutes: 60
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/io.github.snovader.tafla/tafla/${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Uploads a signed deployment to the Central Portal, and publishes it
+      # once the portal has validated it. Without a key, signing fails rather
+      # than publishing unsigned artifacts.
+      - name: Publish to Maven Central
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew :core:publishToMavenCentral

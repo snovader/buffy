@@ -21,8 +21,10 @@ NullAway. Run the commands below from this directory.
 
 `./gradlew test -PtestJavaVersion=21` runs the tests in Java 21 rather than 25.
 `./gradlew :core:publishToMavenLocal` publishes the runtime's jar, sources,
-javadoc and POM to the local Maven repository. Given an ASCII-armored key in
-the `signingKey` and `signingPassword` Gradle properties, it signs them too.
+javadoc and POM to the local Maven repository, signed with an ASCII-armored key
+in the `signingInMemoryKey` and `signingInMemoryKeyPassword` Gradle
+properties, without which it fails. The release workflow publishes them to
+Maven Central, as [RELEASING.md](../RELEASING.md) describes.
 `./gradlew build` also checks that every codec in the benchmarks reads back
 what it wrote, and `./gradlew :benchmarks:jmh` runs the benchmarks.
 

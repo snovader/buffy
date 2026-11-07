@@ -33,7 +33,8 @@ every part of the language.
 A schema declares messages, tables and structs, in any order:
 
 - A **message** is a table that's sent on its own and read from its bytes.
-  Its attributes set its layout, as the [format](../../SPEC.md) describes
+  Its attributes set its layout, as the
+  [format](https://github.com/snovader/tafla/blob/main/SPEC.md) describes
   it: `sized` puts the table's length in its header, `version: <n>` puts a
   version there, which readers check, and `offset_type: uint8`, `uint16` or
   `uint32`, the default, sets the offset type, the unsigned integer type of
