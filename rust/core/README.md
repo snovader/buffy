@@ -137,6 +137,19 @@ its README describes. Its fastest samples, on an Apple M2 Pro:
   rmp-serde and prost, which took 1.4 µs: each of its 200 tables is a
   builder, which allocates its record of fields. It took 0.30 µs to read.
 
+## Conversions
+
+Each setter takes its field's own Rust type, such as `u8` for a `uint8` and
+`f32` for a `float32`, so the caller converts a value to it, with `as` or
+`TryFrom`, and the runtime writes it as it is:
+
+| Value                                    | Written as                                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| An integer outside its field's range     | Not expressible. `as` keeps the low bits (`300_i32 as u8` is 44), and `u8::try_from()` returns an error.            |
+| A fraction or NaN for an integer field   | Not expressible. `as` truncates and saturates (`1.5_f64 as u8` is 1, and `f64::NAN as u8` is 0).                    |
+| An `f64` too large for an `f32`          | `as f32` makes it infinity of its sign, and rounds other values to the nearest `f32`, which the setter writes.      |
+| A lone surrogate in a string             | Not expressible: a `&str` is always UTF-8.                                                                          |
+
 ## Validation and errors
 
 Validation is always on:

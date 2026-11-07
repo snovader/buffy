@@ -121,6 +121,19 @@ byte; its README describes them. This package writes them, and
   flatbuffers, protobufjs and msgpackr, and tafla read it 2–3 times as fast
   as they did.
 
+## Conversions
+
+Builders and writers convert each value to its field's type as `DataView`'s
+setters and typed arrays convert it:
+
+| Value                                                                   | Written as                                                                                                                          |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| An integer outside its field's range                                    | Wrapped, as `DataView`'s setters wrap it: 300 as a `uint8` is 44, and -1 is 255. A `bigint` outside its 64-bit type wraps the same. |
+| A fraction or `NaN` for an integer field                                | Truncated: 1.5 is 1, and `NaN` is 0.                                                                                                |
+| A number too large for a `float32`                                      | Infinity of its sign. Other numbers round to the nearest `float32`.                                                                 |
+| A lone surrogate in a string                                            | U+FFFD.                                                                                                                             |
+| A `number` for an `int64` or `uint64`, or a `bigint` for any other type | Throws a `TypeError`, from a writer's setter or a builder's `finalize()`.                                                           |
+
 ## Validation and errors
 
 Validation is always on:

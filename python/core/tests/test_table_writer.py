@@ -242,6 +242,43 @@ class TestValues(unittest.TestCase):
                 with self.assertRaises(error):
                     getattr(writer, setter)(0, value)
 
+    def test_converts_values_as_the_package_docstring_states(self) -> None:
+        nan = float("nan")
+        raised: list[tuple[str, object, type[Exception]]] = [
+            ("set_uint8", 300, ValueError),
+            ("set_uint8", -1, ValueError),
+            ("set_uint8_array", [300], OverflowError),
+            ("set_uint8", 1.5, ValueError),
+            ("set_uint8", nan, ValueError),
+            ("set_uint8_array", [1.5], TypeError),
+            ("set_uint8_array", [nan], TypeError),
+            ("set_float32", 1e300, ValueError),
+            ("set_string", "\ud800", UnicodeEncodeError),
+        ]
+        for setter, value, error in raised:
+            with self.subTest(setter=setter, value=value):
+                builder = TableBuilder(1)
+                with self.assertRaises(error):
+                    getattr(builder, setter)(value)
+                    builder.finalize()
+                with self.assertRaises(error):
+                    getattr(TableWriter(1), setter)(0, value)
+
+        # A float32 array writes infinity of the value's sign, as array("f")
+        # converts it, and rounds a float within range to the nearest float32
+        written: list[tuple[str, object, bytes]] = [
+            ("set_float32_array", [1e300, -1e300], b"\x00\x00\x80\x7f\x00\x00\x80\xff"),
+            ("set_float32", 0.1, b"\xcd\xcc\xcc\x3d"),
+        ]
+        for setter, value, expected in written:
+            with self.subTest(setter=setter, value=value):
+                builder = TableBuilder(1)
+                getattr(builder, setter)(value)
+                writer = TableWriter(1)
+                getattr(writer, setter)(0, value)
+                self.assertEqual(bytes(writer.bytes()), bytes(builder.bytes()))
+                self.assertTrue(bytes(writer.bytes()).endswith(expected))
+
     def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
         self,
     ) -> None:

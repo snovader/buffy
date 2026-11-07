@@ -370,6 +370,54 @@ public class TableWriterTest {
         assertArrayEquals(builder.bytes(), writer.bytes());
     }
 
+    @Example
+    void values_convert_as_the_package_documentations_table_states() {
+        // An unsigned setter writes its value's low bits, as a cast would
+        assertConverted(TableSizer::addUint8, writer -> writer.setUint8(0, (short) 300),
+            builder -> builder.setUint8((short) 300), 44);
+        assertConverted(TableSizer::addUint8, writer -> writer.setUint8(0, (short) -1),
+            builder -> builder.setUint8((short) -1), 0xff);
+        assertConverted(TableSizer::addUint32, writer -> writer.setUint32(0, 1L << 32 | 7),
+            builder -> builder.setUint32(1L << 32 | 7), 7, 0, 0, 0);
+        assertConverted(sizer -> sizer.addUint8Array(2), writer -> writer.setUint8Array(0, new short[] {300, -1}),
+            builder -> builder.setUint8Array(new short[] {300, -1}), 2, 0, 0, 0, 44, 0xff);
+
+        // The cast to float makes a double too large for a float32 infinity
+        assertConverted(TableSizer::addFloat32, writer -> writer.setFloat32(0, (float) 1e300),
+            builder -> builder.setFloat32((float) 1e300), 0, 0, 0x80, 0x7f);
+
+        // A lone surrogate is written as U+FFFD
+        assertConverted(sizer -> sizer.addString("\ud800"), writer -> writer.setString(0, "\ud800"),
+            builder -> builder.setString("\ud800"), 3, 0, 0, 0, 0xef, 0xbf, 0xbd);
+    }
+
+    /**
+     * Asserts that a table of one field, sized and written by the writer and built by the builder,
+     * holds {@code expected} after its offset
+     */
+    private static void assertConverted(
+        Consumer<TableSizer> add,
+        Consumer<TableWriter> set,
+        Consumer<TableBuilder> build,
+        int... expected
+    ) {
+        var sizer = new TableSizer(1);
+        add.accept(sizer);
+        var writer = sizer.writer();
+        set.accept(writer);
+
+        var builder = new TableBuilder(1);
+        build.accept(builder);
+        var bytes = builder.bytes();
+        assertArrayEquals(bytes, writer.bytes());
+
+        var value = new byte[expected.length];
+        for (var i = 0; i < expected.length; i++) {
+            value[i] = (byte) expected[i];
+        }
+        assertArrayEquals(value, Arrays.copyOfRange(bytes, Integer.BYTES, bytes.length));
+    }
+
     /** A field of a kind of setter, which a test sizes, writes and builds */
     record FieldKind(
         String name,

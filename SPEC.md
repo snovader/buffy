@@ -149,6 +149,8 @@ Writers produce the same bytes for the same fields in every implementation:
 header, offsets, values in field order, the padding above and nothing else. A
 writer rejects a table longer than its offset type addresses, and a version
 that doesn't fit in it, rather than writing a table that readers would misread.
+It converts a value to its field's type as its language converts it, which
+each runtime documents, and rejects what it can't write.
 
 ## Conformance
 

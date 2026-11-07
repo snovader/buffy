@@ -14,8 +14,9 @@ import java.util.*;
  * writes where it ends. Arrays and nested tables are padded as {@code TableBuilder} pads them, so
  * the two write the same bytes for the same fields.</p>
  *
- * <p>Arrays of the elements' own Java type are copied in bulk, and unsigned setters write the low
- * bits of their argument, as {@code TableBuilder}'s do.</p>
+ * <p>Arrays of the elements' own Java type are copied in bulk, and values convert to their
+ * field's type as the package documentation's Conversions table describes, as for
+ * {@code TableBuilder}.</p>
  *
  * <p>Fields that differ from those that the sizer added, such as values that changed in between,
  * never write outside the table's bytes. A field that would end past them throws an

@@ -34,6 +34,6 @@ as `TableBuilder` does.
 ```
 
 The package's docstring, `help(tafla)`, has a longer example, with structs,
-and describes the format. The tests run both examples as doctests.
+and describes the format and how each value converts to its field's type. The tests run both examples as doctests.
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) specifies the
 format, which tafla's TypeScript, Java and Rust runtimes read and write too.

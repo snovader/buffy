@@ -97,6 +97,27 @@
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>
  *
+ * <h2>Conversions</h2>
+ *
+ * <p>Each setter takes a Java type that holds its field's values: a signed field's own type, such
+ * as {@code int} for an {@code int32}, the next wider type for an unsigned field, such as
+ * {@code short} for a {@code uint8}, and {@code float} for a {@code float32}. A cast converts a
+ * wider value to it, and the setters convert the rest:</p>
+ *
+ * <table>
+ *   <caption>How values convert to their field's type</caption>
+ *   <tr><th scope="col">Value</th><th scope="col">Written as</th></tr>
+ *   <tr><td>An integer outside its field's range</td>
+ *     <td>An unsigned setter writes its low bits, as a cast would: 300 as a {@code uint8} is 44,
+ *     and -1 is 255. A signed setter's value is the caller's cast.</td></tr>
+ *   <tr><td>A fraction or NaN for an integer field</td>
+ *     <td>Not expressible: integer setters take integer types.</td></tr>
+ *   <tr><td>A {@code double} too large for a {@code float32}</td>
+ *     <td>The caller's cast to {@code float}, which makes it infinity of its sign and rounds
+ *     other values to the nearest {@code float}.</td></tr>
+ *   <tr><td>A lone surrogate in a string</td><td>U+FFFD.</td></tr>
+ * </table>
+ *
  * <h2>Validation and errors</h2>
  *
  * <p>Validation is always on:</p>
@@ -139,8 +160,6 @@
  *     {@code IllegalStateException} for fields that didn't fill them. It throws an
  *     {@code IllegalArgumentException} for a field index outside its table's fields and an item
  *     outside its vector's items, and writes nothing.</li>
- *   <li>A string is written with each lone surrogate replaced by U+FFFD, as TypeScript writes it.
- *     </li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
  *     versioned.</li>
  * </ul>

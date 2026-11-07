@@ -706,3 +706,138 @@ function filled(bytes: Uint8Array, fill: number): Uint8Array {
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
     return left.length === right.length && left.every((byte, index) => byte === right[index]);
 }
+
+describe("conversions, as the README's table states them", () => {
+    /** The bytes of field 0's value, from a builder and a writer of one field */
+    function written(
+        add: (sizer: TableSizer) => void,
+        set: (writer: TableWriter) => void,
+        build: (builder: TableBuilder) => void
+    ): number[] {
+        const sizer = new TableSizer(1);
+        add(sizer);
+        const writer = sizer.writer();
+        set(writer);
+
+        const builder = new TableBuilder(1);
+        build(builder);
+        expect(writer.bytes()).toStrictEqual(builder.bytes());
+
+        return Array.from(builder.bytes().subarray(4));
+    }
+
+    it('should wrap an integer outside its field’s range', () => {
+        for (const [value, byte] of [
+            [300, 44],
+            [-1, 255]
+        ]) {
+            expect(
+                written(
+                    sizer => sizer.addUint8(),
+                    writer => writer.setUint8(0, value),
+                    builder => builder.setUint8(value)
+                )
+            ).toStrictEqual([byte]);
+        }
+        expect(
+            written(
+                sizer => sizer.addUint8Array(2),
+                writer => writer.setUint8Array(0, [300, -1]),
+                builder => builder.setUint8Array([300, -1])
+            )
+        ).toStrictEqual([2, 0, 0, 0, 44, 255]);
+        expect(
+            written(
+                sizer => sizer.addUint64(),
+                writer => writer.setUint64(0, 2n ** 64n + 5n),
+                builder => builder.setUint64(2n ** 64n + 5n)
+            )
+        ).toStrictEqual([5, 0, 0, 0, 0, 0, 0, 0]);
+    });
+
+    it('should truncate a fraction or NaN for an integer field', () => {
+        expect(
+            written(
+                sizer => sizer.addUint8Array(2),
+                writer => writer.setUint8Array(0, [1.5, Number.NaN]),
+                builder => builder.setUint8Array([1.5, Number.NaN])
+            )
+        ).toStrictEqual([2, 0, 0, 0, 1, 0]);
+        for (const [value, byte] of [
+            [1.5, 1],
+            [Number.NaN, 0]
+        ]) {
+            expect(
+                written(
+                    sizer => sizer.addUint8(),
+                    writer => writer.setUint8(0, value),
+                    builder => builder.setUint8(value)
+                )
+            ).toStrictEqual([byte]);
+        }
+    });
+
+    it('should write a number too large for a float32 as infinity', () => {
+        const infinity = Array.from(
+            new Uint8Array(Float32Array.of(Number.POSITIVE_INFINITY).buffer)
+        );
+        const negativeInfinity = Array.from(
+            new Uint8Array(Float32Array.of(Number.NEGATIVE_INFINITY).buffer)
+        );
+
+        expect(
+            written(
+                sizer => sizer.addFloat32(),
+                writer => writer.setFloat32(0, 1e300),
+                builder => builder.setFloat32(1e300)
+            )
+        ).toStrictEqual(infinity);
+        expect(
+            written(
+                sizer => sizer.addFloat32Array(1),
+                writer => writer.setFloat32Array(0, [-1e300]),
+                builder => builder.setFloat32Array([-1e300])
+            )
+        ).toStrictEqual([1, 0, 0, 0, ...negativeInfinity]);
+    });
+
+    it('should write a lone surrogate as U+FFFD', () => {
+        expect(
+            written(
+                sizer => sizer.addString('\ud800'),
+                writer => writer.setString(0, '\ud800'),
+                builder => builder.setString('\ud800')
+            )
+        ).toStrictEqual([3, 0, 0, 0, 0xef, 0xbf, 0xbd]);
+    });
+
+    it('should throw TypeError for a number for a 64-bit integer, or a bigint for another type', () => {
+        const writer = (add: (sizer: TableSizer) => void): TableWriter => {
+            const sizer = new TableSizer(1);
+            add(sizer);
+            return sizer.writer();
+        };
+
+        const builder = (set: (builder: TableBuilder) => void): TableBuilder => {
+            const built = new TableBuilder(1);
+            set(built);
+            return built;
+        };
+
+        expect(() => builder(built => built.setInt64(1 as unknown as bigint)).bytes()).toThrow(
+            TypeError
+        );
+        expect(() =>
+            writer(sizer => sizer.addUint64()).setUint64(0, 1 as unknown as bigint)
+        ).toThrow(TypeError);
+        expect(() =>
+            builder(built => built.setUint8Array([1n] as unknown as number[])).bytes()
+        ).toThrow(TypeError);
+        expect(() =>
+            writer(sizer => sizer.addFloat64()).setFloat64(0, 1n as unknown as number)
+        ).toThrow(TypeError);
+        expect(() =>
+            writer(sizer => sizer.addInt64Array(1)).setInt64Array(0, [1] as unknown as bigint[])
+        ).toThrow(TypeError);
+    });
+});
