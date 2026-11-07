@@ -1,6 +1,6 @@
 package io.github.snovader.tafla.test;
 
-import io.github.snovader.tafla.AddressableSpace;
+import io.github.snovader.tafla.OffsetType;
 import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.test.FieldDescription.*;
 
@@ -21,7 +21,7 @@ import java.util.*;
  */
 final class GeneratedDescriptions {
     /** The layout of tables and of messages without attributes */
-    static final LayoutDescription DEFAULT_LAYOUT = LayoutDescription.headerless(AddressableSpace.SIZEOF_32);
+    static final LayoutDescription DEFAULT_LAYOUT = LayoutDescription.headerless(OffsetType.UINT32);
 
     private GeneratedDescriptions() {}
 

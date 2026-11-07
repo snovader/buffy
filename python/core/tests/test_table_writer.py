@@ -11,14 +11,15 @@ from tests.descriptions import tables
 from tests.tables import (
     LONGEST,
     Description,
-    OffsetSize,
+    OffsetType,
     build_table,
     nested_in_place,
+    offset_size_of,
     read_table,
     write_table,
 )
 
-NARROW_OFFSET_SIZES: tuple[OffsetSize, ...] = (1, 2)
+NARROW_OFFSET_TYPES: tuple[OffsetType, ...] = ("uint8", "uint16")
 
 
 def outcome(write: Callable[[], memoryview[int]]) -> bytes | type[Exception]:
@@ -31,7 +32,7 @@ def outcome(write: Callable[[], memoryview[int]]) -> bytes | type[Exception]:
 
 
 def fits(table: Description) -> bool:
-    """Whether a table and those nested in it fit their offset sizes, as their
+    """Whether a table and those nested in it fit their offset types, as their
     builders judge"""
     return not isinstance(outcome(lambda: build_table(table).bytes()), type)
 
@@ -72,9 +73,9 @@ class TestTableWriter(unittest.TestCase):
     ) -> None:
         # A uint8 leaves a uint32[] 3 bytes short of its alignment, and a
         # uint16 a nested table of float64s 1 byte short of its own
-        nested = {"sized": False, "versioned": False, "offsetSize": 2}
+        nested = {"sized": False, "versioned": False, "offsetType": "uint16"}
         table: Description = {
-            "layout": {"sized": True, "versioned": True, "offsetSize": 2},
+            "layout": {"sized": True, "versioned": True, "offsetType": "uint16"},
             "version": 7,
             "fields": [
                 {"type": "uint8", "value": 1},
@@ -113,12 +114,12 @@ class TestTableWriter(unittest.TestCase):
 
 
 class TestTableLength(unittest.TestCase):
-    @given(tables(offset_sizes=NARROW_OFFSET_SIZES))
+    @given(tables(offset_types=NARROW_OFFSET_TYPES))
     def test_writes_the_longest_table_that_its_offsets_address_and_rejects_a_longer_one(
         self, table: Description
     ) -> None:
         table = nested_in_place(table)
-        longest_length = LONGEST[table["layout"]["offsetSize"]]
+        longest_length = LONGEST[table["layout"]["offsetType"]]
 
         shortest = with_bytes(table, 0)
         assume(fits(shortest))
@@ -133,7 +134,7 @@ class TestTableLength(unittest.TestCase):
         with self.assertRaises(ValueError):
             write_table(with_bytes(table, room + 1))
 
-    @given(tables(offset_sizes=NARROW_OFFSET_SIZES), integers(0, 300))
+    @given(tables(offset_types=NARROW_OFFSET_TYPES), integers(0, 300))
     def test_raises_for_any_table_that_table_builder_rejects_as_too_long(
         self, table: Description, length: int
     ) -> None:
@@ -144,12 +145,12 @@ class TestTableLength(unittest.TestCase):
             outcome(lambda: build_table(longer).bytes()),
         )
 
-    @given(sampled_from(NARROW_OFFSET_SIZES), booleans())
+    @given(sampled_from(NARROW_OFFSET_TYPES), booleans())
     def test_rejects_a_header_longer_than_the_offsets_address_as_table_builder_does(
-        self, offset_size: OffsetSize, sized: bool
+        self, offset_type: OffsetType, sized: bool
     ) -> None:
-        layout = TableLayout(sized=sized, offset_size=offset_size)
-        fields = LONGEST[offset_size] // offset_size - int(sized)
+        layout = TableLayout(sized=sized, offset_type=offset_type)
+        fields = LONGEST[offset_type] // offset_size_of(offset_type) - int(sized)
 
         TableWriter(fields, layout)
         with self.assertRaises(ValueError):
@@ -157,10 +158,38 @@ class TestTableLength(unittest.TestCase):
         with self.assertRaises(ValueError):
             TableWriter(fields + 1, layout)
 
+    def test_names_the_offset_type_that_the_table_is_too_long_for(self) -> None:
+        for offset_type in NARROW_OFFSET_TYPES:
+            with self.subTest(offset_type=offset_type):
+                layout = TableLayout(offset_type=offset_type)
+                longest = LONGEST[offset_type]
+
+                # The struct's offset fits, but the table ends past the longest
+                ends_too_late = TableWriter(1, layout)
+                ends_too_late.set_struct(0, bytes(longest))
+                length = longest + offset_size_of(offset_type)
+                with self.assertRaises(ValueError) as raised:
+                    ends_too_late.bytes()
+                self.assertEqual(
+                    str(raised.exception),
+                    f"The table's fields make it {length} bytes, "
+                    f"too long for {offset_type} offsets",
+                )
+
+                # The uint8's offset is past the longest table
+                starts_too_late = TableWriter(2, layout)
+                starts_too_late.set_struct(0, bytes(longest))
+                with self.assertRaises(ValueError) as raised:
+                    starts_too_late.set_uint8(1, 1)
+                self.assertEqual(
+                    str(raised.exception),
+                    f"The table is too long for {offset_type} offsets",
+                )
+
 
 class TestVersions(unittest.TestCase):
     def test_rejects_the_versions_that_table_builder_rejects(self) -> None:
-        versioned = TableLayout(versioned=True, offset_size=1)
+        versioned = TableLayout(versioned=True, offset_type="uint8")
         cases: list[tuple[TableLayout, int | None, type[Exception]]] = [
             (TableLayout.DEFAULT, 1, TypeError),
             (versioned, None, TypeError),

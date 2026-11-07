@@ -35,11 +35,12 @@ A schema declares messages, tables and structs, in any order:
 - A **message** is a table that's sent on its own and read from its bytes.
   Its attributes set its layout, as the [format](../../SPEC.md) describes
   it: `sized` puts the table's length in its header, `version: <n>` puts a
-  version there, which readers check, and `offset_size: 8`, `16` or `32`, the
-  default, sets the width of offsets and lengths, which limits the table to
-  255 bytes, 64 KiB or 4 GiB.
+  version there, which readers check, and `offset_type: uint8`, `uint16` or
+  `uint32`, the default, sets the offset type, the unsigned integer type of
+  its offsets and lengths, which limits the table to 255 bytes, 64 KiB or
+  4 GiB.
 - A **table** is nested in a message or another table, as a field of its type
-  or in a vector of them. It has no header, and 32-bit offsets.
+  or in a vector of them. It has no header, and the offset type `uint32`.
 - A **struct** holds scalars and other structs at fixed offsets, without a
   header, offsets or padding. It's read and written on its own, such as the
   frames of a stream, and tables hold it in place, like a scalar, and in
@@ -73,7 +74,7 @@ with a digit, and `INTEGER` is decimal digits:
 schema      = declaration*
 declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 attributes  = "(" (attribute ("," attribute)* ","?)? ")"
-attribute   = NAME (":" INTEGER)?
+attribute   = NAME (":" (INTEGER | NAME))?
 field       = doc* NAME ":" type ";"
 type        = NAME | "[" NAME "]"
 ```
@@ -99,13 +100,15 @@ or read its tables, or a target couldn't generate its code:
   `a_1` and `a1` are both `a1`.
 - Messages, tables and structs hold at least one field.
 - Only messages have attributes, each at most once.
-- A version fits in the message's offsets: 255 for 8-bit offsets, 65,535 for
-  16-bit and 4,294,967,295 for 32-bit.
+- A message's attributes are `sized`, `version: INTEGER` and
+  `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
+- A version fits in the message's offset type: 255 for `uint8`, 65,535 for
+  `uint16` and 4,294,967,295 for `uint32`.
 - Messages can't be nested; declare a table to nest it.
 - A table can't contain itself, except in a vector, which can be empty.
-- A message with 8- or 16-bit offsets can't nest tables, since readers read a
-  nested table's offsets as wide as its message's, and tables have 32-bit
-  offsets.
+- A message of the offset type `uint8` or `uint16` can't nest tables, since
+  readers read a nested table's offsets as of its message's offset type, and
+  tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
   even within another struct. Arrays of strings aren't supported.
 - A definition's fields fit in a Java constructor, which takes at most 254

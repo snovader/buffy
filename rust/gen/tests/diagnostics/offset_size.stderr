@@ -1,0 +1,17 @@
+error: unknown attribute `offset_size`
+ --> offset_size.tafla:4:17
+  |
+4 | message Narrow (offset_size: 16) {
+  |                 ^^^^^^^^^^^ `offset_type` names the offset type, such as `offset_type: uint16`
+
+error: unknown attribute `offset_size`
+ --> offset_size.tafla:8:14
+  |
+8 | message Odd (offset_size: 12) {
+  |              ^^^^^^^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`
+
+error: unknown attribute `offset_size`
+  --> offset_size.tafla:12:15
+   |
+12 | message Bare (offset_size) {
+   |               ^^^^^^^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`

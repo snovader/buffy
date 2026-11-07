@@ -3,6 +3,7 @@ import {
     type LayoutDescription,
     type NestedTable,
     type OffsetSize,
+    type OffsetType,
     type ScalarType,
     type TableDescription,
     toJsonNumber
@@ -12,13 +13,20 @@ import {
 // rather than with ByteBuffer, so that tests can check the bytes that tafla
 // writes without relying on its reader.
 
+/** The offset size of each offset type */
+export const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
+    uint8: 1,
+    uint16: 2,
+    uint32: 4
+};
+
 /** The byte length of a layout's header slots */
 export function headerSizeOf({
     sized,
     versioned,
-    offsetSize
+    offsetType
 }: LayoutDescription): number {
-    return (Number(sized) + Number(versioned)) * offsetSize;
+    return (Number(sized) + Number(versioned)) * OFFSET_SIZES[offsetType];
 }
 
 /**
@@ -121,12 +129,9 @@ export function* tablesIn(
 ): Generator<TableAt> {
     const { layout, fields } = table;
     const headerSize = headerSizeOf(layout);
+    const offsetSize = OFFSET_SIZES[layout.offsetType];
     const offsets = fields.map((_, index) =>
-        readUnsigned(
-            bytes,
-            headerSize + index * layout.offsetSize,
-            layout.offsetSize
-        )
+        readUnsigned(bytes, headerSize + index * offsetSize, offsetSize)
     );
 
     yield { table, bytes, offsets };
@@ -135,12 +140,7 @@ export function* tablesIn(
         if (field.type === 'table') {
             yield* tablesIn(bytes.subarray(offsets[index]), field.table);
         } else if (field.type === 'vector') {
-            yield* itemsIn(
-                bytes,
-                offsets[index],
-                layout.offsetSize,
-                field.items
-            );
+            yield* itemsIn(bytes, offsets[index], offsetSize, field.items);
         }
     }
 }

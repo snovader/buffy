@@ -1,5 +1,5 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
-import type { AddressableSpace } from './types.ts';
+import type { OffsetSize, OffsetType } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
     /** Whether the header starts with the table's total byte length */
@@ -10,15 +10,23 @@ export interface TableLayoutOptions<Versioned extends boolean = boolean> {
      */
     versioned?: Versioned;
     /**
-     * The width in bytes of the header slots, field offsets and length
-     * prefixes, which limits the table's size: 1 for up to 255 bytes, 2 for
-     * 65,535 and 4, the default, for 4 GiB.
+     * The offset type, the unsigned integer type of the header slots, field
+     * offsets, counts, lengths and item ends, which limits the table's length:
+     * `'uint8'` for up to 255 bytes, `'uint16'` for 65,535 and `'uint32'`, the
+     * default, for 4 GiB.
      */
-    offsetSize?: AddressableSpace;
+    offsetType?: OffsetType;
 }
 
+/** The offset size of each offset type */
+const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
+    uint8: SIZEOF_8,
+    uint16: SIZEOF_16,
+    uint32: SIZEOF_32
+};
+
 /**
- * The header and offset width of a table. A format creates its layout once
+ * The header and offset type of a table. A format creates its layout once
  * and passes it to both the `TableBuilder` that writes the table and the
  * `ByteBuffer` that reads it, so that the two can't disagree. Nested tables
  * use {@link TableLayout.DEFAULT}.
@@ -27,33 +35,53 @@ export interface TableLayoutOptions<Versioned extends boolean = boolean> {
  * built.
  */
 export class TableLayout<Versioned extends boolean = boolean> {
-    /** No header slots, and 32-bit offsets and lengths */
+    /** No header slots, and offsets and lengths of the offset type `uint32` */
     static readonly DEFAULT: TableLayout<false> = new TableLayout(
         false,
         false,
-        SIZEOF_32
+        'uint32'
     );
 
     readonly #sized: boolean;
     readonly #versioned: Versioned;
-    readonly #offsetSize: AddressableSpace;
+    readonly #offsetType: OffsetType;
+    readonly #offsetSize: OffsetSize;
 
     private constructor(
         sized: boolean,
         versioned: Versioned,
-        offsetSize: AddressableSpace
+        offsetType: OffsetType
     ) {
         this.#sized = sized;
         this.#versioned = versioned;
-        this.#offsetSize = offsetSize;
+        this.#offsetType = offsetType;
+        this.#offsetSize = OFFSET_SIZES[offsetType];
     }
 
+    /**
+     * @throws {TypeError} If `options` has another option than `sized`,
+     * `versioned` and `offsetType`, such as a misspelled one.
+     * @throws {RangeError} If `offsetType` isn't `'uint8'`, `'uint16'` or
+     * `'uint32'`.
+     */
     static create<Versioned extends boolean = false>({
         sized = false,
         versioned = false as Versioned,
-        offsetSize = SIZEOF_32
+        offsetType = 'uint32',
+        ...others
     }: TableLayoutOptions<Versioned> = {}): TableLayout<Versioned> {
-        return new TableLayout(sized, versioned, offsetSize);
+        // An option that isn't read would leave its default in its place,
+        // and readers of the intended layout would misread the table
+        const [other] = Object.keys(others);
+        if (other !== undefined) {
+            throw new TypeError(
+                `TableLayout.create() takes sized, versioned and offsetType, not ${other}`
+            );
+        }
+
+        assertOffsetType(offsetType);
+
+        return new TableLayout(sized, versioned, offsetType);
     }
 
     sized(): boolean {
@@ -64,7 +92,12 @@ export class TableLayout<Versioned extends boolean = boolean> {
         return this.#versioned;
     }
 
-    offsetSize(): AddressableSpace {
+    offsetType(): OffsetType {
+        return this.#offsetType;
+    }
+
+    /** The offset size, the width in bytes of the offset type: 1, 2 or 4 */
+    offsetSize(): OffsetSize {
         return this.#offsetSize;
     }
 
@@ -84,7 +117,7 @@ export class TableLayout<Versioned extends boolean = boolean> {
  * @throws {TypeError} If `version` is given for a layout without a version
  * slot, or missing for one with it.
  * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
- * isn't an integer that fits in the layout's offset size, or the header
+ * isn't an integer that fits in the layout's offset type, or the header
  * alone is longer than the layout addresses.
  */
 export function headerLength(
@@ -94,6 +127,7 @@ export function headerLength(
 ): number {
     assertCount(fields);
     const size = layout.offsetSize();
+    const offsetType = layout.offsetType();
 
     if (layout.versioned() !== (version !== undefined)) {
         throw new TypeError(
@@ -105,14 +139,14 @@ export function headerLength(
 
     if (version !== undefined && !fitsIn(version, size)) {
         throw new RangeError(
-            `Version ${version} doesn't fit in a ${size}-byte slot`
+            `Version ${version} doesn't fit in a ${offsetType} slot`
         );
     }
 
     const length = layout.headerSize() + fields * size;
     if (!(length <= maxLength(size))) {
         throw new RangeError(
-            `A header of ${fields} fields doesn't fit in ${size}-byte offsets`
+            `A header of ${fields} fields doesn't fit in ${offsetType} offsets`
         );
     }
 
@@ -123,7 +157,7 @@ export function headerLength(
  * The longest table that offsets of `size` bytes address, which is also the
  * largest number that they hold unsigned, without a power
  */
-export function maxLength(size: AddressableSpace): number {
+export function maxLength(size: OffsetSize): number {
     switch (size) {
         case SIZEOF_8:
             return 0xff;
@@ -150,7 +184,25 @@ export function assertCount(count: number): void {
     }
 }
 
+/**
+ * Checks that `value` is one of the offset types. It must be the string itself:
+ * `Object.hasOwn()` would also find `['uint8']`, which converts to its key.
+ *
+ * @throws {RangeError} If it isn't.
+ */
+function assertOffsetType(value: unknown): asserts value is OffsetType {
+    if (typeof value !== 'string') {
+        throw new RangeError(
+            `An offset type must be a string such as 'uint16', not a value of type ${typeof value}`
+        );
+    }
+
+    if (!Object.hasOwn(OFFSET_SIZES, value)) {
+        throw new RangeError(`${value} isn't an offset type`);
+    }
+}
+
 /** Whether `value` is a whole number that `size` bytes hold unsigned */
-function fitsIn(value: number, size: AddressableSpace): boolean {
+function fitsIn(value: number, size: OffsetSize): boolean {
     return Number.isInteger(value) && value >= 0 && value <= maxLength(size);
 }

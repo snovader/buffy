@@ -30,13 +30,13 @@ import java.util.*;
  *
  * <p>The length is counted in a {@code long}, and checked once all the fields are added, by
  * {@link #byteLength()} and {@link #writer()}, against the longest table that the layout's offset
- * size addresses: 255 bytes, 64 KiB, or for 32-bit offsets, as long as a Java array can be.</p>
+ * type addresses: 255 bytes, 64 KiB, or for {@code uint32} offsets, as long as a Java array can be.</p>
  */
 public final class TableSizer {
     private final TableLayout layout;
     private final long version;
     private final int fields;
-    /** The width of offsets, lengths and header slots */
+    /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
     /** The table's length so far, which is where the next field goes */
     private long position;
@@ -60,7 +60,7 @@ public final class TableSizer {
      * constructor.
      *
      * @param fields the number of fields that the table holds
-     * @param layout the table's header and offset width, which its readers must use too
+     * @param layout the table's header and offset type, which its readers must use too
      * @throws IllegalArgumentException if the layout is versioned, the number of fields is
      *     negative, or the header alone is longer than the layout addresses
      */
@@ -73,7 +73,7 @@ public final class TableSizer {
      *
      * @param version the version that the writer writes to the header
      * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset size, the number of fields is negative, or the header alone is longer
+     *     the layout's offset type, the number of fields is negative, or the header alone is longer
      *     than the layout addresses
      */
     public TableSizer(int fields, TableLayout layout, long version) {
@@ -85,7 +85,7 @@ public final class TableSizer {
         this.layout = layout;
         this.version = version;
         this.fields = fields;
-        this.offsetSize = layout.offsetSize().valueOf();
+        this.offsetSize = layout.offsetSize();
     }
 
     /**
@@ -314,6 +314,6 @@ public final class TableSizer {
             return String.format("The table's fields make it %d bytes, longer than a Java array can be", position);
         }
 
-        return String.format("The table's fields make it %d bytes, too long for %d-byte offsets", position, offsetSize);
+        return String.format("The table's fields make it %d bytes, too long for %s offsets", position, layout.offsetType());
     }
 }

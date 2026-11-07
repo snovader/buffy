@@ -72,7 +72,6 @@ const PYTHON: &[&str] = &[
 /// declare `Arrays`.
 const JAVA: &[&str] = &[
     "AbstractList",
-    "AddressableSpace",
     "Byte",
     "ByteBuffer",
     "ByteOrder",
@@ -83,6 +82,7 @@ const JAVA: &[&str] = &[
     "List",
     "MethodHandles",
     "Objects",
+    "OffsetType",
     "Override",
     "RandomAccess",
     "Short",
@@ -104,7 +104,7 @@ const RUST: &[&str] = &[
     "ByteBuffer",
     "DecodeError",
     "ExactSizeIterator",
-    "OffsetSize",
+    "OffsetType",
     "Option",
     "Result",
     "Self",

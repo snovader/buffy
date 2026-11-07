@@ -10,14 +10,32 @@ error: `version` needs a value
 5 | message Versioned (version) {
   |                    ^^^^^^^ such as `version: 1`
 
-error: `offset_size` needs a value
- --> attribute_values.tafla:9:22
+error: `version` takes an integer
+ --> attribute_values.tafla:9:25
   |
-9 | message WithOffsets (offset_size) {
-  |                      ^^^^^^^^^^^ such as `offset_size: 16`
+9 | message Named (version: one) {
+  |                         ^^^ such as `version: 1`
 
-error: offsets are 8, 16 or 32 bits wide
-  --> attribute_values.tafla:13:27
+error: `offset_type` needs a value
+  --> attribute_values.tafla:13:22
    |
-13 | message Odd (offset_size: 12) {
-   |                           ^^
+13 | message WithOffsets (offset_type) {
+   |                      ^^^^^^^^^^^ such as `offset_type: uint16`
+
+error: `16` isn't an offset type
+  --> attribute_values.tafla:17:28
+   |
+17 | message Bits (offset_type: 16) {
+   |                            ^^ `offset_type` names the offset type, such as `offset_type: uint16`
+
+error: `12` isn't an offset type
+  --> attribute_values.tafla:21:27
+   |
+21 | message Odd (offset_type: 12) {
+   |                           ^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`
+
+error: `int16` isn't an offset type
+  --> attribute_values.tafla:25:30
+   |
+25 | message Signed (offset_type: int16) {
+   |                              ^^^^^ `offset_type` names the offset type: `uint8`, `uint16` or `uint32`

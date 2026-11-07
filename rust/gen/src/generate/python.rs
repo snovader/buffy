@@ -2,9 +2,10 @@
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`.
 
+use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -997,8 +998,8 @@ fn layout_expression(layout: Layout) -> String {
     if layout.version.is_some() {
         arguments.push("versioned=True".to_owned());
     }
-    if layout.offset_size != OffsetSize::U32 {
-        arguments.push(format!("offset_size={}", layout.offset_size.bytes()));
+    if layout.offset_type != OffsetType::Uint32 {
+        arguments.push(format!("offset_type=\"{}\"", layout.offset_type.name()));
     }
 
     if arguments.is_empty() {
@@ -1014,16 +1015,6 @@ fn identifier(name: &str) -> String {
     } else {
         name.to_owned()
     }
-}
-
-/// "a `Name`" or "an `Name`", in a docstring
-fn article(name: &str) -> String {
-    let article = if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
-        "an"
-    } else {
-        "a"
-    };
-    format!("{article} `{name}`")
 }
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {

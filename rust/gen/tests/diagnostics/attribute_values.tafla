@@ -6,10 +6,22 @@ message Versioned (version) {
     x: float64;
 }
 
-message WithOffsets (offset_size) {
+message Named (version: one) {
     x: float64;
 }
 
-message Odd (offset_size: 12) {
+message WithOffsets (offset_type) {
+    x: float64;
+}
+
+message Bits (offset_type: 16) {
+    x: float64;
+}
+
+message Odd (offset_type: 12) {
+    x: float64;
+}
+
+message Signed (offset_type: int16) {
     x: float64;
 }

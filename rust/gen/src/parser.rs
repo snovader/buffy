@@ -4,7 +4,7 @@
 //! schema      = declaration*
 //! declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 //! attributes  = "(" (attribute ("," attribute)* ","?)? ")"
-//! attribute   = NAME (":" INTEGER)?
+//! attribute   = NAME (":" (INTEGER | NAME))?
 //! field       = doc* NAME ":" type ";"
 //! type        = NAME | "[" NAME "]"
 //! ```
@@ -37,7 +37,24 @@ pub struct Declaration {
 #[derive(Debug)]
 pub struct Attribute {
     pub name: Name,
-    pub value: Option<(u64, Span)>,
+    pub value: Option<AttributeValue>,
+}
+
+/// An attribute's value: a count, such as a version, or a name, such as an
+/// offset type
+#[derive(Debug)]
+pub enum AttributeValue {
+    Integer(u64, Span),
+    Name(Name),
+}
+
+impl AttributeValue {
+    pub const fn span(&self) -> Span {
+        match self {
+            Self::Integer(_, span) => *span,
+            Self::Name(name) => name.span,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -118,12 +135,7 @@ impl Parser<'_> {
             let name = self.name("an attribute")?;
             let value = if self.peek().kind == TokenKind::Colon {
                 self.advance();
-                let token = self.expect(TokenKind::Integer, "an integer")?;
-                let value = self
-                    .text(token)
-                    .parse::<u64>()
-                    .map_err(|_| Diagnostic::new("the integer is too large", token.span))?;
-                Some((value, token.span))
+                Some(self.attribute_value()?)
             } else {
                 None
             };
@@ -137,6 +149,19 @@ impl Parser<'_> {
 
         self.expect(TokenKind::RightParenthesis, "`,` or `)`")?;
         Ok(attributes)
+    }
+
+    fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {
+        if self.peek().kind == TokenKind::Identifier {
+            return Ok(AttributeValue::Name(self.name("a name")?));
+        }
+
+        let token = self.expect(TokenKind::Integer, "an integer or a name")?;
+        let value = self
+            .text(token)
+            .parse::<u64>()
+            .map_err(|_| Diagnostic::new("the integer is too large", token.span))?;
+        Ok(AttributeValue::Integer(value, token.span))
     }
 
     fn field(&mut self) -> Result<FieldDeclaration, Diagnostic> {

@@ -1,0 +1,14 @@
+// `offset_size` took the offset type's width in bits, and `offset_type` names
+// the type
+
+message Narrow (offset_size: 16) {
+    x: float64;
+}
+
+message Odd (offset_size: 12) {
+    x: float64;
+}
+
+message Bare (offset_size) {
+    x: float64;
+}

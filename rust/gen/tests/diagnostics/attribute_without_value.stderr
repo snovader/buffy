@@ -1,0 +1,5 @@
+error: expected an integer or a name, found `)`
+ --> attribute_without_value.tafla:1:25
+  |
+1 | message Point (version: ) {
+  |                         ^

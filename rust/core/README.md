@@ -62,8 +62,9 @@ and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
   then its version when it's `versioned`.
-- Header slots, offsets, counts and vector item ends are all `offset_size`
-  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or
+- Header slots, offsets, counts and vector item ends are all of the
+  layout's offset type, `OffsetType::Uint8`, `Uint16` or `Uint32`, whose
+  offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
   4 GiB.
 - Offsets count from the table's start. A table nested with `set_table()` has
   no header, and its offsets count from its own start.
@@ -77,7 +78,7 @@ and then the fields in the order they were set:
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector::get()` finds any
   item from two ends without reading the others. An item without a header
-  and with its parent's offset size is read in place, from the bytes that
+  and with its parent's offset type is read in place, from the bytes that
   `Vector::get_in_place()` returns, which run on to the end of its parent's,
   since its offsets may lead past its end. Any other item is read from its
   own bytes, which `Vector::get()` returns.
@@ -162,11 +163,11 @@ Validation is always on:
 than panicking, since WebAssembly builds abort on panic:
 
 - A setter returns an error for a field beyond the number the table was
-  created with, or one that would make the table too long for its
-  `offset_size`, and leaves the builder as it was, as `set_struct_array()`
+  created with, or one that would make the table too long for its offset
+  type, and leaves the builder as it was, as `set_struct_array()`
   does for bytes that aren't a whole number of structs. `to_bytes()`, and
   nesting a builder, return an error while fields are left to set. A version
-  that doesn't fit, or a header too long for its `offset_size`, is an error
+  that doesn't fit, or a header too long for its offset type, is an error
   from the constructor.
 - The compiler requires a version exactly for a versioned layout, and offers
   `ByteBuffer::version()` only for one, through `TableLayout`'s `VERSIONED`

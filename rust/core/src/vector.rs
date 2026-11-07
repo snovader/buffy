@@ -1,6 +1,6 @@
 use std::{iter::FusedIterator, mem};
 
-use crate::{DecodeError, OffsetSize, byte_buffer::read_slot};
+use crate::{DecodeError, OffsetType, byte_buffer::read_slot};
 
 /// A vector read from a table: its items, which are tables.
 ///
@@ -11,10 +11,10 @@ use crate::{DecodeError, OffsetSize, byte_buffer::read_slot};
 /// [`Vector::get_in_place()`] find any item from its end and the one before
 /// it, without reading the others.
 ///
-/// An item that has no header and offsets as wide as its parent's is read in
+/// An item that has no header and its parent's offset type is read in
 /// place: from the bytes that [`Vector::get_in_place()`] returns, which start
 /// where it does and end where its parent's do, with a `ByteBuffer` of its
-/// parent's offset size, at position 0. Its reads may reach past its end, as
+/// parent's offset type, at position 0. Its reads may reach past its end, as
 /// those of any table read in place may. Any other item is read as a table
 /// of its own, from the bytes that [`Vector::get()`] returns, with a
 /// `ByteBuffer` of its own layout.
@@ -27,7 +27,7 @@ pub struct Vector<'a> {
     /// from
     position: usize,
     len: usize,
-    offset_size: OffsetSize,
+    offset_type: OffsetType,
 }
 
 impl<'a> Vector<'a> {
@@ -38,13 +38,13 @@ impl<'a> Vector<'a> {
         bytes: &'a [u8],
         position: usize,
         len: usize,
-        offset_size: OffsetSize,
+        offset_type: OffsetType,
     ) -> Self {
         Self {
             bytes,
             position,
             len,
-            offset_size,
+            offset_type,
         }
     }
 
@@ -128,18 +128,18 @@ impl<'a> Vector<'a> {
     const fn items_start(&self) -> usize {
         // The count and the ends lie within the bytes, so this doesn't
         // overflow
-        (self.len + 1) * self.offset_size.bytes()
+        (self.len + 1) * self.offset_type.size()
     }
 
     /// Reads the end of item `index`, from the vector's position
     #[inline]
     fn end(&self, index: usize) -> Result<usize, DecodeError> {
-        let width = self.offset_size.bytes();
+        let width = self.offset_type.size();
         let slot = (index + 1) * width;
 
         self.bytes
             .get(slot..)
-            .and_then(|bytes| read_slot(bytes, self.offset_size))
+            .and_then(|bytes| read_slot(bytes, self.offset_type))
             .map(|end| end as usize)
             .ok_or_else(|| {
                 DecodeError::out_of_range(self.position_of(slot), width as u64, self.available())

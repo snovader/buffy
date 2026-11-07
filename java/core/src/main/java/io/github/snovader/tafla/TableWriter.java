@@ -26,7 +26,7 @@ import java.util.*;
  */
 public final class TableWriter {
     private final byte[] bytes;
-    /** The width of offsets, lengths and header slots */
+    /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
     private final int headerSize;
     /** Where the next field goes */
@@ -54,7 +54,7 @@ public final class TableWriter {
     ) {
         this.bytes = bytes;
         this.encodedStrings = encodedStrings;
-        this.offsetSize = layout.offsetSize().valueOf();
+        this.offsetSize = layout.offsetSize();
         this.headerSize = layout.headerSize();
         this.slots = headerSize;
         this.position = headerSize + fields * offsetSize;

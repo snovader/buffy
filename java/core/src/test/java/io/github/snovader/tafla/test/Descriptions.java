@@ -11,14 +11,14 @@ import java.util.stream.*;
 
 /**
  * Arbitrary descriptions of tables in the shape of the conformance suite's, of every part of the
- * format: layouts of every offset size, with and without each header slot and with versions that
+ * format: layouts of every offset type, with and without each header slot and with versions that
  * fit, every scalar and array type over its whole range, strings of any code points, structs and
  * arrays of structs of any scalars, and tables nested from builders and bytes, in fields and
  * vectors, down to a bounded depth.
  *
  * <p>Like the suite, they follow the rules that {@code SPEC.md} and {@link TableBuilder} set out:
- * every table fits its offset size, a table nested with {@code setTable()} has no header, so that
- * it's read in place when its offsets are as wide as its parent's, and vector items have any
+ * every table fits its offset type, a table nested with {@code setTable()} has no header, so that
+ * it's read in place when its offsets are of its parent's offset type, and vector items have any
  * layout.</p>
  */
 final class Descriptions {
@@ -33,7 +33,7 @@ final class Descriptions {
     /** How many tables a vector holds at most */
     static final int MAX_ITEMS = 3;
 
-    /** Every layout: with and without each header slot, and of every offset size */
+    /** Every layout: with and without each header slot, and of every offset type */
     private static final List<LayoutDescription> LAYOUTS = layoutsOf(List.of(false, true), List.of(false, true));
     /** The layouts of tables nested with {@code setTable()} */
     private static final List<LayoutDescription> HEADERLESS_LAYOUTS = layoutsOf(List.of(false), List.of(false));
@@ -44,8 +44,8 @@ final class Descriptions {
         var layouts = new ArrayList<LayoutDescription>();
         for (var isSized : sized) {
             for (var isVersioned : versioned) {
-                for (var offsetSize : AddressableSpace.values()) {
-                    layouts.add(new LayoutDescription(isSized, isVersioned, offsetSize));
+                for (var offsetType : OffsetType.values()) {
+                    layouts.add(new LayoutDescription(isSized, isVersioned, offsetType));
                 }
             }
         }
@@ -58,7 +58,7 @@ final class Descriptions {
         return tables(LAYOUTS, MAX_DEPTH, Nesting.OCCASIONAL);
     }
 
-    /** {@return tables of the layouts that pass {@code filter}, or of a wider offset size} */
+    /** {@return tables of the layouts that pass {@code filter}, or of a wider offset type} */
     static Arbitrary<TableDescription> tables(Predicate<LayoutDescription> filter) {
         return tables(LAYOUTS.stream().filter(filter).toList(), MAX_DEPTH, Nesting.OCCASIONAL);
     }
@@ -71,11 +71,11 @@ final class Descriptions {
         return tables(LAYOUTS, MAX_DEPTH, Nesting.FREQUENT);
     }
 
-    /** {@return tables of 1- and 2-byte offsets, whose limits a test can reach} */
+    /** {@return tables of uint8 and uint16 offsets, whose limits a test can reach} */
     static Arbitrary<TableDescription> narrowTables() {
-        // A table too long for 2-byte offsets is widened to 4
-        return tables(layout -> layout.offsetSize() != AddressableSpace.SIZEOF_32)
-            .filter(table -> table.layout().offsetSize() != AddressableSpace.SIZEOF_32);
+        // A table too long for uint16 offsets is widened to uint32
+        return tables(layout -> layout.offsetType() != OffsetType.UINT32)
+            .filter(table -> table.layout().offsetType() != OffsetType.UINT32);
     }
 
     /** {@return tables without a header, which can be nested with {@code setTable()}} */
@@ -101,14 +101,14 @@ final class Descriptions {
         );
     }
 
-    /** {@return whether the table fits its offset size, with as much padding as it could need} */
+    /** {@return whether the table fits its offset type, with as much padding as it could need} */
     static boolean fitsItsLayout(TableDescription table) {
-        return maxLength(table) <= table.layout().offsetSize().maxValue();
+        return maxLength(table) <= table.layout().offsetType().maxValue();
     }
 
     /**
      * {@return the most bytes that the table can take, with as much padding as each field's
-     * alignment could need}, to keep descriptions within their offset size without asking the
+     * alignment could need}, to keep descriptions within their offset type without asking the
      * builder under test
      */
     static long maxLength(TableDescription table) {
@@ -174,7 +174,7 @@ final class Descriptions {
             return Arbitraries.just(OptionalLong.empty());
         }
 
-        var max = layout.offsetSize().maxValue();
+        var max = layout.offsetType().maxValue();
         return Arbitraries.frequencyOf(
             Tuple.of(1, Arbitraries.of(0L, max)),
             Tuple.of(4, Arbitraries.longs().between(0, max))
@@ -182,25 +182,25 @@ final class Descriptions {
     }
 
     /**
-     * {@return a table of the header and fields}, with offsets as wide as the header's or, when
-     * the fields don't fit them, the next width that they fit. A version still fits the wider slot.
-     * Widening the offsets rather than rejecting the table keeps generating tables fast, and small
-     * tables still take every width.
+     * {@return a table of the header and fields}, with offsets of the header's offset type or,
+     * when the fields don't fit them, the next wider type that they fit. A version still fits the
+     * wider slot. Widening the offsets rather than rejecting the table keeps generating tables
+     * fast, and small tables still take every offset type.
      */
     private static TableDescription fitted(Header header, List<FieldDescription> fields) {
         var layout = header.layout();
-        while (maxLength(layout, fields) > layout.offsetSize().maxValue()) {
-            layout = new LayoutDescription(layout.sized(), layout.versioned(), wider(layout.offsetSize()));
+        while (maxLength(layout, fields) > layout.offsetType().maxValue()) {
+            layout = new LayoutDescription(layout.sized(), layout.versioned(), wider(layout.offsetType()));
         }
 
         return new TableDescription(layout, header.version(), fields);
     }
 
-    private static AddressableSpace wider(AddressableSpace offsetSize) {
-        return switch (offsetSize) {
-            case SIZEOF_8 -> AddressableSpace.SIZEOF_16;
-            case SIZEOF_16 -> AddressableSpace.SIZEOF_32;
-            case SIZEOF_32 -> throw new IllegalStateException("The fields don't fit in 32-bit offsets");
+    private static OffsetType wider(OffsetType offsetType) {
+        return switch (offsetType) {
+            case UINT8 -> OffsetType.UINT16;
+            case UINT16 -> OffsetType.UINT32;
+            case UINT32 -> throw new IllegalStateException("The fields don't fit in uint32 offsets");
         };
     }
 

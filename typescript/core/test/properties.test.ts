@@ -21,10 +21,17 @@ import {
     isArrayField,
     type LayoutDescription,
     type OffsetSize,
+    type OffsetType,
     type ScalarType,
     type TableDescription
 } from './conformance/description.ts';
-import { headerSizeOf, readScalar, readUnsigned, tablesIn } from './conformance/format.ts';
+import {
+    headerSizeOf,
+    OFFSET_SIZES,
+    readScalar,
+    readUnsigned,
+    tablesIn
+} from './conformance/format.ts';
 import {
     alignmentOf,
     buildTable,
@@ -61,7 +68,8 @@ describe('format rules', () => {
             table: { layout },
             bytes
         } of tablesIn(buildTable(table).bytes(), table)) {
-            const { sized, offsetSize } = layout;
+            const { sized } = layout;
+            const offsetSize = OFFSET_SIZES[layout.offsetType];
 
             if (sized) {
                 expect(readUnsigned(bytes, 0, offsetSize)).toBe(bytes.length);
@@ -71,7 +79,8 @@ describe('format rules', () => {
 
     it.prop([tables()])("should hold a versioned table's version in its version slot", table => {
         for (const { table: inner, bytes } of tablesIn(buildTable(table).bytes(), table)) {
-            const { sized, versioned, offsetSize } = inner.layout;
+            const { sized, versioned } = inner.layout;
+            const offsetSize = OFFSET_SIZES[inner.layout.offsetType];
 
             if (versioned) {
                 const slot = sized ? offsetSize : 0;
@@ -88,7 +97,8 @@ describe('format rules', () => {
                 table
             )) {
                 const { layout, fields } = inner;
-                let previous = headerSizeOf(layout) + fields.length * layout.offsetSize;
+                let previous =
+                    headerSizeOf(layout) + fields.length * OFFSET_SIZES[layout.offsetType];
 
                 for (const offset of offsets) {
                     expect(offset).toBeGreaterThanOrEqual(previous);
@@ -103,7 +113,7 @@ describe('format rules', () => {
         "should start every array at a multiple of its alignment from the start of its table: its element size, or its structs' largest scalar size",
         table => {
             for (const { table: inner, offsets } of tablesIn(buildTable(table).bytes(), table)) {
-                const { offsetSize } = inner.layout;
+                const offsetSize = OFFSET_SIZES[inner.layout.offsetType];
 
                 for (const [index, field] of inner.fields.entries()) {
                     if (isArrayField(field)) {
@@ -139,7 +149,12 @@ describe('format rules', () => {
                 table
             )) {
                 for (const [index, field] of inner.fields.entries()) {
-                    expectLittleEndian(bytes, offsets[index], inner.layout.offsetSize, field);
+                    expectLittleEndian(
+                        bytes,
+                        offsets[index],
+                        OFFSET_SIZES[inner.layout.offsetType],
+                        field
+                    );
                 }
             }
         }
@@ -395,22 +410,22 @@ function valueOrDecodeError(read: () => unknown): unknown {
 }
 
 describe('builder limits', () => {
-    const NARROW_OFFSET_SIZES = [1, 2] as const;
+    const NARROW_OFFSET_TYPES = ['uint8', 'uint16'] as const;
 
     const tablesWithOversizedFields = fc.oneof(
-        ...NARROW_OFFSET_SIZES.map(offsetSize =>
+        ...NARROW_OFFSET_TYPES.map(offsetType =>
             fc.record({
-                table: tables({ offsetSizes: [offsetSize], minFields: 1 }),
+                table: tables({ offsetTypes: [offsetType], minFields: 1 }),
                 index: fc.nat(),
-                field: oversizedFields(offsetSize)
+                field: oversizedFields(offsetType)
             })
         )
     );
 
     it.prop([tablesWithOversizedFields])(
-        'should reject a field too long for the offset size from its setter, and leave the builder as it was',
+        'should reject a field too long for the offset type from its setter, and leave the builder as it was',
         ({ table, index, field }) => {
-            const { offsetSize } = table.layout;
+            const { offsetType } = table.layout;
             const at = index % table.fields.length;
             const builder = createBuilder(table);
 
@@ -420,11 +435,11 @@ describe('builder limits', () => {
 
             const error = thrownBy(() => setField(builder, field));
             const message = new RegExp(
-                `^Field ${at + 1} makes the table (\\d+) bytes, too long for ${offsetSize}-byte offsets$`
+                `^Field ${at + 1} makes the table (\\d+) bytes, too long for ${offsetType} offsets$`
             );
             expect(error).toBeInstanceOf(RangeError);
             const [, length] = (error as Error).message.match(message) ?? [];
-            expect(Number(length)).toBeGreaterThan(MAX_VALUES[offsetSize]);
+            expect(Number(length)).toBeGreaterThan(MAX_VALUES[offsetType]);
 
             for (const after of table.fields.slice(at)) {
                 setField(builder, after);
@@ -442,16 +457,16 @@ describe('builder limits', () => {
     );
 
     const tablesWithLastFields = fc.oneof(
-        ...NARROW_OFFSET_SIZES.map(offsetSize =>
-            fc.record({ table: tables({ offsetSizes: [offsetSize] }), last: unpaddedFields })
+        ...NARROW_OFFSET_TYPES.map(offsetType =>
+            fc.record({ table: tables({ offsetTypes: [offsetType] }), last: unpaddedFields })
         )
     );
 
     it.prop([tablesWithLastFields])(
-        'should build a table as long as its offset size addresses, and reject a field one byte longer',
+        'should build a table as long as its offset type addresses, and reject a field one byte longer',
         ({ table, last }) => {
-            const { offsetSize } = table.layout;
-            const max = MAX_VALUES[offsetSize];
+            const { offsetType } = table.layout;
+            const max = MAX_VALUES[offsetType];
             const withBytes = (length: number): TableDescription => ({
                 ...table,
                 fields: [...table.fields, bytesField(length), last]
@@ -483,7 +498,7 @@ describe('builder limits', () => {
             expect(error).toBeInstanceOf(RangeError);
             expect(error).toHaveProperty(
                 'message',
-                `Field ${table.fields.length + 2} makes the table ${max + 1} bytes, too long for ${offsetSize}-byte offsets`
+                `Field ${table.fields.length + 2} makes the table ${max + 1} bytes, too long for ${offsetType} offsets`
             );
         }
     );
@@ -495,13 +510,14 @@ function bytesField(length: number): FieldDescription {
 }
 
 /**
- * Fields that are by themselves longer than a table of `offsetSize`-byte
- * offsets addresses: arrays of scalars and of structs, strings, nested tables
+ * Fields that are by themselves longer than a table of `offsetType` offsets
+ * addresses: arrays of scalars and of structs, strings, nested tables
  * and vectors with a long item or many items
  */
-function oversizedFields(offsetSize: OffsetSize): fc.Arbitrary<FieldDescription> {
-    const max = MAX_VALUES[offsetSize];
-    const layout = { sized: false, versioned: false, offsetSize: 4 } as const;
+function oversizedFields(offsetType: OffsetType): fc.Arbitrary<FieldDescription> {
+    const max = MAX_VALUES[offsetType];
+    const offsetSize = OFFSET_SIZES[offsetType];
+    const layout = { sized: false, versioned: false, offsetType: 'uint32' } as const;
     const long: TableDescription = { layout, fields: [arrayField('uint8', max)] };
     const empty: TableDescription = { layout, fields: [] };
     const froms = fc.constantFrom('builder' as const, 'bytes' as const);

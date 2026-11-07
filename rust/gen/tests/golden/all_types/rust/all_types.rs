@@ -130,7 +130,7 @@ impl ScalarsFields {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(10, Scalars::LAYOUT)?;
         sizer.add_i8();
@@ -285,7 +285,7 @@ impl ArraysFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(10, Arrays::LAYOUT)?;
         sizer.add_i8_array(self.int8.len());
@@ -400,7 +400,7 @@ impl NestedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(3, Nested::LAYOUT)?;
         sizer.add_str(self.label);
@@ -815,7 +815,7 @@ impl ReservedFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(1, Reserved::LAYOUT)?;
         sizer.add_table(KeywordsFields::ALIGNMENT);
@@ -961,7 +961,7 @@ impl StructsFields<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BuildError`] if it's longer than its 32-bit offsets address.
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(5, Structs::LAYOUT)?;
         sizer.add_struct(Packed::SIZE);

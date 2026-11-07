@@ -19,14 +19,15 @@ floats are IEEE 754 binary32 and binary64.
 
 A table's layout is fixed by its format, and the reader must know it:
 
-- **Offset size**: 1, 2 or 4 bytes. Header slots, field offsets and every
-  length or count prefix in the table are unsigned integers of this width.
-  A table can't be longer than the largest of them: 255 bytes, 65,535 bytes
-  or 4,294,967,295 bytes.
+- **Offset type**: `uint8`, `uint16` or `uint32`, the unsigned integer type
+  of the table's header slots, field offsets, counts, lengths and item ends.
+  Its width in bytes, 1, 2 or 4, is the table's **offset size**. A table
+  can't be longer than the largest value of its offset type: 255 bytes,
+  65,535 bytes or 4,294,967,295 bytes.
 - **Sized**: whether the header holds the table's length.
 - **Versioned**: whether the header holds a version.
 
-The default layout has 4-byte offsets and no header slots.
+The default layout has the offset type `uint32` and no header slots.
 
 ## Table
 
@@ -42,8 +43,9 @@ A table is its header, then one offset per field, then the fields' values:
   chosen by the format, so that readers can reject versions they don't read.
 - **Offset `i`** is the position of field `i`'s value, counted from the start
   of the table. The offsets of a table of `n` fields start right after the
-  header, so field `i`'s offset is at `headerSize + i × offsetSize`, where the
-  header is 0, 1 or 2 slots of `offsetSize` bytes.
+  header, so field `i`'s offset is at `headerSize + i × offsetSize`, where
+  `offsetSize` is the offset size and the header is 0, 1 or 2 slots of the
+  offset type.
 
 Writers write the values in field order, each after the previous one, with
 only the padding described below between them. Padding bytes are zero, and
@@ -61,7 +63,7 @@ readers ignore them.
 | Nested table                            | The table's bytes, with no length prefix                       |
 | Vector of tables                        | A count `n`, then the end of each item, then the `n` items     |
 
-Counts, lengths and item ends are `offsetSize` bytes wide, as offsets are.
+Counts, lengths and item ends are of the offset type, as offsets are.
 
 - **Scalars** aren't aligned.
 - **Structs** are a fixed sequence of scalars, which the format defines, as
@@ -90,7 +92,7 @@ Counts, lengths and item ends are `offsetSize` bytes wide, as offsets are.
 
 ### Reading nested tables
 
-A nested table that has no header and offsets as wide as its parent's, a
+A nested table that has no header and the offset type of its parent, a
 table field or a vector item, is read in place: its offsets count from its own
 start, and it reads within the bytes that its parent reads within. A vector
 item read in place isn't bounded by its end, so an offset of its own can lead
@@ -125,7 +127,7 @@ points past the item's end, at bytes that the item reads in place.
 
 Writers produce the same bytes for the same fields in every implementation:
 header, offsets, values in field order, the padding above and nothing else. A
-writer rejects a table longer than its offset size addresses, and a version
+writer rejects a table longer than its offset type addresses, and a version
 that doesn't fit in it, rather than writing a table that readers would misread.
 
 ## Conformance

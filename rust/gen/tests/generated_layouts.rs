@@ -9,12 +9,13 @@ mod layouts;
 mod tables;
 
 use layouts::{
-    Offset8, Offset8Fields, Offset8Sized, Offset8SizedFields, Offset8SizedVersioned,
-    Offset8SizedVersionedFields, Offset8Versioned, Offset8VersionedFields, Offset16,
-    Offset16Fields, Offset16Sized, Offset16SizedFields, Offset16SizedVersioned,
-    Offset16SizedVersionedFields, Offset16Versioned, Offset16VersionedFields, Offset32,
-    Offset32Fields, Offset32Sized, Offset32SizedFields, Offset32SizedVersioned,
-    Offset32SizedVersionedFields, Offset32Versioned, Offset32VersionedFields,
+    Uint8Offsets, Uint8OffsetsFields, Uint8OffsetsSized, Uint8OffsetsSizedFields,
+    Uint8OffsetsSizedVersioned, Uint8OffsetsSizedVersionedFields, Uint8OffsetsVersioned,
+    Uint8OffsetsVersionedFields, Uint16Offsets, Uint16OffsetsFields, Uint16OffsetsSized,
+    Uint16OffsetsSizedFields, Uint16OffsetsSizedVersioned, Uint16OffsetsSizedVersionedFields,
+    Uint16OffsetsVersioned, Uint16OffsetsVersionedFields, Uint32Offsets, Uint32OffsetsFields,
+    Uint32OffsetsSized, Uint32OffsetsSizedFields, Uint32OffsetsSizedVersioned,
+    Uint32OffsetsSizedVersionedFields, Uint32OffsetsVersioned, Uint32OffsetsVersionedFields,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -22,7 +23,7 @@ use tables::{
     CASES, Fields, Header, Value, arbitrary_bytes, build, check_truncated, expected, integers,
     overwrites, placements, strings_up_to, to_vec, truncations,
 };
-use tafla::{BuildError, DecodeError, OffsetSize, TableLayout};
+use tafla::{BuildError, DecodeError, OffsetType, TableLayout};
 
 /// The values of the fields that every message of the schema holds, which
 /// each message's generated fields borrow
@@ -82,65 +83,73 @@ macro_rules! message {
     };
 }
 
-const OFFSET_8: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U8);
-const OFFSET_16: TableLayout = TableLayout::DEFAULT.with_offset_size(OffsetSize::U16);
-const OFFSET_32: TableLayout = TableLayout::DEFAULT;
+const UINT8_OFFSETS: TableLayout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+const UINT16_OFFSETS: TableLayout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
+const UINT32_OFFSETS: TableLayout = TableLayout::DEFAULT;
 
 /// Every message, with its layout and version from its attributes
 fn messages() -> [Message; 12] {
     [
-        message!(Offset8, Offset8Fields, Header::new(OFFSET_8)),
+        message!(Uint8Offsets, Uint8OffsetsFields, Header::new(UINT8_OFFSETS)),
         message!(
-            Offset8Sized,
-            Offset8SizedFields,
-            Header::new(OFFSET_8.sized())
+            Uint8OffsetsSized,
+            Uint8OffsetsSizedFields,
+            Header::new(UINT8_OFFSETS.sized())
         ),
         message!(
-            Offset8Versioned,
-            Offset8VersionedFields,
-            Header::versioned(OFFSET_8, 255),
+            Uint8OffsetsVersioned,
+            Uint8OffsetsVersionedFields,
+            Header::versioned(UINT8_OFFSETS, 255),
             versioned
         ),
         message!(
-            Offset8SizedVersioned,
-            Offset8SizedVersionedFields,
-            Header::versioned(OFFSET_8.sized(), 0),
-            versioned
-        ),
-        message!(Offset16, Offset16Fields, Header::new(OFFSET_16)),
-        message!(
-            Offset16Sized,
-            Offset16SizedFields,
-            Header::new(OFFSET_16.sized())
-        ),
-        message!(
-            Offset16Versioned,
-            Offset16VersionedFields,
-            Header::versioned(OFFSET_16, 65_535),
+            Uint8OffsetsSizedVersioned,
+            Uint8OffsetsSizedVersionedFields,
+            Header::versioned(UINT8_OFFSETS.sized(), 0),
             versioned
         ),
         message!(
-            Offset16SizedVersioned,
-            Offset16SizedVersionedFields,
-            Header::versioned(OFFSET_16.sized(), 1),
+            Uint16Offsets,
+            Uint16OffsetsFields,
+            Header::new(UINT16_OFFSETS)
+        ),
+        message!(
+            Uint16OffsetsSized,
+            Uint16OffsetsSizedFields,
+            Header::new(UINT16_OFFSETS.sized())
+        ),
+        message!(
+            Uint16OffsetsVersioned,
+            Uint16OffsetsVersionedFields,
+            Header::versioned(UINT16_OFFSETS, 65_535),
             versioned
         ),
-        message!(Offset32, Offset32Fields, Header::new(OFFSET_32)),
         message!(
-            Offset32Sized,
-            Offset32SizedFields,
-            Header::new(OFFSET_32.sized())
-        ),
-        message!(
-            Offset32Versioned,
-            Offset32VersionedFields,
-            Header::versioned(OFFSET_32, 4_294_967_295),
+            Uint16OffsetsSizedVersioned,
+            Uint16OffsetsSizedVersionedFields,
+            Header::versioned(UINT16_OFFSETS.sized(), 1),
             versioned
         ),
         message!(
-            Offset32SizedVersioned,
-            Offset32SizedVersionedFields,
-            Header::versioned(OFFSET_32.sized(), 2),
+            Uint32Offsets,
+            Uint32OffsetsFields,
+            Header::new(UINT32_OFFSETS)
+        ),
+        message!(
+            Uint32OffsetsSized,
+            Uint32OffsetsSizedFields,
+            Header::new(UINT32_OFFSETS.sized())
+        ),
+        message!(
+            Uint32OffsetsVersioned,
+            Uint32OffsetsVersionedFields,
+            Header::versioned(UINT32_OFFSETS, 4_294_967_295),
+            versioned
+        ),
+        message!(
+            Uint32OffsetsSizedVersioned,
+            Uint32OffsetsSizedVersionedFields,
+            Header::versioned(UINT32_OFFSETS.sized(), 2),
             versioned
         ),
     ]
@@ -155,7 +164,7 @@ fn describe(owned: &Owned) -> Vec<Value> {
 }
 
 /// The most characters of a name and elements of `values`, in tables of up
-/// to about 600 bytes, so that those of 8-bit offsets are too long for their
+/// to about 600 bytes, so that those of `uint8` offsets are too long for their
 /// offsets about half the time
 const MAX_LENGTH: usize = 96;
 
@@ -170,7 +179,7 @@ fn owned() -> impl Strategy<Value = Owned> {
 /// any `version`
 fn other_version(header: Header, version: u32) -> Option<u32> {
     let own = header.version?;
-    let fitted = version & header.layout.offset_size().max_value();
+    let fitted = version & header.layout.offset_type().max_value();
 
     Some(if fitted == own { fitted ^ 1 } else { fitted })
 }
@@ -186,7 +195,7 @@ proptest! {
         for message in messages() {
             let bytes = match (message.serialize)(&owned) {
                 Ok(bytes) => placement.place(&bytes),
-                // Too long for 8-bit offsets, as the next property checks
+                // Too long for `uint8` offsets, as the next property checks
                 Err(error) => {
                     let too_long = matches!(error, BuildError::TooLong { .. });
                     prop_assert!(too_long, "{}: {}", message.name, error);
@@ -267,16 +276,17 @@ proptest! {
     }
 }
 
-/// Names of every length from 64 bytes short of the limit of 8- and 16-bit
-/// offsets to past it, so that each message's longest table that fits is
-/// written as `TableBuilder` writes it, and those longer fail as it fails.
+/// Names of every length from 64 bytes short of the limit of `uint8` and
+/// `uint16` offsets to past it, so that each message's longest table that
+/// fits is written as `TableBuilder` writes it, and those longer fail as it
+/// fails.
 /// Each byte of the name makes the table a byte longer, or two with the
 /// padding of the array after it, so the longest is at the limit or a byte
 /// short of it.
 #[test]
 fn every_layout_of_short_offsets_is_written_up_to_their_limit_and_fails_past_it() {
     for message in messages() {
-        let max = message.header.layout.offset_size().max_value() as usize;
+        let max = message.header.layout.offset_type().max_value() as usize;
         if max > usize::from(u16::MAX) {
             continue;
         }

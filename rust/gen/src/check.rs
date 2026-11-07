@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 use crate::diagnostic::Diagnostic;
 use crate::generate::reserved;
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetSize, Scalar, Schema, StructLayout,
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema, StructLayout,
 };
 use crate::naming::camel_case;
-use crate::parser::{Attribute, Declaration, FieldDeclaration, Keyword, Name};
+use crate::parser::{Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Name};
 
 /// Checks every declaration and returns all the errors found, in source order
 pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
@@ -377,7 +377,7 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
     let mut layout = Layout {
         sized: false,
         version: None,
-        offset_size: OffsetSize::U32,
+        offset_type: OffsetType::Uint32,
     };
     let mut version = None;
     let mut given = HashSet::new();
@@ -392,48 +392,53 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
             continue;
         }
 
-        match (name, attribute.value) {
+        match (name, &attribute.value) {
             ("sized", None) => layout.sized = true,
-            ("version", Some(value)) => version = Some(value),
-            ("offset_size", Some((bits, span))) => {
-                layout.offset_size = match bits {
-                    8 => OffsetSize::U8,
-                    16 => OffsetSize::U16,
-                    32 => OffsetSize::U32,
-                    _ => {
-                        errors.push(Diagnostic::new("offsets are 8, 16 or 32 bits wide", span));
-                        OffsetSize::U32
-                    }
-                };
+            ("version", Some(AttributeValue::Integer(value, span))) => {
+                version = Some((*value, *span));
             }
-            ("sized", Some((_, span))) => {
-                errors.push(Diagnostic::new("`sized` takes no value", span));
+            ("offset_type", Some(value)) => {
+                layout.offset_type = offset_type(value).unwrap_or_else(|error| {
+                    errors.push(error);
+                    OffsetType::Uint32
+                });
             }
+            ("sized", Some(value)) => {
+                errors.push(Diagnostic::new("`sized` takes no value", value.span()));
+            }
+            ("version", Some(AttributeValue::Name(value))) => errors.push(
+                Diagnostic::new("`version` takes an integer", value.span)
+                    .with_help("such as `version: 1`"),
+            ),
             ("version", None) => errors.push(
                 Diagnostic::new("`version` needs a value", attribute.name.span)
                     .with_help("such as `version: 1`"),
             ),
-            ("offset_size", None) => errors.push(
-                Diagnostic::new("`offset_size` needs a value", attribute.name.span)
-                    .with_help("such as `offset_size: 16`"),
+            ("offset_type", None) => errors.push(
+                Diagnostic::new("`offset_type` needs a value", attribute.name.span)
+                    .with_help("such as `offset_type: uint16`"),
+            ),
+            ("offset_size", value) => errors.push(
+                Diagnostic::new("unknown attribute `offset_size`", attribute.name.span)
+                    .with_help(offset_type_help(value.as_ref())),
             ),
             (other, _) => errors.push(
                 Diagnostic::new(format!("unknown attribute `{other}`"), attribute.name.span)
-                    .with_help("expected `sized`, `version` or `offset_size`"),
+                    .with_help("expected `sized`, `version` or `offset_type`"),
             ),
         }
     }
 
-    // Checked once the offset size is known, whichever attribute comes first
+    // Checked once the offset type is known, whichever attribute comes first
     if let Some((value, span)) = version {
-        let max = layout.offset_size.max_value();
+        let max = layout.offset_type.max_value();
         match u32::try_from(value) {
             Ok(value) if u64::from(value) <= max => layout.version = Some(value),
             _ => errors.push(
                 Diagnostic::new(
                     format!(
-                        "version {value} doesn't fit in {}-bit offsets",
-                        layout.offset_size.bytes() * 8
+                        "version {value} doesn't fit in the offset type `{}`",
+                        layout.offset_type.name()
                     ),
                     span,
                 )
@@ -443,6 +448,44 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
     }
 
     layout
+}
+
+/// The offset type that an `offset_type` attribute's value names
+fn offset_type(value: &AttributeValue) -> Result<OffsetType, Diagnostic> {
+    let found = match value {
+        AttributeValue::Name(name) => {
+            if let Some(offset_type) = OffsetType::from_name(&name.text) {
+                return Ok(offset_type);
+            }
+            name.text.clone()
+        }
+        AttributeValue::Integer(value, _) => value.to_string(),
+    };
+
+    Err(
+        Diagnostic::new(format!("`{found}` isn't an offset type"), value.span())
+            .with_help(offset_type_help(Some(value))),
+    )
+}
+
+/// Points a value of `offset_size`, or one of `offset_type` that isn't an
+/// offset type, to the offset types. A width in bits, which `offset_size`
+/// took, gets the type of that width, such as `uint16` for 16.
+fn offset_type_help(value: Option<&AttributeValue>) -> String {
+    let of_width = match value {
+        Some(AttributeValue::Integer(8, _)) => Some(OffsetType::Uint8),
+        Some(AttributeValue::Integer(16, _)) => Some(OffsetType::Uint16),
+        Some(AttributeValue::Integer(32, _)) => Some(OffsetType::Uint32),
+        _ => None,
+    };
+
+    match of_width {
+        Some(offset_type) => format!(
+            "`offset_type` names the offset type, such as `offset_type: {}`",
+            offset_type.name()
+        ),
+        None => "`offset_type` names the offset type: `uint8`, `uint16` or `uint32`".to_owned(),
+    }
 }
 
 fn resolve_type(
@@ -794,9 +837,9 @@ fn measure_struct(definition: &Definition, layouts: &[Option<StructLayout>]) -> 
     layout
 }
 
-/// Rejects tables nested in messages with narrower offsets, since readers
-/// read a nested table's offsets as wide as its message's, while tables are
-/// written with 32-bit offsets
+/// Rejects tables nested in messages of a narrower offset type, since readers
+/// read a nested table's offsets as of its message's offset type, while
+/// tables are written with `uint32` offsets
 fn check_nested_offsets(
     definitions: &[Definition],
     declarations: &[Declaration],
@@ -806,7 +849,7 @@ fn check_nested_offsets(
         let Kind::Message(layout) = definition.kind else {
             continue;
         };
-        if layout.offset_size == OffsetSize::U32 {
+        if layout.offset_type == OffsetType::Uint32 {
             continue;
         }
 
@@ -815,13 +858,13 @@ fn check_nested_offsets(
                 errors.push(
                     Diagnostic::new(
                         format!(
-                            "`{}` can't nest tables, since its offsets are {} bits wide",
+                            "`{}` can't nest tables, since its offset type is `{}`",
                             definition.name,
-                            layout.offset_size.bytes() * 8
+                            layout.offset_type.name()
                         ),
                         field_declaration.type_name.span,
                     )
-                    .with_help("nested tables need 32-bit offsets"),
+                    .with_help("nested tables need the offset type `uint32`"),
                 );
             }
         }

@@ -48,9 +48,9 @@ export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
 export function layoutOf({
     sized,
     versioned,
-    offsetSize
+    offsetType
 }: LayoutDescription): TableLayout {
-    return TableLayout.create({ sized, versioned, offsetSize });
+    return TableLayout.create({ sized, versioned, offsetType });
 }
 
 /** Builds a table as its description sets it out */
@@ -69,19 +69,19 @@ export function createBuilder({
     version,
     fields
 }: TableDescription): TableBuilder {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableBuilder(
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
 
     return new TableBuilder(
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -202,7 +202,7 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
 /**
  * Sizes and writes a table with `TableSizer` and `TableWriter`, as its
  * description sets it out. They write tables nested in it in place, so those
- * must have no header and its offset size, as {@link nestedInPlace} makes
+ * must have no header and its offset type, as {@link nestedInPlace} makes
  * them.
  */
 export function writeTable(table: TableDescription): Uint8Array {
@@ -228,12 +228,12 @@ export function writeTableInto(
 /**
  * Returns the description with every table nested in it made one that a
  * `TableWriter` writes in place: from its builder, without a header, and
- * with the root's offset size
+ * with the root's offset type
  */
 export function nestedInPlace(table: TableDescription): TableDescription {
-    const { offsetSize } = table.layout;
+    const { offsetType } = table.layout;
     const inPlace = (nested: TableDescription): TableDescription => ({
-        layout: { sized: false, versioned: false, offsetSize },
+        layout: { sized: false, versioned: false, offsetType },
         fields: nested.fields.map(field)
     });
     const field = (description: FieldDescription): FieldDescription => {
@@ -269,19 +269,19 @@ function createSizer({
     version,
     fields
 }: TableDescription): TableSizer {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableSizer(
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
 
     return new TableSizer(
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -289,13 +289,13 @@ function createWriter(
     { layout, version, fields }: TableDescription,
     bytes: Uint8Array
 ): TableWriter {
-    const { sized, offsetSize } = layout;
+    const { sized, offsetType } = layout;
 
     if (layout.versioned) {
         return new TableWriter(
             bytes,
             fields.length,
-            TableLayout.create({ sized, versioned: true, offsetSize }),
+            TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
@@ -303,7 +303,7 @@ function createWriter(
     return new TableWriter(
         bytes,
         fields.length,
-        TableLayout.create({ sized, offsetSize })
+        TableLayout.create({ sized, offsetType })
     );
 }
 
@@ -777,9 +777,9 @@ export class DescriptionMismatch extends Error {
  * theirs, so that they equal the descriptions when the bytes hold the values.
  *
  * A nested table, from `setTable()` or in a vector, is read in place when it
- * has no header and its offsets are as wide as its parent's. Any other is read
- * as a table of its own: a vector item from its bytes, and a field from its
- * position to the end of its parent.
+ * has no header and its parent's offset type. Any other is read as a table of
+ * its own: a vector item from its bytes, and a field from its position to the
+ * end of its parent.
  */
 export class TableReader {
     readonly #buffer: ByteBuffer;
@@ -1025,7 +1025,7 @@ export class TableReader {
         return (
             !layout.sized &&
             !layout.versioned &&
-            layout.offsetSize === this.#layout.offsetSize
+            layout.offsetType === this.#layout.offsetType
         );
     }
 

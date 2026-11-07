@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{Alignment, BuildError, Element, OffsetSize, TableLayout, element::extend_elements};
+use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::extend_elements};
 
 /// Builds a table, which a `ByteBuffer` reads back.
 ///
@@ -27,7 +27,7 @@ pub struct TableBuilder<'a> {
     // Narrow fields, since the builder is inline in a field that nests it,
     // and every field is as large as the largest kind
     values: Vec<Field<'a>>,
-    /// The number of fields that the table holds, which a header of 32-bit
+    /// The number of fields that the table holds, which a header of `uint32`
     /// offsets limits to fewer than 2^30
     fields: u32,
     /// The table's length so far, which is where the next field goes
@@ -36,7 +36,7 @@ pub struct TableBuilder<'a> {
     version: u32,
     versioned: bool,
     sized: bool,
-    offset_size: OffsetSize,
+    offset_type: OffsetType,
     /// The largest alignment that a field needs from the table's start,
     /// which a parent pads this table to when it nests it
     alignment: Alignment,
@@ -98,7 +98,7 @@ impl<'a> TableBuilder<'a> {
     /// # Errors
     ///
     /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset size, or [`BuildError::HeaderTooLong`] if the header
+    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
     /// alone is longer than the layout's offsets address.
     pub fn versioned(
         fields: usize,
@@ -128,7 +128,7 @@ impl<'a> TableBuilder<'a> {
             version: version.unwrap_or(0),
             versioned: version.is_some(),
             sized: layout.is_sized(),
-            offset_size: layout.offset_size(),
+            offset_type: layout.offset_type(),
             alignment: Alignment::One,
         }
     }
@@ -224,9 +224,9 @@ impl<'a> TableBuilder<'a> {
 
     /// Embeds a table, from its builder or its bytes, without a length prefix.
     /// Readers find its fields with `ByteBuffer::field_offset()` from the
-    /// field's position, which reads offsets as wide as the parent's, so the
-    /// table should have no header and the parent's offset size: that's
-    /// [`TableLayout::DEFAULT`] in a parent of 32-bit offsets.
+    /// field's position, which reads offsets of the parent's offset type, so
+    /// the table should have no header and the parent's offset type: that's
+    /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.
     ///
     /// A builder, borrowed or owned, is written straight into this table
     /// when it's written, without bytes of its own. It must have all its
@@ -311,17 +311,17 @@ impl<'a> TableBuilder<'a> {
             });
         }
 
-        let width = self.offset_size.bytes();
+        let width = self.offset_type.size();
         let padding = field.padding(self.length as usize, width);
         let length = u64::from(self.length) + padding as u64 + field.byte_length(width);
 
         self.length = u32::try_from(length)
             .ok()
-            .filter(|&length| length <= self.offset_size.max_value())
+            .filter(|&length| length <= self.offset_type.max_value())
             .ok_or(BuildError::TooLong {
                 index,
                 length,
-                offset_size: self.offset_size,
+                offset_type: self.offset_type,
             })?;
         self.alignment = self.alignment.max(field.alignment());
         self.values.push(field);
@@ -348,15 +348,15 @@ impl<'a> TableBuilder<'a> {
     /// 3.1 µs, and a table of 1.2 MB 19 µs rather than 29 µs.
     fn write(&self, bytes: &mut Vec<u8>) {
         let start = bytes.len();
-        let size = self.offset_size;
-        let width = size.bytes();
+        let offset_type = self.offset_type;
+        let width = offset_type.size();
 
         if self.sized {
-            push_slot(bytes, size, self.length as usize);
+            push_slot(bytes, offset_type, self.length as usize);
         }
 
         if self.versioned {
-            push_slot(bytes, size, self.version as usize);
+            push_slot(bytes, offset_type, self.version as usize);
         }
 
         // Each field's offset is set once its position is known
@@ -370,10 +370,10 @@ impl<'a> TableBuilder<'a> {
             }
 
             let position = bytes.len() - start;
-            set_slot(bytes, slot, size, position);
+            set_slot(bytes, slot, offset_type, position);
             slot += width;
 
-            field.write(bytes, size);
+            field.write(bytes, offset_type);
         }
 
         debug_assert_eq!(bytes.len() - start, self.length as usize);
@@ -547,8 +547,8 @@ impl Field<'_> {
         }
     }
 
-    /// Appends the field, with lengths as wide as `offset_size`
-    fn write(&self, bytes: &mut Vec<u8>, offset_size: OffsetSize) {
+    /// Appends the field, with lengths as wide as `offset_type`
+    fn write(&self, bytes: &mut Vec<u8>, offset_type: OffsetType) {
         match self {
             Self::Scalar {
                 bytes: scalar,
@@ -560,11 +560,11 @@ impl Field<'_> {
                 _ => bytes.extend_from_slice(scalar),
             },
             Self::Array(array) => {
-                push_slot(bytes, offset_size, array.len());
+                push_slot(bytes, offset_type, array.len());
                 array.write(bytes);
             }
             Self::String(string) => {
-                push_slot(bytes, offset_size, string.len());
+                push_slot(bytes, offset_type, string.len());
                 bytes.extend_from_slice(string.as_bytes());
             }
             Self::Struct(scalars) => bytes.extend_from_slice(scalars),
@@ -573,19 +573,19 @@ impl Field<'_> {
                 count,
                 ..
             } => {
-                push_slot(bytes, offset_size, *count);
+                push_slot(bytes, offset_type, *count);
                 bytes.extend_from_slice(structs);
             }
             Self::Table { table, .. } => table.write(bytes),
             Self::Vector(items) => {
-                push_slot(bytes, offset_size, items.len());
+                push_slot(bytes, offset_type, items.len());
 
                 // Each end counts from the vector's position, which is its
                 // count's
-                let mut end = (items.len() + 1) * offset_size.bytes();
+                let mut end = (items.len() + 1) * offset_type.size();
                 for item in items {
                     end += item.byte_length();
-                    push_slot(bytes, offset_size, end);
+                    push_slot(bytes, offset_type, end);
                 }
 
                 for item in items {
@@ -656,29 +656,29 @@ const fn alignment_of<T: Element>(_: &[T]) -> Alignment {
 // the table's length fits in its offsets, and every value is at most that
 // long.
 
-/// Appends a length, offset or header slot as wide as `offset_size`
+/// Appends a length, offset or header slot as wide as `offset_type`
 #[allow(clippy::cast_possible_truncation)]
-fn push_slot(bytes: &mut Vec<u8>, offset_size: OffsetSize, value: usize) {
-    debug_assert!(value <= offset_size.max_value() as usize);
+fn push_slot(bytes: &mut Vec<u8>, offset_type: OffsetType, value: usize) {
+    debug_assert!(value <= offset_type.max_value() as usize);
 
-    match offset_size {
-        OffsetSize::U8 => bytes.push(value as u8),
-        OffsetSize::U16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
-        OffsetSize::U32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
+    match offset_type {
+        OffsetType::Uint8 => bytes.push(value as u8),
+        OffsetType::Uint16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
+        OffsetType::Uint32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
     }
 }
 
 /// Sets the slot at `position`, which `bytes` must already hold
 #[allow(clippy::cast_possible_truncation)]
-fn set_slot(bytes: &mut [u8], position: usize, offset_size: OffsetSize, value: usize) {
-    debug_assert!(value <= offset_size.max_value() as usize);
+fn set_slot(bytes: &mut [u8], position: usize, offset_type: OffsetType, value: usize) {
+    debug_assert!(value <= offset_type.max_value() as usize);
 
-    match offset_size {
-        OffsetSize::U8 => bytes[position] = value as u8,
-        OffsetSize::U16 => {
+    match offset_type {
+        OffsetType::Uint8 => bytes[position] = value as u8,
+        OffsetType::Uint16 => {
             bytes[position..position + 2].copy_from_slice(&(value as u16).to_le_bytes());
         }
-        OffsetSize::U32 => {
+        OffsetType::Uint32 => {
             bytes[position..position + 4].copy_from_slice(&(value as u32).to_le_bytes());
         }
     }

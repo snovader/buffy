@@ -27,7 +27,7 @@ public class RoundTripTest {
             fields.add(new ArrayField(type, limits.stream().mapToLong(Long::longValue).toArray()));
         }
 
-        var table = new TableDescription(LayoutDescription.headerless(AddressableSpace.SIZEOF_32), OptionalLong.empty(), fields);
+        var table = new TableDescription(LayoutDescription.headerless(OffsetType.UINT32), OptionalLong.empty(), fields);
         var bytes = Tables.build(table).bytes();
 
         assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));
@@ -35,19 +35,19 @@ public class RoundTripTest {
 
     // Tables of 32 KiB and more, so fewer of them
     @Property(tries = 250)
-    void fields_at_offsets_with_the_top_bit_of_the_offset_size_set_read_back(
+    void fields_at_offsets_with_the_top_bit_of_the_offset_type_set_read_back(
         @ForAll("narrowTables") TableDescription table
     ) {
         // An array that ends past 2^7 or 2^15 bytes, before the table's fields
-        var offsetSize = table.layout().offsetSize();
-        var array = new ArrayField(ScalarType.UINT8, new long[(int) (offsetSize.maxValue() / 2) + 1]);
+        var offsetType = table.layout().offsetType();
+        var array = new ArrayField(ScalarType.UINT8, new long[(int) (offsetType.maxValue() / 2) + 1]);
 
         var fields = new ArrayList<FieldDescription>();
         fields.add(array);
         fields.addAll(table.fields());
 
         var withArray = new TableDescription(table.layout(), table.version(), fields);
-        Assume.that(Descriptions.maxLength(withArray) <= offsetSize.maxValue());
+        Assume.that(Descriptions.maxLength(withArray) <= offsetType.maxValue());
 
         var bytes = Tables.build(withArray).bytes();
         assertEquals(withArray, TableReader.strict(bytes, table.layout()).readTable(withArray));

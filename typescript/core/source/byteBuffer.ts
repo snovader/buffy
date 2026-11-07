@@ -21,7 +21,7 @@ import {
 import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
 import { TableLayout } from './layout.ts';
-import type { AddressableSpace, ElementSize } from './types.ts';
+import type { OffsetSize, ElementSize } from './types.ts';
 
 /**
  * Reads and writes within the supplied byte slice, in the table layout it was
@@ -34,7 +34,7 @@ import type { AddressableSpace, ElementSize } from './types.ts';
  * allocation has more bytes, and throws a {@link DecodeError} otherwise.
  * Writes past the slice throw a `RangeError` and write nothing. Lengths,
  * offsets and versions are written like DataView's setters, which wrap a value
- * too large for the layout's `offsetSize`; `TableBuilder` rejects those before
+ * too large for the layout's `offsetType`; `TableBuilder` rejects those before
  * it writes a table.
  */
 export class ByteBuffer {
@@ -43,8 +43,8 @@ export class ByteBuffer {
 
     readonly #sized: boolean;
     readonly #versioned: boolean;
-    /** The width of offsets, lengths and header slots */
-    readonly #size: AddressableSpace;
+    /** The offset size, the width of offsets, lengths and header slots */
+    readonly #size: OffsetSize;
     /** The byte length of the header slots before the root's field offsets */
     readonly #headerSize: number;
 

@@ -10,9 +10,9 @@ in arrays, empty too; nested tables from builders and from bytes, with and
 without an alignment; and vectors of tables of any layout.
 
 They follow the format's rules: a table nested with ``set_table()`` has no
-header, as the builder's docstring asks, and is read in place when its offsets
-are as wide as its parent's; versions fit their slot; and every table fits its
-offset size.
+header, as the builder's docstring asks, and is read in place when it has its
+parent's offset type; versions fit their slot; and every table fits its offset
+type.
 """
 
 import struct
@@ -43,14 +43,15 @@ from tests.tables import (
     ELEMENT_SIZES,
     LONGEST,
     Description,
-    OffsetSize,
+    OffsetType,
     from_json,
+    offset_size_of,
     struct_alignment,
     struct_of,
     to_json_number,
 )
 
-OFFSET_SIZES: tuple[OffsetSize, ...] = (1, 2, 4)
+OFFSET_TYPES: tuple[OffsetType, ...] = ("uint8", "uint16", "uint32")
 
 # Levels of tables nested below the root
 MAX_DEPTH = 2
@@ -172,7 +173,7 @@ LAYOUTS: SearchStrategy[Description] = fixed_dictionaries(
     {
         "sized": booleans(),
         "versioned": booleans(),
-        "offsetSize": sampled_from(OFFSET_SIZES),
+        "offsetType": sampled_from(OFFSET_TYPES),
     }
 )
 
@@ -183,35 +184,38 @@ def tables(
     depth: int = MAX_DEPTH,
     *,
     header: bool = True,
-    offset_sizes: tuple[OffsetSize, ...] = OFFSET_SIZES,
-    parent_offset_size: OffsetSize | None = None,
+    offset_types: tuple[OffsetType, ...] = OFFSET_TYPES,
+    parent_offset_type: OffsetType | None = None,
 ) -> Description:
     """Descriptions of tables with up to ``depth`` levels of tables nested
     below them. ``header=False`` leaves out the size and version slots.
 
-    The offset size is drawn first, from ``offset_sizes`` and more often the
+    The offset type is drawn first, from ``offset_types`` and more often the
     parent's, so that the table's own nested tables can share it and be read in
-    place. It's then widened to the next of ``offset_sizes`` if the fields
-    don't fit, and the example is rejected if none fits.
+    place. It's then widened to the next wider of ``offset_types`` if the
+    fields don't fit, and the example is rejected if none fits.
     """
     sized = header and draw(booleans())
     versioned = header and draw(booleans())
 
-    if parent_offset_size is None:
-        drawn = draw(sampled_from(offset_sizes))
+    if parent_offset_type is None:
+        drawn = draw(sampled_from(offset_types))
     else:
-        drawn = draw(sampled_from((parent_offset_size, *offset_sizes)))
+        drawn = draw(sampled_from((parent_offset_type, *offset_types)))
 
     fields = draw(_field_lists(depth, drawn))
 
-    widths = sorted(size for size in offset_sizes if size >= drawn)
-    layout = _fitting_layout(sized, versioned, widths, fields)
+    drawn_size = offset_size_of(drawn)
+    wider = [each for each in offset_types if offset_size_of(each) >= drawn_size]
+    layout = _fitting_layout(
+        sized, versioned, sorted(wider, key=offset_size_of), fields
+    )
     if layout is None:
         reject()
 
     table: Description = {"layout": layout}
     if versioned:
-        table["version"] = draw(integers(0, LONGEST[layout["offsetSize"]]))
+        table["version"] = draw(integers(0, LONGEST[layout["offsetType"]]))
 
     table["fields"] = fields
     return table
@@ -220,14 +224,14 @@ def tables(
 def _fitting_layout(
     sized: bool,
     versioned: bool,
-    offset_sizes: list[OffsetSize],
+    offset_types: list[OffsetType],
     fields: list[Description],
 ) -> Description | None:
-    """Returns the layout of the first of ``offset_sizes`` whose longest table
+    """Returns the layout of the first of ``offset_types`` whose longest table
     of ``fields`` fits, or ``None`` if none fits"""
-    for offset_size in offset_sizes:
-        layout = {"sized": sized, "versioned": versioned, "offsetSize": offset_size}
-        if longest_length({"layout": layout, "fields": fields}) <= LONGEST[offset_size]:
+    for offset_type in offset_types:
+        layout = {"sized": sized, "versioned": versioned, "offsetType": offset_type}
+        if longest_length({"layout": layout, "fields": fields}) <= LONGEST[offset_type]:
             return layout
 
     return None
@@ -239,7 +243,7 @@ def _fitting_layout(
 
 @cache
 def _field_lists(
-    depth: int, offset_size: OffsetSize
+    depth: int, offset_type: OffsetType
 ) -> SearchStrategy[list[Description]]:
     kinds = [
         SCALAR_FIELDS,
@@ -250,8 +254,8 @@ def _field_lists(
     ]
     if depth > 0:
         kinds += [
-            _table_fields(depth - 1, offset_size),
-            _vector_fields(depth - 1, offset_size),
+            _table_fields(depth - 1, offset_type),
+            _vector_fields(depth - 1, offset_type),
         ]
 
     # A kind of field is drawn first, since one_of() would flatten the scalars'
@@ -262,24 +266,24 @@ def _field_lists(
     return lists(fields, max_size=MAX_FIELDS)
 
 
-def _table_fields(depth: int, offset_size: OffsetSize) -> SearchStrategy[Description]:
+def _table_fields(depth: int, offset_type: OffsetType) -> SearchStrategy[Description]:
     """Tables nested with ``set_table()``, without a header"""
     return fixed_dictionaries(
         {
             "type": just("table"),
             "from": sampled_from(["builder", "bytes"]),
-            "table": tables(depth, header=False, parent_offset_size=offset_size),
+            "table": tables(depth, header=False, parent_offset_type=offset_type),
         },
         optional={"alignment": sampled_from([1, 2, 4, 8])},
     )
 
 
-def _vector_fields(depth: int, offset_size: OffsetSize) -> SearchStrategy[Description]:
+def _vector_fields(depth: int, offset_type: OffsetType) -> SearchStrategy[Description]:
     """Vectors of tables of any layout"""
     item = fixed_dictionaries(
         {
             "from": sampled_from(["builder", "bytes"]),
-            "table": tables(depth, parent_offset_size=offset_size),
+            "table": tables(depth, parent_offset_type=offset_type),
         }
     )
     return fixed_dictionaries(
@@ -290,10 +294,10 @@ def _vector_fields(depth: int, offset_size: OffsetSize) -> SearchStrategy[Descri
 def longest_length(table: Description) -> int:
     """The most bytes that a table of the description can take, from the
     format's rules, with the most padding that each array and nested table can
-    need. It keeps generated tables within their offset size without building
+    need. It keeps generated tables within their offset type without building
     them."""
     layout = table["layout"]
-    offset_size = layout["offsetSize"]
+    offset_size = offset_size_of(layout["offsetType"])
     fields = table["fields"]
 
     slots = int(layout["sized"]) + int(layout["versioned"]) + len(fields)

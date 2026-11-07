@@ -1,11 +1,11 @@
-error: `Offset8` can't nest tables, since its offsets are 8 bits wide
+error: `Uint8Offsets` can't nest tables, since its offset type is `uint8`
  --> tables_in_narrow_messages.tafla:5:11
   |
 5 |     pair: Pair;
-  |           ^^^^ nested tables need 32-bit offsets
+  |           ^^^^ nested tables need the offset type `uint32`
 
-error: `Offset16` can't nest tables, since its offsets are 16 bits wide
+error: `Uint16Offsets` can't nest tables, since its offset type is `uint16`
   --> tables_in_narrow_messages.tafla:10:13
    |
 10 |     pairs: [Pair];
-   |             ^^^^ nested tables need 32-bit offsets
+   |             ^^^^ nested tables need the offset type `uint32`

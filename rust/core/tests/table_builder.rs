@@ -1,4 +1,4 @@
-//! Builders write any table that fits in its offset size, and reject what
+//! Builders write any table that fits in its offset type, and reject what
 //! they can't write with a `BuildError` from the setter, leaving the
 //! builder as it was. The examples document the errors.
 
@@ -13,7 +13,7 @@ use proptest::{
     prelude::*,
     sample::{Index, select},
 };
-use tafla::{Alignment, BuildError, ByteBuffer, OffsetSize, TableBuilder, TableLayout};
+use tafla::{Alignment, BuildError, ByteBuffer, OffsetType, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -26,9 +26,9 @@ proptest! {
         table in tables_of_short_offsets(),
         long in long_field(),
     ) {
-        let offset_size = table.layout.offset_size;
-        let max = offset_size.max_value() as usize;
-        let unit = long.unit(offset_size.bytes());
+        let offset_type = table.layout.offset_type;
+        let max = offset_type.max_value() as usize;
+        let unit = long.unit(offset_type.size());
 
         // The fields can leave no room for even the empty field
         let empty = with_field(&table, long.field(0));
@@ -54,7 +54,7 @@ proptest! {
         let error = BuildError::TooLong {
             index: table.fields.len(),
             length: length as u64,
-            offset_size,
+            offset_type,
         };
         prop_assert_eq!(too_long.set(&mut builder), Err(error));
 
@@ -66,16 +66,16 @@ proptest! {
     /// the fields, is rejected, and the builder writes the same table once
     /// the other fields are set
     #[test]
-    fn test_a_field_too_long_for_the_offset_size_is_rejected_and_leaves_the_builder_as_it_was(
+    fn test_a_field_too_long_for_the_offset_type_is_rejected_and_leaves_the_builder_as_it_was(
         table in tables_of_short_offsets(),
         long in long_field(),
         at in any::<Index>(),
     ) {
         prop_assume!(!table.fields.is_empty());
 
-        let offset_size = table.layout.offset_size;
-        let max = offset_size.max_value() as usize;
-        let too_long = long.field(max / long.unit(offset_size.bytes()) + 1);
+        let offset_type = table.layout.offset_type;
+        let max = offset_type.max_value() as usize;
+        let too_long = long.field(max / long.unit(offset_type.size()) + 1);
         let at = at.index(table.fields.len());
 
         let mut builder = table.builder().unwrap();
@@ -87,8 +87,8 @@ proptest! {
         prop_assert!(
             matches!(
                 error,
-                BuildError::TooLong { index, length, offset_size: size }
-                    if index == at && length > max as u64 && size == offset_size
+                BuildError::TooLong { index, length, offset_type: size }
+                    if index == at && length > max as u64 && size == offset_type
             ),
             "{:?}",
             error
@@ -102,18 +102,18 @@ proptest! {
     }
 }
 
-/// Tables of 1- and 2-byte offsets, whose limits a test can reach. Under
-/// Miri, only of 1-byte offsets: writing 64 KiB, and reading it back on a
-/// big-endian target, takes it minutes, and the examples reach the limit of
-/// 2-byte offsets.
+/// Tables of `uint8` and `uint16` offsets, whose limits a test can reach.
+/// Under Miri, only of `uint8` offsets: writing 64 KiB, and reading it back
+/// on a big-endian target, takes it minutes, and the examples reach the limit
+/// of `uint16` offsets.
 fn tables_of_short_offsets() -> impl Strategy<Value = Table> {
-    let offset_sizes = if cfg!(miri) {
-        vec![OffsetSize::U8]
+    let offset_types = if cfg!(miri) {
+        vec![OffsetType::Uint8]
     } else {
-        vec![OffsetSize::U8, OffsetSize::U16]
+        vec![OffsetType::Uint8, OffsetType::Uint16]
     };
 
-    strategy::tables(strategy::layouts(select(offset_sizes)))
+    strategy::tables(strategy::layouts(select(offset_types)))
 }
 
 fn with_field(table: &Table, field: Field) -> Table {
@@ -190,13 +190,13 @@ impl LongField {
     }
 }
 
-/// A table of `fields` with no header and 32-bit offsets, which fits in any
+/// A table of `fields` with no header and `uint32` offsets, which fits in any
 /// parent
 const fn nested(from: Source, fields: Vec<Field>) -> Nested {
     Nested {
         from,
         table: Table {
-            layout: Layout::headerless(OffsetSize::U32),
+            layout: Layout::headerless(OffsetType::Uint32),
             version: None,
             fields,
         },
@@ -240,9 +240,9 @@ fn test_reject_writing_before_every_field_is_set() {
 
 #[test]
 fn test_reject_field_that_makes_table_too_long() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
-        let layout = TableLayout::DEFAULT.with_offset_size(offset_size);
-        let width = offset_size.bytes();
+    for (offset_type, max) in [(OffsetType::Uint8, 0xff), (OffsetType::Uint16, 0xffff)] {
+        let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
+        let width = offset_type.size();
 
         // Two offsets, the array's length prefix and bytes, and then one byte
         let bytes = vec![0; max - 3 * width - 1];
@@ -265,13 +265,13 @@ fn test_reject_field_that_makes_table_too_long() {
             BuildError::TooLong {
                 index: 1,
                 length: max as u64 + 1,
-                offset_size,
+                offset_type,
             }
         );
         assert_eq!(
             error.to_string(),
             format!(
-                "Field 2 makes the table {} bytes, too long for {width}-byte offsets",
+                "Field 2 makes the table {} bytes, too long for {offset_type} offsets",
                 max + 1
             )
         );
@@ -307,11 +307,11 @@ fn test_reject_bytes_that_arent_whole_structs() {
 
 #[test]
 fn test_reject_header_too_long() {
-    for (offset_size, max) in [(OffsetSize::U8, 0xff), (OffsetSize::U16, 0xffff)] {
-        let width = offset_size.bytes();
+    for (offset_type, max) in [(OffsetType::Uint8, 0xff), (OffsetType::Uint16, 0xffff)] {
+        let width = offset_type.size();
 
         for sized in [false, true] {
-            let layout = TableLayout::DEFAULT.with_offset_size(offset_size);
+            let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
             let layout = if sized { layout.sized() } else { layout };
             let fields = max / width - usize::from(sized);
 
@@ -320,7 +320,7 @@ fn test_reject_header_too_long() {
                 TableBuilder::new(fields + 1, layout).unwrap_err(),
                 BuildError::HeaderTooLong {
                     fields: fields + 1,
-                    offset_size
+                    offset_type
                 }
             );
         }
@@ -350,9 +350,9 @@ fn test_reject_table_of_32_bit_offsets_past_4_gib_before_writing() {
 
 #[test]
 fn test_reject_version_too_large_for_slot() {
-    for (offset_size, version) in [(OffsetSize::U8, 0x100), (OffsetSize::U16, 0x1_0000)] {
+    for (offset_type, version) in [(OffsetType::Uint8, 0x100), (OffsetType::Uint16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
-            .with_offset_size(offset_size)
+            .with_offset_type(offset_type)
             .versioned();
 
         let error = TableBuilder::versioned(1, layout, version).unwrap_err();
@@ -360,15 +360,12 @@ fn test_reject_version_too_large_for_slot() {
             error,
             BuildError::VersionTooLarge {
                 version,
-                offset_size
+                offset_type
             }
         );
         assert_eq!(
             error.to_string(),
-            format!(
-                "Version {version} doesn't fit in a {}-byte slot",
-                offset_size.bytes()
-            )
+            format!("Version {version} doesn't fit in a {offset_type} slot")
         );
         assert!(TableBuilder::versioned(1, layout, version - 1).is_ok());
     }

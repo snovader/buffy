@@ -24,7 +24,7 @@ proptest! {
         for found in tables_in(&bytes, &table) {
             let layout = found.table.layout;
             if layout.sized {
-                let width = layout.offset_size.bytes();
+                let width = layout.offset_type.size();
                 prop_assert_eq!(&found.bytes[..width], slot_bytes(found.bytes.len(), width));
             }
         }
@@ -37,7 +37,7 @@ proptest! {
         for found in tables_in(&bytes, &table) {
             let layout = found.table.layout;
             if let Some(version) = found.table.version {
-                let width = layout.offset_size.bytes();
+                let width = layout.offset_type.size();
                 let position = if layout.sized { width } else { 0 };
                 let version = usize::try_from(version).unwrap();
 
@@ -76,7 +76,7 @@ proptest! {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
-            let width = found.table.layout.offset_size.bytes();
+            let width = found.table.layout.offset_type.size();
 
             for field in &found.fields {
                 if let Some(Value::Array { alignment, .. }) = Value::of(field.field) {
@@ -96,7 +96,7 @@ proptest! {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
-            let width = found.table.layout.offset_size.bytes();
+            let width = found.table.layout.offset_type.size();
 
             for field in &found.fields {
                 let value = &found.bytes[field.position..field.position + field.length];
@@ -136,7 +136,7 @@ proptest! {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
-            let width = found.table.layout.offset_size.bytes();
+            let width = found.table.layout.offset_type.size();
             let mut end = found.offsets_end();
 
             for field in &found.fields {
@@ -188,7 +188,7 @@ impl TableIn<'_> {
     /// The length of the header and offsets, where the values start
     const fn offsets_end(&self) -> usize {
         let layout = self.table.layout;
-        layout.header_size() + self.fields.len() * layout.offset_size.bytes()
+        layout.header_size() + self.fields.len() * layout.offset_type.size()
     }
 }
 
@@ -209,7 +209,7 @@ fn find_tables<'a>(
     own_bytes: Option<Vec<u8>>,
     tables: &mut Vec<TableIn<'a>>,
 ) {
-    let width = table.layout.offset_size.bytes();
+    let width = table.layout.offset_type.size();
     let offsets = table.layout.header_size();
     let mut fields = Vec::with_capacity(table.fields.len());
 

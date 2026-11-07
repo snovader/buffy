@@ -23,6 +23,9 @@ export type ArrayType = `${ScalarType}[]`;
  */
 export type JsonNumber = number | string;
 
+export type OffsetType = 'uint8' | 'uint16' | 'uint32';
+
+/** The offset size, the width in bytes of an offset type */
 export type OffsetSize = 1 | 2 | 4;
 
 export type Alignment = 1 | 2 | 4 | 8;
@@ -30,7 +33,7 @@ export type Alignment = 1 | 2 | 4 | 8;
 export interface LayoutDescription {
     sized: boolean;
     versioned: boolean;
-    offsetSize: OffsetSize;
+    offsetType: OffsetType;
 }
 
 export interface TableDescription {

@@ -2,7 +2,7 @@
 //! `conformance.rs` parses and `strategy` generates. See
 //! `conformance/README.md` at the root of the repository.
 
-use tafla::{Alignment, OffsetSize, TableLayout};
+use tafla::{Alignment, OffsetType, TableLayout};
 
 /// A table: its layout, its version and its fields, in the order that
 /// they're set
@@ -19,7 +19,7 @@ pub struct Table {
 pub struct Layout {
     pub sized: bool,
     pub versioned: bool,
-    pub offset_size: OffsetSize,
+    pub offset_type: OffsetType,
 }
 
 /// A field of each type that a table holds, with its value. Equal fields
@@ -150,23 +150,23 @@ pub fn struct_bytes(scalars: &[Field]) -> Vec<u8> {
 impl Layout {
     /// A layout without header slots, which tables nested with
     /// `set_table()` have
-    pub const fn headerless(offset_size: OffsetSize) -> Self {
+    pub const fn headerless(offset_type: OffsetType) -> Self {
         Self {
             sized: false,
             versioned: false,
-            offset_size,
+            offset_type,
         }
     }
 
     /// The layout without its version slot, which `versioned()` adds
     pub const fn unversioned(self) -> TableLayout {
-        let layout = TableLayout::DEFAULT.with_offset_size(self.offset_size);
+        let layout = TableLayout::DEFAULT.with_offset_type(self.offset_type);
         if self.sized { layout.sized() } else { layout }
     }
 
     /// The byte length of the header slots before the field offsets
     pub const fn header_size(self) -> usize {
-        (self.sized as usize + self.versioned as usize) * self.offset_size.bytes()
+        (self.sized as usize + self.versioned as usize) * self.offset_type.size()
     }
 }
 

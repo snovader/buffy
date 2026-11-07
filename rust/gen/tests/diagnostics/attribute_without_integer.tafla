@@ -1,3 +1,0 @@
-message Point (version: one) {
-    x: float64;
-}

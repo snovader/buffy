@@ -1,6 +1,6 @@
 """The code generated from ``schemas/layouts.tafla`` writes and reads tables of
-8-, 16- and 32-bit offsets, each with and without the table's length and a
-version in its header. Each property holds for every message."""
+uint8, uint16 and uint32 offsets, each with and without the table's length
+and a version in its header. Each property holds for every message."""
 
 import unittest
 from functools import partial
@@ -59,13 +59,13 @@ class TestTablesBuiltByHand(unittest.TestCase):
 
 
 class TestLimits(unittest.TestCase):
-    def test_writes_the_longest_table_that_8_and_16_bit_offsets_address_and_rejects_longer(
+    def test_writes_the_longest_table_that_uint8_and_uint16_offsets_address_and_rejects_longer(
         self,
     ) -> None:
         values = [1, 0xFFFF]
 
         for layout in MESSAGES:
-            if layout.offset_size() == 4:
+            if layout.offset_type() == "uint32":
                 continue
 
             with self.subTest(layout.message.__name__):

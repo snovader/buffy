@@ -60,8 +60,10 @@ then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is ``sized``, and
   then its version when it's ``versioned``.
-- Header slots, offsets, counts and vector item ends are all ``offset_size``
-  bytes wide: 1, 2 or 4, which limits the table to 255 bytes, 64 KiB or 4 GiB.
+- Header slots, offsets, counts and vector item ends are all of the layout's
+  offset type, ``offset_type``: ``uint8``, ``uint16`` or ``uint32``, whose
+  offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
+  4 GiB.
 - Offsets count from the table's start. A table nested with ``set_table()`` has
   no header, and its offsets count from its own start.
 - Arrays and strings start with their element count. Typed arrays are padded so
@@ -133,13 +135,13 @@ Using the API wrongly raises other errors, whatever the bytes:
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
 - Writes past the end of a ``ByteBuffer``, and arrays, strings and vectors
-  too long for its ``offset_size``, raise ``ValueError`` and write nothing. A
+  too long for its ``offset_type``, raise ``ValueError`` and write nothing. A
   scalar that doesn't fit its type raises ``ValueError`` and leaves the
   position where it was, though CPython zeroes the scalar's bytes first.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
   created with, a version that doesn't fit, or an array or table given as a
   buffer whose length changed before ``finalize()``. A field that would make
-  the table too long for its ``offset_size`` raises ``ValueError`` from its
+  the table too long for its ``offset_type`` raises ``ValueError`` from its
   setter and isn't added. A value that its type can't hold raises
   ``OverflowError`` or ``TypeError`` from an array setter, and ``ValueError``
   from ``finalize()`` for a scalar. A string with a lone surrogate raises
@@ -148,7 +150,7 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
-  long for its ``offset_size`` from the setter whose offset or count doesn't
+  long for its ``offset_type`` from the setter whose offset or count doesn't
   fit, or from ``bytes()``. It doesn't check that each field's index is its
   own: another writes the offset into another slot, or raises ``ValueError``
   where the bytes have no such slot.
@@ -166,10 +168,13 @@ from .errors import DecodeError
 from .layout import TableLayout
 from .table_builder import TableBuilder
 from .table_writer import TableWriter
+from .types import OffsetSize, OffsetType
 
 __all__ = [
     "ByteBuffer",
     "DecodeError",
+    "OffsetSize",
+    "OffsetType",
     "TableBuilder",
     "TableLayout",
     "TableWriter",

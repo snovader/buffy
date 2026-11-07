@@ -42,30 +42,43 @@ pub struct StructLayout {
 pub struct Layout {
     pub sized: bool,
     pub version: Option<u32>,
-    pub offset_size: OffsetSize,
+    pub offset_type: OffsetType,
 }
 
+/// The offset type of a message, which its `offset_type` attribute names
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OffsetSize {
-    U8,
-    U16,
-    U32,
+pub enum OffsetType {
+    Uint8,
+    Uint16,
+    Uint32,
 }
 
-impl OffsetSize {
-    pub const fn bytes(self) -> u8 {
+impl OffsetType {
+    /// The offset type of a schema's `offset_type` attribute, or `None` for
+    /// any other name
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "uint8" => Some(Self::Uint8),
+            "uint16" => Some(Self::Uint16),
+            "uint32" => Some(Self::Uint32),
+            _ => None,
+        }
+    }
+
+    /// The type's name, as schemas spell it: `uint8`, `uint16` or `uint32`
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
+            Self::Uint8 => "uint8",
+            Self::Uint16 => "uint16",
+            Self::Uint32 => "uint32",
         }
     }
 
     pub const fn max_value(self) -> u64 {
         match self {
-            Self::U8 => 0xff,
-            Self::U16 => 0xffff,
-            Self::U32 => 0xffff_ffff,
+            Self::Uint8 => 0xff,
+            Self::Uint16 => 0xffff,
+            Self::Uint32 => 0xffff_ffff,
         }
     }
 }

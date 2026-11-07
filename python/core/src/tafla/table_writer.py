@@ -6,7 +6,7 @@ from .byte_buffer import struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
 from .errors import describe_int
-from .layout import MAX_LENGTHS, TableLayout, header_length
+from .layout import MAX_LENGTHS, OFFSET_TYPES, TableLayout, header_length
 from .structs import (
     float32,
     float64,
@@ -19,11 +19,11 @@ from .structs import (
     uint32,
     uint64,
 )
-from .types import AddressableSpace, ElementSize, TypeCode
+from .types import ElementSize, OffsetSize, TypeCode
 
 # The unsigned integer of each offset size, which offsets, lengths, counts,
 # item ends and header slots are written as
-_LENGTHS: dict[AddressableSpace, Struct] = {
+_LENGTHS: dict[OffsetSize, Struct] = {
     SIZEOF_8: uint8,
     SIZEOF_16: uint16,
     SIZEOF_32: uint32,
@@ -62,7 +62,7 @@ class TableWriter:
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
     them, without copying them. A table too long for the layout's
-    ``offset_size`` raises ``ValueError``, from the setter whose offset or count
+    ``offset_type`` raises ``ValueError``, from the setter whose offset or count
     doesn't fit or from ``bytes()``. A writer that raised has written part of
     its table, and is of no further use.
     """
@@ -78,7 +78,7 @@ class TableWriter:
         "__table",
     ]
 
-    __size: AddressableSpace
+    __size: OffsetSize
 
     @overload
     def __init__(
@@ -97,18 +97,18 @@ class TableWriter:
         version: int | None = None,
     ) -> None:
         """``fields`` is the number of fields of the table, and ``layout`` its
-        header and offset width, which its readers must use too. ``version`` is
+        header and offset type, which its readers must use too. ``version`` is
         written to the header, and required when the layout is versioned.
 
         Raises ``TypeError`` if ``version`` is given for a layout without a
         version slot, or missing for one with it. Raises ``ValueError`` if
-        ``version`` doesn't fit in the layout's offset size, or the header alone
+        ``version`` doesn't fit in the layout's offset type, or the header alone
         is longer than the layout addresses.
         """
         size = layout.offset_size()
         data = bytearray(header_length(fields, layout, version))
 
-        # The width of offsets, lengths and header slots
+        # The offset size, the width of offsets, lengths and header slots
         self.__size = size
         self.__length = _LENGTHS[size]
         self.__max_length = MAX_LENGTHS[size]
@@ -133,7 +133,7 @@ class TableWriter:
         if len(data) > self.__max_length:
             raise ValueError(
                 f"The table's fields make it {len(data)} bytes, "
-                f"too long for {self.__size}-byte offsets"
+                f"too long for {OFFSET_TYPES[self.__size]} offsets"
             )
 
         if self.__sized:
@@ -163,7 +163,7 @@ class TableWriter:
     # shared helper's call made writing a Point a fifth slower. struct raises
     # _PACK_ERRORS, none of which is a ValueError, and __scalar_error() turns
     # them into ValueError, as ByteBuffer does. It's the offset that doesn't
-    # fit when the table is longer than its offset size addresses.
+    # fit when the table is longer than its offset type addresses.
 
     def set_int8(self, index: int, value: int) -> None:
         data = self.__data
@@ -404,7 +404,7 @@ class TableWriter:
 
     def __slot_error(self, value: int, error: Exception) -> ValueError:
         """The error of an offset or item end that wasn't written: one too
-        large for the offset size, or one whose slot lies outside the bytes,
+        large for the offset type, or one whose slot lies outside the bytes,
         which only an index or item that isn't its own has"""
         if value > self.__max_length:
             return self.__too_long()
@@ -415,5 +415,6 @@ class TableWriter:
 
     def __too_long(self) -> ValueError:
         """The error of an offset, count or item end that doesn't fit in the
-        offset size, which only a table too long for it has"""
-        return ValueError(f"The table is too long for {self.__size}-byte offsets")
+        offset type, which only a table too long for it has"""
+        offset_type = OFFSET_TYPES[self.__size]
+        return ValueError(f"The table is too long for {offset_type} offsets")

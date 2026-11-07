@@ -90,7 +90,7 @@ final class Tables {
     /**
      * {@return the bytes of the table, sized with {@link TableSizer} and written with
      * {@link TableWriter}}. They write tables nested in it in place, so those must have no header
-     * and its offset size, as {@link #nestedInPlace} makes them.
+     * and its offset type, as {@link #nestedInPlace} makes them.
      */
     static byte[] write(TableDescription table) {
         return write(size(table).writer(), table);
@@ -120,38 +120,38 @@ final class Tables {
 
     /**
      * {@return the description with every table nested in it made one that a {@link TableWriter}
-     * writes in place}: from its builder, without a header, and with the root's offset size
+     * writes in place}: from its builder, without a header, and with the root's offset type
      */
     static TableDescription nestedInPlace(TableDescription table) {
-        var fields = fieldsInPlace(table.fields(), table.layout().offsetSize());
+        var fields = fieldsInPlace(table.fields(), table.layout().offsetType());
         return new TableDescription(table.layout(), table.version(), fields);
     }
 
-    private static List<FieldDescription> fieldsInPlace(List<FieldDescription> fields, AddressableSpace offsetSize) {
-        return fields.stream().map(field -> fieldInPlace(field, offsetSize)).toList();
+    private static List<FieldDescription> fieldsInPlace(List<FieldDescription> fields, OffsetType offsetType) {
+        return fields.stream().map(field -> fieldInPlace(field, offsetType)).toList();
     }
 
-    private static FieldDescription fieldInPlace(FieldDescription field, AddressableSpace offsetSize) {
+    private static FieldDescription fieldInPlace(FieldDescription field, OffsetType offsetType) {
         return switch (field) {
             case TableField table -> new TableField(
                 Source.BUILDER,
-                tableInPlace(table.table(), offsetSize),
+                tableInPlace(table.table(), offsetType),
                 table.alignment()
             );
             case VectorField vector -> new VectorField(
-                vector.items().stream().map(item -> itemInPlace(item, offsetSize)).toList()
+                vector.items().stream().map(item -> itemInPlace(item, offsetType)).toList()
             );
             default -> field;
         };
     }
 
-    private static NestedTable itemInPlace(NestedTable item, AddressableSpace offsetSize) {
-        return new NestedTable(Source.BUILDER, tableInPlace(item.table(), offsetSize));
+    private static NestedTable itemInPlace(NestedTable item, OffsetType offsetType) {
+        return new NestedTable(Source.BUILDER, tableInPlace(item.table(), offsetType));
     }
 
-    private static TableDescription tableInPlace(TableDescription nested, AddressableSpace offsetSize) {
-        var layout = LayoutDescription.headerless(offsetSize);
-        return new TableDescription(layout, OptionalLong.empty(), fieldsInPlace(nested.fields(), offsetSize));
+    private static TableDescription tableInPlace(TableDescription nested, OffsetType offsetType) {
+        var layout = LayoutDescription.headerless(offsetType);
+        return new TableDescription(layout, OptionalLong.empty(), fieldsInPlace(nested.fields(), offsetType));
     }
 
     /** Adds the field to the sizer with the method of its type, and then a nested table's fields */

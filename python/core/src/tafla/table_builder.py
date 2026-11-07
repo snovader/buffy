@@ -5,7 +5,7 @@ from .byte_buffer import ByteBuffer, byte_view, struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
 from .layout import MAX_LENGTHS, TableLayout, header_length
-from .types import AddressableSpace, ElementSize, TypeCode
+from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[[ByteBuffer, Any], None]
 
@@ -25,7 +25,7 @@ class TableBuilder:
     changed length raises ``ValueError``. Tables nested from their builders are
     written in the same pass, straight into this one. A setter raises
     ``ValueError``, and leaves the builder as it was, when its field would make
-    the table longer than the layout's ``offset_size`` addresses: 255 bytes, 64
+    the table longer than the layout's ``offset_type`` addresses: 255 bytes, 64
     KiB or 4 GiB. Structs, and tables and vector items given as bytes, must be
     C-contiguous buffers: a setter given one that isn't, such as a slice with
     a step, raises ``TypeError`` and leaves the builder as it was too. Arrays
@@ -45,7 +45,7 @@ class TableBuilder:
     ]
 
     __buffer: ByteBuffer | None
-    __size: AddressableSpace
+    __size: OffsetSize
     __alignment: ElementSize
     # Per field: the padding before it, its position from the table's start,
     # the function that writes it and its value. The functions aren't bound
@@ -69,14 +69,14 @@ class TableBuilder:
         version: int | None = None,
     ) -> None:
         """``fields`` is the number of fields that the table will hold, and
-        ``layout`` its header and offset width, which its readers must use too.
+        ``layout`` its header and offset type, which its readers must use too.
         ``version`` is written to the header, and required when the layout is
         versioned. Readers can check it with ``ByteBuffer.get_version()``
         before reading any field.
 
         Raises ``TypeError`` if ``version`` is given for a layout without a
         version slot, or missing for one with it. Raises ``ValueError`` if
-        ``version`` doesn't fit in the layout's offset size, or the header
+        ``version`` doesn't fit in the layout's offset type, or the header
         alone is longer than the layout addresses.
         """
         size = layout.offset_size()
@@ -302,7 +302,7 @@ class TableBuilder:
         the end of each, which lets readers find any item without reading the
         others. Builders must have all their fields set, and are written
         straight into this table as ``set_table()`` writes them, except for
-        those whose layout has another ``offset_size``, which are finalized and
+        those whose layout has another ``offset_type``, which are finalized and
         copied. Items aren't padded.
 
         Raises ``ValueError`` if a builder has fields left to set.
@@ -368,7 +368,7 @@ class TableBuilder:
         if length > self.__max_length:
             raise ValueError(
                 f"Field {index + 1} makes the table {length} bytes, "
-                f"too long for {self.__size}-byte offsets"
+                f"too long for {self.__layout.offset_type()} offsets"
             )
 
         records.append((padding, position, write, value))
@@ -394,7 +394,7 @@ class TableBuilder:
 
     def __write(self, buffer: ByteBuffer) -> None:
         """Writes the table from the buffer's position, which counts as its
-        start. The buffer's offsets must be as wide as the table's."""
+        start. The buffer's layout must have the table's offset type."""
         if self.__layout.sized():
             buffer.set_size(self.__offset)
 
@@ -413,7 +413,7 @@ class TableBuilder:
 
     @staticmethod
     def __write_table(
-        buffer: ByteBuffer, field: tuple[TableBuilder, AddressableSpace]
+        buffer: ByteBuffer, field: tuple[TableBuilder, OffsetSize]
     ) -> None:
         table, size = field
         TableBuilder.__write_item(buffer, table, size)
@@ -421,10 +421,10 @@ class TableBuilder:
     @staticmethod
     def __write_vector(
         buffer: ByteBuffer,
-        field: tuple[tuple[TableBuilder | Buffer, ...], int, AddressableSpace],
+        field: tuple[tuple[TableBuilder | Buffer, ...], int, OffsetSize],
     ) -> None:
-        """Writes a vector into a buffer whose offsets are ``size`` bytes wide,
-        like the vector's count and item ends"""
+        """Writes a vector into a buffer of the offset size ``size``, which its
+        count and item ends take too"""
         items, byte_length, size = field
         lengths = [TableBuilder.__length_of(item) for item in items]
         first = size * (1 + len(items))
@@ -443,12 +443,12 @@ class TableBuilder:
 
     @staticmethod
     def __write_item(
-        buffer: ByteBuffer, table: TableBuilder | Buffer, size: AddressableSpace
+        buffer: ByteBuffer, table: TableBuilder | Buffer, size: OffsetSize
     ) -> None:
-        """Writes a builder straight into a buffer whose offsets are ``size``
-        bytes wide, unless it was finalized already or has offsets of another
-        width, since the buffer writes every offset and length at its own
-        width. Those tables, and bytes, are copied."""
+        """Writes a builder straight into a buffer of the offset size ``size``,
+        unless it was finalized already or has another offset size, since the
+        buffer writes every offset and length in its own. Those tables, and
+        bytes, are copied."""
         if not isinstance(table, TableBuilder):
             buffer.set_bytes(table)
         elif table.__buffer is None and table.__size == size:
