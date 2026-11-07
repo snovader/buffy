@@ -209,10 +209,14 @@ def _array_values(element: str, field: Description) -> list[Any]:
     return values
 
 
-def write_table(table: Description) -> memoryview[int]:
+def write_table(
+    table: Description, *, wrap: Callable[[TableWriter], Any] | None = None
+) -> memoryview[int]:
     """Writes a table with a ``TableWriter`` as its description sets it out.
     The writer writes the tables nested in it in place, so they must have no
-    header and its offset type, as ``nested_in_place()`` makes them."""
+    header and its offset type, as ``nested_in_place()`` makes them. ``wrap``
+    returns what the fields are written through instead of the writer, which
+    can change the calls."""
     layout = table["layout"]
     sized, offset_type = layout["sized"], layout["offsetType"]
     fields = len(table["fields"])
@@ -226,8 +230,9 @@ def write_table(table: Description) -> memoryview[int]:
     else:
         writer = TableWriter(fields, TableLayout(sized=sized, offset_type=offset_type))
 
+    target = writer if wrap is None else wrap(writer)
     for index, field in enumerate(table["fields"]):
-        write_field(writer, index, field)
+        write_field(target, index, field)
 
     return writer.bytes()
 

@@ -350,9 +350,19 @@ pub struct SizerParent {
 /// Arrays and nested tables are padded as `TableBuilder` pads them, so the
 /// two write the same bytes for the same fields.
 ///
+/// It's the target of the code that tafla-gen generates, whose calls follow
+/// from the schema: fields are set in index order, each once, as the sizer
+/// added them, and each vector item is followed by its
+/// [`TableWriter::set_item_end()`]. Hand-written tables use `TableBuilder`,
+/// which checks every field.
+///
 /// Writing a field doesn't fail: [`TableWriter::into_bytes()`] returns the
 /// error of fields that differ from those that the sizer added. The writer
-/// never writes past the table's length, nor allocates more than it.
+/// never writes past the table's length, nor allocates more than it. Unlike
+/// the other runtimes' writers, it also reports an index past its table's
+/// fields, or an item past its vector's count, since [`WriterParent`] and
+/// [`VectorPosition`] carry the counts; the contract that the runtimes share
+/// leaves the table's bytes undefined for them.
 #[derive(Debug)]
 pub struct TableWriter {
     /// The bytes written so far, with the table's length reserved.

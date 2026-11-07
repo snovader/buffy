@@ -301,12 +301,15 @@ export class TableSizer {
  * nested tables are padded as `TableBuilder` pads them, so the two write the
  * same bytes for the same fields.
  *
- * Counts that aren't non-negative integers, and alignments other than 1, 2,
- * 4 or 8, throw a `RangeError` before the writer moves. The writer is the
- * target of generated code, and trusts the index of each field and the item
- * of each end to be their own, as the generated code passes them; it doesn't
- * check them. Another writes the offset or end into another slot of the
- * bytes. Hand-written tables use `TableBuilder`, which checks them.
+ * It's the target of the code that tafla-gen generates, whose calls follow
+ * from the schema, so it doesn't check them again: fields are set in index
+ * order, each once, as the sizer added them, and each vector item is followed
+ * by its `setItemEnd()`. A field index outside its table, or an item outside
+ * its vector, writes an offset or end over another slot or field, so the
+ * table's bytes are undefined, though never outside them: a slot past them
+ * isn't written. Hand-written tables use `TableBuilder`, which checks every
+ * field. Counts that aren't non-negative integers, and alignments other than
+ * 1, 2, 4 or 8, throw a `RangeError` before the writer moves.
  *
  * Every write stays within the bytes, even when they're part of a larger
  * buffer. A field that doesn't fit in them, as when it's longer than the one

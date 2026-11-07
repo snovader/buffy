@@ -18,14 +18,18 @@ import java.util.*;
  * field's type as the package documentation's Conversions table describes, as for
  * {@code TableBuilder}.</p>
  *
+ * <p>It's the target of the code that tafla-gen generates, whose calls follow from the schema, so
+ * it doesn't check them again: fields are set in index order, each once, as the sizer added them,
+ * and each vector item is followed by its {@link #setItemEnd}. A field index outside its table, or
+ * an item outside its vector, writes an offset or end over another slot or field, so the table's
+ * bytes are undefined, though never outside them: a slot past them throws an
+ * {@link IndexOutOfBoundsException}. Hand-written tables use {@code TableBuilder}, which checks
+ * every field.</p>
+ *
  * <p>Fields that differ from those that the sizer added, such as values that changed in between,
- * never write outside the table's bytes. A field that would end past them throws an
+ * never write outside the table's bytes either. A field that would end past them throws an
  * {@link IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()}
- * throws an {@link IllegalStateException} for fields that didn't fill them. The writer is the
- * target of generated code, and trusts the index of each field and the item of each end to be
- * their own, as the generated code passes them; it doesn't check them. Another writes the offset
- * or end into another slot of the bytes, or throws an {@code IndexOutOfBoundsException}.
- * Hand-written tables use {@code TableBuilder}, which checks them.</p>
+ * throws an {@link IllegalStateException} for fields that didn't fill them.</p>
  */
 public final class TableWriter {
     private final byte[] bytes;

@@ -4,6 +4,7 @@ import io.github.snovader.tafla.*;
 import io.github.snovader.tafla.test.FieldDescription.*;
 
 import java.util.*;
+import java.util.function.*;
 
 /**
  * Builds tables as their descriptions set them out, as every implementation's conformance test does,
@@ -115,7 +116,15 @@ final class Tables {
 
     /** {@return the bytes that the writer writes from the table's fields, each with its index} */
     static byte[] write(TableWriter writer, TableDescription table) {
-        writeFields(writer, table.fields());
+        return write(writer, table, IntUnaryOperator.identity());
+    }
+
+    /**
+     * {@return the bytes that the writer writes from the table's fields}, with each field's index
+     * and each item end's item passed through {@code indices}, which can change them
+     */
+    static byte[] write(TableWriter writer, TableDescription table, IntUnaryOperator indices) {
+        writeFields(writer, table.fields(), indices);
         return writer.bytes();
     }
 
@@ -189,14 +198,15 @@ final class Tables {
         sizer.endTable(parent);
     }
 
-    private static void writeFields(TableWriter writer, List<FieldDescription> fields) {
+    private static void writeFields(TableWriter writer, List<FieldDescription> fields, IntUnaryOperator indices) {
         for (int index = 0; index < fields.size(); index++) {
-            writeField(writer, index, fields.get(index));
+            writeField(writer, index, fields.get(index), indices);
         }
     }
 
     /** Writes field {@code index} with the setter of its type, and then a nested table's fields */
-    private static void writeField(TableWriter writer, int index, FieldDescription field) {
+    private static void writeField(TableWriter writer, int fieldIndex, FieldDescription field, IntUnaryOperator indices) {
+        var index = indices.applyAsInt(fieldIndex);
         switch (field) {
             case ScalarField scalar -> scalar.type().set(writer, index, scalar.value());
             case BoolField bool -> writer.setUint8(index, bool.uint8());
@@ -211,23 +221,28 @@ final class Tables {
             );
             case TableField table -> {
                 writer.setTable(index, alignmentOf(table));
-                writeNested(writer, table.table());
+                writeNested(writer, table.table(), indices);
             }
-            case VectorField vector -> writeVector(writer, index, vector.items());
+            case VectorField vector -> writeVector(writer, index, vector.items(), indices);
         }
     }
 
-    private static void writeVector(TableWriter writer, int index, List<NestedTable> items) {
+    private static void writeVector(
+        TableWriter writer,
+        int index,
+        List<NestedTable> items,
+        IntUnaryOperator indices
+    ) {
         var vector = writer.setVector(index, items.size());
         for (int item = 0; item < items.size(); item++) {
-            writeNested(writer, items.get(item).table());
-            writer.setItemEnd(vector, item);
+            writeNested(writer, items.get(item).table(), indices);
+            writer.setItemEnd(vector, indices.applyAsInt(item));
         }
     }
 
-    private static void writeNested(TableWriter writer, TableDescription table) {
+    private static void writeNested(TableWriter writer, TableDescription table, IntUnaryOperator indices) {
         var parent = writer.startTable(table.fields().size());
-        writeFields(writer, table.fields());
+        writeFields(writer, table.fields(), indices);
         writer.endTable(parent);
     }
 

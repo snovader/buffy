@@ -46,6 +46,24 @@ same fields, in the same order, into bytes of that length, without recording
 them first as `TableBuilder` does. Both pad arrays and nested tables as
 `TableBuilder` does, so they write the same bytes.
 
+`TableWriter` is the target of the generated code, whose calls follow from
+the schema, so it doesn't check them again. Its contract:
+
+- Fields are set in index order, each once, as the sizer added them, and
+  each vector item is followed by its `setItemEnd()`.
+- A field index outside its table, or an item outside its vector, writes an
+  offset or item end over another slot or field, so the table's bytes are
+  undefined. Every write still stays within the writer's bytes: one whose
+  slot lies past them writes nothing.
+- Fields that differ from those the sizer counted, in their lengths or
+  number, throw a `RangeError` rather than end past the bytes, and `bytes()`
+  throws one when they didn't fill them.
+
+Rust's writer also reports an index past its table's fields, since the parent
+that the generated code hands back already carries the count. The others don't
+keep that count for each nested table, so the contract doesn't promise it.
+Hand-written tables use `TableBuilder`, which checks every field.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field

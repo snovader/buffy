@@ -68,6 +68,11 @@ intent, not a requirement to preserve every detail.
 - Validate external data at appropriate boundaries and establish internal
   invariants deliberately. Avoid silently replacing invalid results with plausible
   values unless that is the intended contract.
+- Don't recheck at runtime what documented or generated usage already
+  guarantees. Enforce correctness at the boundary that owns it: the API's
+  contract, the generator, or a checked API such as `TableBuilder`. A check on
+  a hot path needs a measured cost near noise, or a case of silent corruption
+  in ordinary use, to justify it.
 
 ## The format and its implementations
 

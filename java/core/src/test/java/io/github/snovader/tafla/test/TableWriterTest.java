@@ -289,6 +289,62 @@ public class TableWriterTest {
         assertArrayEquals(new byte[] {4, 0, 0, 0, 0, 0, 0, 0}, writer.bytes());
     }
 
+    // Indices and item ends outside their table, which leave the table's bytes undefined but within
+    // the writer's
+
+    @Property
+    void any_index_of_a_field_or_item_of_an_end_writes_within_the_bytes_or_throws_IndexOutOfBoundsException(
+        @ForAll("inPlaceTables") TableDescription table,
+        @ForAll @IntRange(max = 1_000) int call,
+        @ForAll("positions") int position
+    ) {
+        var length = Tables.write(table).length;
+        var counter = new IndexReplacer(-1, 0);
+        Tables.write(Tables.size(table).writer(), table, counter);
+        Assume.that(counter.calls() > 0);
+
+        var replacer = new IndexReplacer(call % counter.calls(), position);
+        var writer = Tables.size(table).writer();
+        byte[] bytes;
+        try {
+            bytes = Tables.write(writer, table, replacer);
+        } catch (IndexOutOfBoundsException exception) {
+            return; // A slot past the bytes
+        }
+
+        assertEquals(length, bytes.length);
+    }
+
+    @Provide
+    Arbitrary<Integer> positions() {
+        return Arbitraries.oneOf(Arbitraries.integers().between(-4, 64), Arbitraries.integers());
+    }
+
+    /**
+     * Passes each index of a field and item of an end through, but replaces that of call
+     * {@code call} of them by {@code value}, as a caller other than the generated code might
+     */
+    private static final class IndexReplacer implements IntUnaryOperator {
+        private final int call;
+        private final int value;
+        private int calls = 0;
+
+        IndexReplacer(int call, int value) {
+            this.call = call;
+            this.value = value;
+        }
+
+        /** {@return the indices and items passed through} */
+        int calls() {
+            return calls;
+        }
+
+        @Override
+        public int applyAsInt(int index) {
+            return calls++ == call ? value : index;
+        }
+    }
+
     @Example
     void a_struct_of_0_bytes_is_sized_and_written_as_TableBuilder_builds_it() {
         var sizer = new TableSizer(2);
